@@ -4,6 +4,7 @@ const ammoRules = require("../../ammo-modes");
 const tigerIntelligence = require("../../tiger-intelligence");
 const livingWorld = require("../../living-world");
 const missionMapTruth = require("../../mission-map-truth");
+const postCampaign = require("../../post-campaign");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -1846,6 +1847,31 @@ const CONVOY_RESCUE_WORLD_SIZE = Object.freeze({ width:4800, height:2720 });
 const ALPHA_HUNT_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
 const STORM_EXTRACTION_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
 const ENDLESS_SURVIVAL_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
+const POST_CAMPAIGN_LAUNCH_TYPES = Object.freeze(postCampaign.CRISIS_TYPES.map((row)=>row.coopLaunchType));
+const POST_CAMPAIGN_CIVILIANS = Object.freeze([
+  Object.freeze({ id:"crisis_civ_1", x:205, y:220, name:"Settlement Elder", look:"field" }),
+  Object.freeze({ id:"crisis_civ_2", x:430, y:390, name:"Village Medic", look:"medic" }),
+  Object.freeze({ id:"crisis_civ_3", x:720, y:230, name:"Route Scout", look:"scout" }),
+  Object.freeze({ id:"crisis_civ_4", x:955, y:690, name:"Evac Driver", look:"driver" }),
+  Object.freeze({ id:"crisis_civ_5", x:300, y:745, name:"Shop Keeper", look:"field" }),
+  Object.freeze({ id:"crisis_civ_6", x:825, y:520, name:"Village Teacher", look:"scout" }),
+]);
+const POST_CAMPAIGN_TIGERS = Object.freeze([
+  Object.freeze({ id:"crisis_tiger_1", name:"Crisis Scout", type:"Scout", hpMax:420, baseX:250, baseY:380, rangeX:118, rangeY:86, speed:.84, phase:.3 }),
+  Object.freeze({ id:"crisis_tiger_2", name:"Settlement Hunter", type:"Standard", hpMax:470, baseX:470, baseY:260, rangeX:138, rangeY:102, speed:.72, phase:1.4 }),
+  Object.freeze({ id:"crisis_tiger_3", name:"Route Stalker", type:"Stalker", hpMax:500, baseX:690, baseY:470, rangeX:145, rangeY:108, speed:.76, phase:2.5 }),
+  Object.freeze({ id:"crisis_tiger_4", name:"Village Guard", type:"Armored", hpMax:600, baseX:920, baseY:690, rangeX:112, rangeY:92, speed:.57, phase:3.6 }),
+  Object.freeze({ id:"crisis_tiger_5", name:"Blood Trail Tiger", type:"Standard", hpMax:510, baseX:340, baseY:720, rangeX:136, rangeY:104, speed:.73, phase:4.7 }),
+  Object.freeze({ id:"crisis_tiger_6", name:"Siege Prowler", type:"Scout", hpMax:450, baseX:760, baseY:720, rangeX:122, rangeY:90, speed:.86, phase:5.8 }),
+  Object.freeze({ id:"crisis_tiger_7", name:"Siege Breaker", type:"Armored", hpMax:640, baseX:1030, baseY:370, rangeX:110, rangeY:88, speed:.55, phase:6.9 }),
+  Object.freeze({ id:"crisis_tiger_8", name:"Pack Vanguard", type:"Standard", hpMax:530, baseX:580, baseY:610, rangeX:140, rangeY:106, speed:.74, phase:8.0 }),
+]);
+const POST_CAMPAIGN_GOVERNMENT = Object.freeze([
+  Object.freeze({ id:"crisis_gov_1", name:"Response Rifleman", type:"Government", faction:"government", capturable:false, hpMax:390, baseX:300, baseY:300, rangeX:105, rangeY:80, speed:.78, phase:.8 }),
+  Object.freeze({ id:"crisis_gov_2", name:"Response Officer", type:"Government", faction:"government", capturable:false, hpMax:440, baseX:580, baseY:350, rangeX:112, rangeY:86, speed:.72, phase:2.3 }),
+  Object.freeze({ id:"crisis_gov_3", name:"Response Heavy", type:"Government", faction:"government", capturable:false, hpMax:520, baseX:830, baseY:580, rangeX:102, rangeY:82, speed:.60, phase:4.1 }),
+  Object.freeze({ id:"crisis_gov_4", name:"Response Tracker", type:"Government", faction:"government", capturable:false, hpMax:410, baseX:1010, baseY:320, rangeX:108, rangeY:84, speed:.76, phase:5.7 }),
+]);
 const TIGER_DEN_CIVILIANS = Object.freeze([
   Object.freeze({ id:"den_ranger", x:285, y:255, name:"Trapped Ranger", look:"scout" }),
   Object.freeze({ id:"den_researcher", x:905, y:285, name:"Den Researcher", look:"medic" }),
@@ -2252,7 +2278,7 @@ const SPECIAL_OPERATION_MISSIONS = Object.freeze({
   "storm-extraction":EXPANDED_STORM_EXTRACTION_MISSION,
   "endless-survival":EXPANDED_ENDLESS_SURVIVAL_MISSION,
 });
-const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...Object.keys(SPECIAL_OPERATION_MISSIONS)]);
+const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...Object.keys(SPECIAL_OPERATION_MISSIONS), ...POST_CAMPAIGN_LAUNCH_TYPES]);
 const ALL_COOP_MISSIONS = Object.freeze([
   ...Object.values(EXPANDED_SHARED_STORY_MISSIONS),
   ...Object.values(SPECIAL_OPERATION_MISSIONS),
@@ -2279,13 +2305,33 @@ const LIVING_WORLD_PATROL_DEFS = Object.freeze({
     Object.freeze({ id:"living-amara-stalker-2", name:"Haven Forest Prowler", type:"Stalker", hpMax:310, baseX:730, baseY:730, rangeX:158, rangeY:126, speed:.77, phase:3.6, boss:false }),
   ]),
 });
-const ALL_COOP_TIGERS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []), ...Object.values(LIVING_WORLD_PATROL_DEFS).flat()]);
-const ALL_COOP_CIVILIANS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []));
+const ALL_COOP_TIGERS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []), ...Object.values(LIVING_WORLD_PATROL_DEFS).flat(), ...POST_CAMPAIGN_TIGERS, ...POST_CAMPAIGN_GOVERNMENT, Object.freeze({ ...POST_CAMPAIGN_TIGERS[0], id:"crisis_escaped_alpha", hpMax:1800 })]);
+const ALL_COOP_CIVILIANS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []), ...POST_CAMPAIGN_CIVILIANS]);
 const ALL_COOP_CHECKPOINTS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.checkpoints || []));
 
 function normalizeLaunchType(value){
   const type = String(value || "").trim().toLowerCase();
   return VALID_LAUNCH_TYPES.includes(type) ? type : "live-squad";
+}
+
+function postCampaignSession(session){
+  return postCampaign.isCrisisLaunchType(session?.launchType);
+}
+
+function normalizePostCampaignOperation(raw, launchType=""){
+  const type = postCampaign.crisisByLaunchType(launchType) || postCampaign.crisisById(raw?.typeId);
+  if(!type) return null;
+  const district = livingWorld.districtById(cleanText(raw?.districtId, 40));
+  if(!district) return null;
+  return {
+    typeId:type.id,
+    launchType:type.coopLaunchType,
+    districtId:district.id,
+    districtName:district.name,
+    missionLevel:clamp(Math.floor(Number(raw?.missionLevel || district.minMission || 1)), district.minMission, district.maxMission),
+    cycle:Math.max(0, Math.floor(Number(raw?.cycle || postCampaign.cycleKey(nowMs())))),
+    runId:cleanText(raw?.runId || `POST-${postCampaign.cycleKey(nowMs())}-${type.id}-${district.id}`, 100),
+  };
 }
 
 function normalizeLivingWorldMission(raw){
@@ -2413,10 +2459,68 @@ function livingWorldSettlementSupport(mission, effect){
   };
 }
 
+function postCampaignMissionDefinition(session){
+  const operation = normalizePostCampaignOperation(session?.postCampaignOperation, session?.launchType);
+  const type = postCampaign.crisisByLaunchType(session?.launchType);
+  if(!operation || !type) return null;
+  const base = EXPANDED_SHARED_STORY_MISSIONS[operation.missionLevel] || EXPANDED_SHARED_STORY_MISSIONS[100];
+  const players = Math.max(1, Math.min(2, Number(session?.memberIds?.length || 1)));
+  const difficulty = postCampaign.difficultyForPlayers(players);
+  const sx = Number(base.world.width || 4800) / WORLD.width;
+  const sy = Number(base.world.height || 2800) / WORLD.height;
+  const point = (row)=>Object.freeze({ ...row, x:Math.round(row.x * sx), y:Math.round(row.y * sy) });
+  const threat = (row)=>Object.freeze({
+    ...row,
+    baseX:Math.round(row.baseX * sx),
+    baseY:Math.round(row.baseY * sy),
+    rangeX:Math.round(row.rangeX * 1.45),
+    rangeY:Math.round(row.rangeY * 1.45),
+    hpMax:Math.round(Number(row.hpMax || 400) * difficulty.tigerHpMultiplier),
+  });
+  const civilians = POST_CAMPAIGN_CIVILIANS.slice(0, type.civilians).map(point);
+  let tigers = [];
+  if(type.id === "escaped_alpha"){
+    tigers = [threat({ ...POST_CAMPAIGN_TIGERS[0], id:"crisis_escaped_alpha", name:"Escaped Transport Alpha", type:"Alpha", hpMax:1800, boss:true, capturable:true })];
+  }else{
+    tigers = POST_CAMPAIGN_TIGERS.slice(0, type.tigers).map(threat);
+    if(type.id === "government_raid") tigers.push(...POST_CAMPAIGN_GOVERNMENT.map(threat));
+  }
+  return {
+    ...base,
+    level:operation.missionLevel,
+    chapter:11,
+    chapterName:`${operation.districtName} • ${type.name}`,
+    title:type.name,
+    objective:type.id === "government_raid"
+      ? "Rescue every civilian, clear the five tigers and four government response units, then extract."
+      : type.objective,
+    rescueRequired:type.civilians,
+    captureRequired:type.captures,
+    captureTargetIds:type.id === "escaped_alpha" ? ["crisis_escaped_alpha"] : [],
+    timeLimitMs:Math.round(12 * 60 * 1000 * difficulty.timeMultiplier),
+    civilians:Object.freeze(civilians),
+    tigers:Object.freeze(tigers),
+    checkpoints:Object.freeze([]),
+    checkpointsBeforeRescue:false,
+    postCampaign:true,
+    postCampaignTypeId:type.id,
+    postCampaignRunId:operation.runId,
+    postCampaignDistrictId:operation.districtId,
+    playerCount:players,
+    difficultyLabel:difficulty.label,
+    tigerDamageMultiplier:difficulty.tigerDamageMultiplier,
+    dangerNote:players === 2
+      ? "Two-player scaling is active. Enemies have more endurance, but both soldiers can rescue and fight at the same time."
+      : "Solo scaling is active. You can invite one teammate during this crisis without restarting it.",
+  };
+}
+
 function missionDefinition(session){
-  const base = session?.launchType === "shared-story"
+  const crisis = postCampaignMissionDefinition(session);
+  const base = crisis || (session?.launchType === "shared-story"
     ? (EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0)] || EXPANDED_SHARED_STORY_MISSIONS[1])
-    : (SPECIAL_OPERATION_MISSIONS[normalizeLaunchType(session?.launchType)] || EXPANDED_NIGHT_FANG_MISSION);
+    : (SPECIAL_OPERATION_MISSIONS[normalizeLaunchType(session?.launchType)] || EXPANDED_NIGHT_FANG_MISSION));
+  if(crisis) return crisis;
   const consequence = activeLivingWorldMission(session);
   if(!consequence.enabled || consequence.extraPatrols <= 0) return base;
   const scaleX = Math.max(.55, Number(base.world?.width || 1200) / 1200);
@@ -2461,6 +2565,7 @@ function normalizeSession(raw){
   const launchType = requestedLaunchType === "shared-story" && !EXPANDED_SHARED_STORY_MISSIONS[requestedStoryMissionLevel]
     ? "live-squad"
     : requestedLaunchType;
+  const postCampaignOperation = normalizePostCampaignOperation(raw.postCampaignOperation, launchType);
   return {
     version:2,
     code,
@@ -2482,9 +2587,10 @@ function normalizeSession(raw){
     survivalWavesCleared:clamp(Math.floor(Number(raw.survivalWavesCleared || 0)), 0, 50),
     survivalIntermissionUntil:Math.max(0, Number(raw.survivalIntermissionUntil || 0)),
     livingWorldMission:normalizeLivingWorldMission(raw.livingWorldMission),
+    postCampaignOperation,
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
-      : (SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
+      : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
   };
 }
 
@@ -2646,7 +2752,7 @@ function tigerPosition(session, tiger, at=nowMs()){
 function tigerSnapshots(session, players, at=nowMs()){
   const survivalWave = session?.launchType === "endless-survival" ? clamp(Math.floor(Number(session.survivalWave || 1)), 1, 50) : 1;
   const survivalScale = 1 + (survivalWave - 1) * 0.22;
-  const balance = tigerIntelligence.balanceFor({ playerCount:Math.max(2, players.length), mode:session?.launchType === "endless-survival" ? "Survival" : "Co-op", level:session?.storyMissionLevel || 1 });
+  const balance = tigerIntelligence.balanceFor({ playerCount:postCampaignSession(session) ? Math.max(1, players.length) : Math.max(2, players.length), mode:session?.launchType === "endless-survival" ? "Survival" : "Co-op", level:session?.storyMissionLevel || session?.postCampaignOperation?.missionLevel || 1 });
   const killSites = players.flatMap((player)=>Object.values(player?.killSites || {})).filter(Boolean);
   const persistentBloodScent = clamp(Number(activeLivingWorldMission(session).bloodScent || 0) / 100, 0, 1);
   return missionDefinition(session).tigers.map((baseDef)=>{
@@ -2744,6 +2850,8 @@ async function createSession(user, opts={}){
     : requestedLaunchType;
   const hostProfile = await readCoopProfile(user);
   const storyMissionLevel = launchType === "shared-story" ? requestedStoryMissionLevel : 0;
+  const postCampaignOperation = normalizePostCampaignOperation(opts?.postCampaignOperation, launchType);
+  if(postCampaignSession({ launchType }) && !postCampaignOperation) throw new Error("This Living World crisis is no longer available. Reopen the command network.");
   let session = await writeSession({
     code,
     hostId:uid,
@@ -2756,6 +2864,7 @@ async function createSession(user, opts={}){
     storyMissionLevel,
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
+    postCampaignOperation,
     livingWorldMission:launchType === "shared-story" && storyMissionLevel <= livingWorld.PILOT_MAX_MISSION
       ? livingWorld.missionConsequences(hostProfile.livingWorld, storyMissionLevel, { playerCount:2 })
       : null,
@@ -2772,7 +2881,8 @@ async function joinSession(codeValue, user){
   ensureLiveSession(session);
   await writeCoopProfile(await readCoopProfile(user), user);
   const returningMember = session.departedIds.includes(uid);
-  if(session.status !== "waiting" && !session.memberIds.includes(uid) && !returningMember && !(session.status === "failed" && session.failureReason === "teammate_left")) throw new Error("This mission already started.");
+  const canDropIn = postCampaignSession(session) && session.status === "active" && session.memberIds.length < 2;
+  if(session.status !== "waiting" && !session.memberIds.includes(uid) && !returningMember && !canDropIn && !(session.status === "failed" && session.failureReason === "teammate_left")) throw new Error("This mission already started.");
   if(!session.memberIds.includes(uid)){
     if(session.memberIds.length >= 2) throw new Error("This squad already has two players.");
     session.memberIds.push(uid);
@@ -2785,6 +2895,18 @@ async function joinSession(codeValue, user){
     player.slot = slot;
     player.name = playerName(user);
     player.lastSeenAt = nowMs();
+    if(canDropIn){
+      const mission = missionDefinition(session);
+      const spawn = mission.spawns[slot] || mission.spawns[0];
+      player.x = spawn.x;
+      player.y = spawn.y;
+      player.hp = ROLE_DEFS[player.role].maxHp;
+      player.maxHp = ROLE_DEFS[player.role].maxHp;
+      player.armor = 100;
+      player.downed = false;
+      player.livesRemaining = STARTING_LIVES;
+      player.rewardClaimed = false;
+    }
     await writePlayer(code, player);
   }else{
     const slot = session.memberIds.indexOf(uid);
@@ -3048,6 +3170,7 @@ async function buildSnapshot(session, viewerId){
     title:session.title,
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
+    postCampaignOperation:session.postCampaignOperation,
     matchmaking:session.matchmaking,
     hostId:session.hostId,
     viewerId:userIdOf(viewerId),
@@ -3101,6 +3224,10 @@ async function buildSnapshot(session, viewerId){
       survivalIntermissionMs:session.launchType === "endless-survival" ? Math.max(0, Number(session.survivalIntermissionUntil || 0) - at) : 0,
       survivalExtractAvailable:session.launchType === "endless-survival" && Number(session.survivalWavesCleared || 0) >= 3,
       livingWorld:livingWorldEffect.enabled ? livingWorldEffect : null,
+      postCampaign:!!mission.postCampaign,
+      postCampaignTypeId:cleanText(mission.postCampaignTypeId || "", 40),
+      difficultyLabel:cleanText(mission.difficultyLabel || "", 30),
+      playerCount:Math.max(1, Number(mission.playerCount || session.memberIds.length || 1)),
     },
     world:mission.world,
     spawns:mission.spawns,
@@ -3119,7 +3246,7 @@ async function buildSnapshot(session, viewerId){
     capturedIds:derived.capturedIds,
     checkpointCompletedIds:derived.checkpointCompletedIds,
     objectivesReady:derived.objectivesReady,
-    allRewardsClaimed:session.memberIds.length === 2 && players.length === 2 && players.every((player)=>player.rewardClaimed),
+    allRewardsClaimed:players.length === session.memberIds.length && players.length >= 1 && players.every((player)=>player.rewardClaimed),
     nextStoryMissionLevel:session.launchType === "shared-story" && EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0) + 1]
       ? Number(session.storyMissionLevel || 0) + 1
       : 0,
@@ -3256,7 +3383,7 @@ async function updateOwnPresence(session, user, patch={}){
     const bloodScentActive = nearestCarcassDistance <= 360 || persistentBloodScent > 0;
       const bloodRage = !!threat?.bloodRage && Number(threat.hp || 0) <= Number(threat.hpMax || 1) * 0.35;
       const bloodRageDamage = bloodRage ? Math.max(0, 6 - Number(livingWorldEffect.support?.bossRageReduction || 0)) : 0;
-    const livingBalance = tigerIntelligence.balanceFor({ playerCount:2, mode:session.launchType === "endless-survival" ? "Survival" : "Co-op", level:session.storyMissionLevel || 1 });
+    const livingBalance = tigerIntelligence.balanceFor({ playerCount:postCampaignSession(session) ? Math.max(1, players.length) : 2, mode:session.launchType === "endless-survival" ? "Survival" : "Co-op", level:session.storyMissionLevel || session.postCampaignOperation?.missionLevel || 1 });
     const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0) - persistentBloodScent * 120) * (threat?.rubberSlowed ? 1.65 : 1) * livingBalance.pounceCooldownMul;
     const huntRange = ((threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0) + persistentBloodScent * 24) * livingBalance.detectMul;
     if(threat && distance(player, threat) <= huntRange && now - player.lastHazardAt >= hazardCooldown){
@@ -3268,7 +3395,7 @@ async function updateOwnPresence(session, user, patch={}){
         + Math.max(0, Number(livingWorldEffect.damageBonus || 0));
       const districtDefense = Math.max(0, Number(livingWorldEffect.support?.damageReduction || 0))
         + (threat?.boss ? Math.max(0, Number(livingWorldEffect.support?.stealthBossReduction || 0)) : 0);
-      damagePlayer(player, Math.max(5, Math.round((baseDamage + aggressionDamage - roleArmor - districtDefense) * livingBalance.damageMul)));
+      damagePlayer(player, Math.max(5, Math.round((baseDamage + aggressionDamage - roleArmor - districtDefense) * livingBalance.damageMul * Number(mission.tigerDamageMultiplier || 1))));
       player.lastHazardAt = now;
       if(player.hp <= 0){
         player.downed = true;
@@ -3331,7 +3458,7 @@ async function applyAction(session, user, action, payload={}){
   }
   if(action === "start" || action === "restart" || action === "continue"){
     if(session.hostId !== uid) throw new Error("Only the squad leader can start the mission.");
-    if(session.memberIds.length < 2) throw new Error("Invite one teammate before starting.");
+    if(session.memberIds.length < 2 && !postCampaignSession(session)) throw new Error("Invite one teammate before starting.");
     if(action === "start" && session.status !== "waiting") return session;
     if(action === "restart" && session.status !== "failed") throw new Error("Restart is available after the mission ends.");
     if(action === "continue"){
@@ -3479,6 +3606,7 @@ async function applyAction(session, user, action, payload={}){
     const requestedId = cleanText(payload.tigerId, 32);
     const target = requestedId ? tigers.find((t)=>t.id === requestedId) : tigers.sort((a,b)=>distance(player,a)-distance(player,b))[0];
     if(!target) throw new Error("This tiger was already captured or cleared.");
+    if(target.capturable === false || target.faction === "government") throw new Error("Government response units cannot be tranquilized or captured.");
     if(distance(player, target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name}.`);
     if(target.lethalWounded) throw new Error("Capture blocked: Real ammunition caused a lethal injury. Use Rubber ammunition on a fresh tiger.");
     if(Number(target.hp || 0) > Number(target.hpMax || 1) * 0.30) throw new Error("Weaken the tiger to 30% health before capture.");
@@ -3669,6 +3797,9 @@ async function claimReward(session, user){
     "convoy-rescue":{ cash:11200, perkPoints:3, seasonPoints:24, badge:"Redwood Convoy Guardian" },
     "alpha-hunt":{ cash:13000, perkPoints:3, seasonPoints:28, badge:"Ghoststripe Apex Hunter" },
     "storm-extraction":{ cash:15000, perkPoints:4, seasonPoints:32, badge:"Tempest Coast Lifeline" },
+    "crisis-settlement-siege":{ cash:18000, perkPoints:4, seasonPoints:38, badge:"Living World Settlement Shield" },
+    "crisis-escaped-alpha":{ cash:24000, perkPoints:5, seasonPoints:46, badge:"Living World Alpha Recovery" },
+    "crisis-government-raid":{ cash:22000, perkPoints:5, seasonPoints:44, badge:"Living World Crisis Survivor" },
   };
   const operationId = normalizeLaunchType(session.launchType);
   const survivalWaves = clamp(Math.floor(Number(session.survivalWavesCleared || 0)), 3, 50);
@@ -3693,9 +3824,13 @@ async function claimReward(session, user){
   };
   const awardedReward = sharedStory ? sharedRewards[sharedLevel] : operationReward;
   let profile = await readCoopProfile(user);
-  const receipt = `${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`;
+  const crisisRunId = postCampaignSession(session) ? cleanText(session.postCampaignOperation?.runId, 100) : "";
+  const receipt = crisisRunId
+    ? `post-crisis:${crisisRunId}:${uid}`
+    : `${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`;
   let livingWorldOutcome = null;
-  if(firstClaim && !profile.rewardReceipts[receipt]){
+  const rewardApplied = firstClaim && !profile.rewardReceipts[receipt];
+  if(rewardApplied){
     profile.rewardReceipts[receipt] = nowMs();
     profile.funds += Math.max(0, Number(awardedReward.cash || 0));
     profile.perkPoints += Math.max(0, Number(awardedReward.perkPoints || 0));
@@ -3724,15 +3859,29 @@ async function claimReward(session, user){
       });
       profile.livingWorld = livingWorldOutcome.state;
     }
+    if(crisisRunId){
+      livingWorldOutcome = livingWorld.applyOutcome(profile.livingWorld, {
+        receipt:`coop:${receipt}`,
+        missionLevel:Math.max(1, Number(session.postCampaignOperation?.missionLevel || 100)),
+        captures:governmentAudit.captures,
+        kills:governmentAudit.kills,
+        rescues:governmentAudit.evac,
+        civiliansLost:0,
+        coop:true,
+        at:nowMs(),
+      });
+      profile.livingWorld = livingWorldOutcome.state;
+    }
     profile = await writeCoopProfile(profile, user);
   }
   return {
-    firstClaim,
+    firstClaim:rewardApplied,
     receipt,
     storyProgress:sharedStory ? { completedLevel:sharedLevel, unlockLevel:Math.min(100, sharedLevel + 1) } : null,
     reward:awardedReward,
     governmentAudit,
     livingWorldOutcome,
+    postCampaignOperation:session.postCampaignOperation || null,
     profile,
   };
 }
@@ -3745,6 +3894,29 @@ async function closeSession(session, user){
     return writeSession(session);
   }
   const players = await memberPlayers(session);
+  const crisisDropOut = postCampaignSession(session) && session.status === "active" && session.memberIds.length === 2;
+  if(crisisDropOut){
+    const leaving = players.find((player)=>player.userId === uid);
+    const staying = players.find((player)=>player.userId !== uid);
+    if(leaving && staying){
+      for(const [tigerId, damage] of Object.entries(leaving.tigerDamage || {})) staying.tigerDamage[tigerId] = Number(staying.tigerDamage?.[tigerId] || 0) + Number(damage || 0);
+      staying.lethalWoundedIds = [...new Set([...(staying.lethalWoundedIds || []), ...(leaving.lethalWoundedIds || [])])];
+      staying.capturedIds = [...new Set([...(staying.capturedIds || []), ...(leaving.capturedIds || [])])];
+      staying.rescuedIds = [...new Set([...(staying.rescuedIds || []), ...(leaving.rescuedIds || [])])];
+      staying.securedCivilianIds = [...new Set([...(staying.securedCivilianIds || []), ...(leaving.securedCivilianIds || [])])];
+      staying.killSites = { ...(leaving.killSites || {}), ...(staying.killSites || {}) };
+      staying.captureSites = { ...(leaving.captureSites || {}), ...(staying.captureSites || {}) };
+      await writePlayer(session.code, staying);
+      leaving.tigerDamage = {};
+      leaving.lethalWoundedIds = [];
+      leaving.capturedIds = [];
+      leaving.rescuedIds = [];
+      leaving.securedCivilianIds = [];
+      leaving.killSites = {};
+      leaving.captureSites = {};
+      await writePlayer(session.code, leaving);
+    }
+  }
   const completedAndClaimed = session.status === "complete" && session.launchType === "shared-story" && players.every((player)=>player.rewardClaimed);
   session.memberIds = session.memberIds.filter((id)=>id !== uid);
   session.departedIds = [...new Set([...(session.departedIds || []), uid])].slice(0, 2);
@@ -3752,10 +3924,14 @@ async function closeSession(session, user){
   // An active two-person mission cannot silently finish with one soldier.
   // Preserve its code and remaining player's progress so a replacement may
   // join and the new leader may restart safely.
-  if(session.status === "active"){
+  if(session.status === "active" && !crisisDropOut){
     session.status = "failed";
     session.failureReason = "teammate_left";
     session.completedAt = nowMs();
+    session.pausedAt = 0;
+    session.pausedBy = {};
+  }else if(crisisDropOut){
+    session.failureReason = "";
     session.pausedAt = 0;
     session.pausedBy = {};
   }else if(completedAndClaimed && EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0) + 1]){
@@ -3774,6 +3950,8 @@ module.exports = {
   SPECIAL_OPERATION_MISSIONS,
   SHARED_STORY_MISSION_1,
   SHARED_STORY_MISSIONS,
+  POST_CAMPAIGN_LAUNCH_TYPES,
+  missionDefinition,
   cleanCode,
   createSession,
   joinSession,

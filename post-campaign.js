@@ -5,23 +5,23 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(root){
   "use strict";
 
-  const VERSION = "11.0";
+  const VERSION = "11.1";
   const CYCLE_MS = 12 * 60 * 60 * 1000;
   const CRISIS_TYPES = Object.freeze([
     Object.freeze({
-      id:"settlement_siege", icon:"🏘️", name:"Settlement Siege",
+      id:"settlement_siege", coopLaunchType:"crisis-settlement-siege", icon:"🏘️", name:"Settlement Siege",
       desc:"A tiger pack has surrounded a populated settlement. Rescue every civilian, hold the route, and clear the pack.",
       objective:"Post-Campaign Crisis: rescue every civilian from the besieged settlement, then secure extraction.",
       civilians:6, tigers:8, captures:0, rewardCash:18000, rewardXp:360,
     }),
     Object.freeze({
-      id:"escaped_alpha", icon:"👑", name:"Escaped Alpha Transport",
+      id:"escaped_alpha", coopLaunchType:"crisis-escaped-alpha", icon:"👑", name:"Escaped Alpha Transport",
       desc:"A captured Alpha broke out during transport. Track it, weaken it nonlethally, and return it alive.",
       objective:"Post-Campaign Crisis: recapture the escaped Alpha alive and secure the wildlife route.",
       civilians:2, tigers:1, captures:1, boss:true, bossType:"Alpha", rewardCash:24000, rewardXp:520,
     }),
     Object.freeze({
-      id:"government_raid", icon:"🚨", name:"Government Response Raid",
+      id:"government_raid", coopLaunchType:"crisis-government-raid", icon:"🚨", name:"Government Response Raid",
       desc:"An armed response unit entered an unstable district while tigers closed on civilians. Survive both threats and evacuate the settlement.",
       objective:"Post-Campaign Crisis: survive the government response raid, protect civilians, and clear the tiger threat.",
       civilians:4, tigers:5, captures:0, government:true, rewardCash:22000, rewardXp:460,
@@ -34,6 +34,18 @@
     return h>>>0;
   };
   const crisisById=(id)=>CRISIS_TYPES.find((row)=>row.id===String(id||""))||null;
+  const crisisByLaunchType=(launchType)=>CRISIS_TYPES.find((row)=>row.coopLaunchType===String(launchType||""))||null;
+  const isCrisisLaunchType=(launchType)=>!!crisisByLaunchType(launchType);
+  function difficultyForPlayers(playerCount=1){
+    const players=Math.max(1,Math.min(2,Math.floor(Number(playerCount||1))));
+    return Object.freeze({
+      playerCount:players,
+      tigerHpMultiplier:players===2?1.24:1,
+      tigerDamageMultiplier:players===2?1.12:1,
+      timeMultiplier:players===2?1.08:1,
+      label:players===2?"Two Player":"Solo",
+    });
+  }
   const normalizeDistricts=(districts)=>Array.isArray(districts)?districts.filter((row)=>row&&row.id):[];
 
   function cycleKey(now=Date.now()){
@@ -144,5 +156,5 @@
   root.openPostCampaignEnding=openEnding;
   root.replayPostCampaignEnding=replayEnding;
   root.closePostCampaignEnding=closeEnding;
-  return Object.freeze({VERSION,CYCLE_MS,CRISIS_TYPES,ENDING_SCENES,ENDING_DURATION,crisisById,cycleKey,crisisBoard,applyCrisisProfile,sceneFor,drawEndingFrame,openEnding,replayEnding,closeEnding});
+  return Object.freeze({VERSION,CYCLE_MS,CRISIS_TYPES,ENDING_SCENES,ENDING_DURATION,crisisById,crisisByLaunchType,isCrisisLaunchType,difficultyForPlayers,cycleKey,crisisBoard,applyCrisisProfile,sceneFor,drawEndingFrame,openEnding,replayEnding,closeEnding});
 });

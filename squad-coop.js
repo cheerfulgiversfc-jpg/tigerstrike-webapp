@@ -43,6 +43,7 @@
     error:"",
     storyMissionLevel:1,
     launchType:"shared-story",
+    postCampaignOperation:null,
     hubSection:"home",
   };
   const SHARED_STORY_LEVELS = Object.freeze([
@@ -212,6 +213,11 @@
       mapLabel:"Last Stand Basin",
     },
   ]);
+  const POST_CAMPAIGN_OPERATIONS = Object.freeze([
+    { id:"crisis-settlement-siege", typeId:"settlement_siege", icon:"🏘️", title:"Settlement Siege", short:"Rescue six civilians and clear the eight-tiger siege pack.", reward:"$18,000 • 4 perk points • 38 season points", mapLabel:"Living World Settlement" },
+    { id:"crisis-escaped-alpha", typeId:"escaped_alpha", icon:"👑", title:"Escaped Alpha Transport", short:"Track, weaken, and recapture the escaped Alpha alive.", reward:"$24,000 • 5 perk points • 46 season points", mapLabel:"Wildlife Transport Route" },
+    { id:"crisis-government-raid", typeId:"government_raid", icon:"🚨", title:"Government Response Raid", short:"Rescue civilians and survive both tiger and government threats.", reward:"$22,000 • 5 perk points • 44 season points", mapLabel:"Government Containment Zone" },
+  ]);
 
   const $ = (id) => document.getElementById(id);
   const clamp = (v, min, max) => Math.max(min, Math.min(max, Number(v || 0)));
@@ -237,10 +243,11 @@
   const remoteSnapshotPlayer = () => (state.snapshot?.players || []).find((p)=>Number(p.userId) !== viewerId()) || null;
   const normalizeLaunchType = (value) => {
     const type = String(value || "").trim().toLowerCase();
-    return type === "shared-story" || SPECIAL_OPERATIONS.some((operation)=>operation.id === type) ? type : "live-squad";
+    return type === "shared-story" || [...SPECIAL_OPERATIONS, ...POST_CAMPAIGN_OPERATIONS].some((operation)=>operation.id === type) ? type : "live-squad";
   };
+  const postCampaignActive = () => POST_CAMPAIGN_OPERATIONS.some((operation)=>operation.id === normalizeLaunchType(state.snapshot?.launchType || state.launchType));
   const sharedStoryActive = () => state.launchType === "shared-story" || state.snapshot?.launchType === "shared-story";
-  const selectedOperation = () => SPECIAL_OPERATIONS.find((operation)=>operation.id === normalizeLaunchType(state.snapshot?.launchType || state.launchType)) || SPECIAL_OPERATIONS[0];
+  const selectedOperation = () => [...SPECIAL_OPERATIONS, ...POST_CAMPAIGN_OPERATIONS].find((operation)=>operation.id === normalizeLaunchType(state.snapshot?.launchType || state.launchType)) || SPECIAL_OPERATIONS[0];
   const missionName = () => sharedStoryActive() ? `Shared Story Mission ${Math.max(1, Number(state.snapshot?.storyMissionLevel || state.storyMissionLevel || 1))}` : selectedOperation().title;
   const missionMeta = () => state.snapshot?.mission || {};
   const rescueRequired = () => Math.max(0, Number(missionMeta().rescueRequired ?? (sharedStoryActive() ? 2 : 4)));
@@ -325,6 +332,7 @@
       code,
       launchType:normalizeLaunchType(snapshot?.launchType || state.launchType),
       storyMissionLevel:Math.max(0, Math.floor(Number(snapshot?.storyMissionLevel || state.storyMissionLevel || 0))),
+      postCampaignOperation:snapshot?.postCampaignOperation || state.postCampaignOperation || null,
       savedAt:Date.now(),
     };
     try{ window.localStorage.setItem(key, JSON.stringify(record)); }catch(error){}
@@ -343,6 +351,7 @@
         code:cleanCode(record.code),
         launchType:normalizeLaunchType(record.launchType),
         storyMissionLevel:Math.max(0, Math.floor(Number(record.storyMissionLevel || 0))),
+        postCampaignOperation:record.postCampaignOperation || null,
       };
     }catch(error){ return null; }
   }
@@ -357,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.0 • World After the Ancient Tiger");
+      ? `Tiger Strike V11.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V11.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.1 • Shared Living World");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -419,6 +428,7 @@
     state.launchType = normalizeLaunchType(snapshot.launchType);
     state.hubSection = state.launchType === "shared-story" ? "story" : "operations";
     state.storyMissionLevel = Number(snapshot.storyMissionLevel || 0);
+    state.postCampaignOperation = snapshot.postCampaignOperation || state.postCampaignOperation || null;
     state.code = cleanCode(snapshot.code);
     const worldKey = `${Number(snapshot.world?.width || 0)}x${Number(snapshot.world?.height || 0)}:${snapshot.status}`;
     if(state.camera.worldKey !== worldKey && snapshot.status === "active"){
@@ -472,7 +482,7 @@
     const startButton = $("squadStartButton");
     if(startButton){
       startButton.disabled = state.pending.has("start");
-      startButton.textContent = snapshot.memberCount < 2 ? "Need Teammate" : "Start Mission";
+      startButton.textContent = snapshot.memberCount < 2 ? (postCampaignActive() ? "Start Solo Now" : "Need Teammate") : "Start Mission";
     }
   }
 
@@ -624,7 +634,7 @@
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
       <div class="squadHero">
-        <div><div class="squadKicker">${snapshot.matchmaking === "public" ? "Public Quick Match" : (sharedStoryActive() ? "Private Shared Story Squad" : "Private Live Squad")}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${snapshot.matchmaking === "public" && !full ? "Searching for another Telegram player who selected this exact mission. You can choose your role while you wait." : "Choose a role. The squad leader starts when both players are connected."}</div></div>
+        <div><div class="squadKicker">${snapshot.matchmaking === "public" ? "Public Quick Match" : (postCampaignActive() ? "Shared Living World Crisis" : (sharedStoryActive() ? "Private Shared Story Squad" : "Private Live Squad"))}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${postCampaignActive() ? "Start alone now or invite one teammate. A teammate may also join after deployment, and difficulty adjusts automatically." : (snapshot.matchmaking === "public" && !full ? "Searching for another Telegram player who selected this exact mission. You can choose your role while you wait." : "Choose a role. The squad leader starts when both players are connected.")}</div></div>
         <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</span></button>
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
@@ -634,7 +644,7 @@
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
         ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
-        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" data-squad-command="start">${full ? "Start Mission" : "Need Teammate"}</button>` : ""}
+        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" data-squad-command="start">${full ? "Start Mission" : (postCampaignActive() ? "Start Solo Now" : "Need Teammate")}</button>` : ""}
         ${waiting && !snapshot.isHost ? `<button type="button" class="squadBtn good" disabled>Waiting for Leader</button>` : ""}
         ${waiting && full && snapshot.isHost ? `<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>` : ""}
         <button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>
@@ -655,7 +665,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V11.0 Tiger Strike • World After the Ancient Tiger</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for any of the 100 Shared Story missions or a Special Operation. Finishing Mission 100 unlocks the Solo post-campaign command network without changing Shared Story progress.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V11.1 Tiger Strike • Shared Living World</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for any of the 100 Shared Story missions or a Special Operation. After Mission 100, the command network also supports drop-in Living World crisis squads.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -714,7 +724,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.0 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. The new post-campaign command network reads the completed Solo world without changing this squad history.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.1 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crises now support Solo or a drop-in teammate while preserving separate player rewards.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -780,6 +790,7 @@
       </div>
       <div class="squadStoryStrip"><span>${sharedStoryActive() ? "📖" : selectedOperation().icon} ${esc(missionMeta().title || missionName())}</span><span>🎯 ${esc(missionMeta().objective || "Shared objectives")}</span><span>${sharedStoryActive() ? "🏘️ Story Campaign District" : `🗺️ ${esc(missionMeta().chapterName || selectedOperation().mapLabel)}`}</span></div>
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
+      ${postCampaignActive() && snap.memberCount < 2 && snap.status === "active" ? `<div class="squadRow"><button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate During Crisis</button><button type="button" class="squadBtn" data-squad-command="copy-code">Copy Drop-in Code</button></div>` : ""}
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       ${livingWorldMissionText() ? `<div class="squadConnection" id="squadLivingWorldNotice">🌍 ${esc(livingWorldMissionText())}</div>` : ""}
@@ -791,7 +802,7 @@
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded cooperative battlefield with a player-following camera"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : (snap.failureReason === "teammate_left" ? "🔄 Teammate Left" : "⏱️ Operation Failed"))}</div>
-        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `Both players cleared ${esc(selectedOperation().title)} and earned its separate Special Operation reward.`}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : (snap.failureReason === "teammate_left" ? "Your teammate left during the mission. The squad code is still yours. Invite them back or add another player, then restart together." : `Time expired. The squad leader can restart ${esc(missionName())}.`))}</div>
+        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `${snap.memberCount > 1 ? "Both players cleared" : "You cleared"} ${esc(selectedOperation().title)}. Every participating player can claim one personal reward.`}` : (snap.failureReason === "squad_wipe" ? `${snap.memberCount > 1 ? "Both soldiers used their field life" : "Your soldier used the field life"} and went down. The squad leader can restart this mission.` : (snap.failureReason === "teammate_left" ? "Your teammate left during the mission. The squad code is still yours. Invite them back or add another player, then restart together." : `Time expired. The squad leader can restart ${esc(missionName())}.`))}</div>
         ${snap.status === "complete" && (snap.capturedIds || []).length ? `<div class="squadTransportMovie"><div class="squadSmall">🚛 Wildlife Recovery • ${(snap.capturedIds || []).length} cage${(snap.capturedIds || []).length===1?"":"s"}</div><canvas id="squadTransportCanvas" width="520" height="210" aria-label="Co-op wildlife transport movie"></canvas><button type="button" class="squadBtn" data-squad-command="transport-skip">Skip Movie</button></div>` : ""}
         <div class="squadResultActions" id="squadResultActions">${completionActionsHtml()}</div>
       </div>
@@ -810,7 +821,7 @@
           <button type="button" class="squadActionBtn armor" id="squadArmorButton" data-squad-command="gear-use" data-squad-item="armor_plate">🛡️ Armor<br><small>${Number(profile.supplies?.armorPlates || 0)} left</small></button>
         </div>
       </div>
-      <div class="squadSmall" style="margin-top:8px">Hold and drag the joystick to move your soldier. Rescue civilians, then use Take to House inside the Rescue House circle. Each player has one automatic field life. Both players must finish inside extraction.</div>
+      <div class="squadSmall" style="margin-top:8px">Hold and drag the joystick to move your soldier. Rescue civilians, then use Take to House inside the Rescue House circle. Each player has one automatic field life. ${postCampaignActive() ? "Every currently connected crisis player must finish inside extraction; the operation scales safely between one and two players." : "Both players must finish inside extraction."}</div>
     </div>`;
   }
 
@@ -836,7 +847,7 @@
 
   function connectionText(){
     const remote = remoteSnapshotPlayer();
-    if(!remote) return "Waiting for your teammate…";
+    if(!remote) return postCampaignActive() && state.snapshot?.status === "active" ? "Solo crisis active • invite one teammate at any time." : "Waiting for your teammate…";
     return remote.online ? `${remote.name} is connected live.` : `${remote.name} is reconnecting…`;
   }
   function respawnSeconds(player){
@@ -1280,9 +1291,10 @@
         state.storyMissionLevel = requestedStoryLevel;
         state.launchType = "shared-story";
         state.hubSection = "story";
-      }else if(SPECIAL_OPERATIONS.some((operation)=>operation.id === opts?.launchType)){
+      }else if([...SPECIAL_OPERATIONS, ...POST_CAMPAIGN_OPERATIONS].some((operation)=>operation.id === opts?.launchType)){
         state.storyMissionLevel = 0;
         state.launchType = normalizeLaunchType(opts.launchType);
+        state.postCampaignOperation = opts?.postCampaignOperation || null;
         state.hubSection = "operations";
       }else if(opts?.hubSection){
         state.hubSection = ["story","operations"].includes(opts.hubSection) ? opts.hubSection : "home";
@@ -1342,9 +1354,10 @@
       const payload = await api("create", {
         storyMissionLevel:state.storyMissionLevel,
         launchType:state.launchType,
+        postCampaignOperation:state.postCampaignOperation,
       });
       state.code = payload.snapshot.code;
-      setMessage("Squad created. Invite one teammate, choose roles, then start.");
+      setMessage(postCampaignActive() ? "Crisis room created. Start alone now or invite one teammate before or during the operation." : "Squad created. Invite one teammate, choose roles, then start.");
       startPolling();
     }catch(error){ setMessage(error.message, true); }
   }
@@ -1450,11 +1463,11 @@
   }
 
   async function start(){
-    if(Number(state.snapshot?.memberCount || 0) < 2){
+    if(Number(state.snapshot?.memberCount || 0) < 2 && !postCampaignActive()){
       setMessage("Start Mission needs 2/2 players. Invite one teammate or have them join with the code first.", true);
       return;
     }
-    try{ setMessage("Deploying both players…"); await api("start"); setMessage(`${missionName()} is live.`); ensureFrame(); }
+    try{ setMessage(Number(state.snapshot?.memberCount || 0) > 1 ? "Deploying both players…" : "Deploying solo crisis…"); await api("start"); setMessage(`${missionName()} is live.`); ensureFrame(); }
     catch(error){ setMessage(error.message, true); }
   }
 
@@ -1535,8 +1548,9 @@
     try{
       const payload = await api("claim");
       applyReward(payload.reward);
+      if(postCampaignActive()) window.recordPostCampaignCoopClaim?.(payload.reward);
       const worldUpdate = payload.reward?.livingWorldOutcome?.applied ? ` ${payload.reward.livingWorldOutcome.summary}` : "";
-      setMessage((payload.snapshot?.allRewardsClaimed ? "Both rewards are saved. The squad leader can continue to the next mission." : "Your reward is saved. The squad stays together while your teammate claims theirs.") + worldUpdate);
+      setMessage((payload.snapshot?.allRewardsClaimed ? (payload.snapshot?.memberCount > 1 ? "Every player reward is saved once." : "Your crisis reward is saved once.") : "Your reward is saved. The squad stays together while your teammate claims theirs.") + worldUpdate);
       updateActiveHud();
       if(window.governmentConsequencePending?.()){
         window.setTimeout(()=>{ close(); window.openGovernmentConsequence?.(); },180);
@@ -1575,6 +1589,7 @@
     state.camera = { x:0, y:0, ready:false, worldKey:"" };
     state.joystick = { active:false, pointerId:null, x:0, y:0 };
     state.equipmentOpen = "";
+    state.postCampaignOperation = null;
     state.equipmentResumePending = false;
     window.clearTimeout(state.equipmentResumeTimer);
     state.equipmentResumeTimer = 0;
@@ -1919,6 +1934,11 @@
   }
 
   function drawStoryTiger(ctx,tiger,now){
+    if(tiger?.faction === "government"){
+      if(tiger.defeated) return;
+      const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);
+      ctx.save();ctx.translate(tiger.x,tiger.y);ctx.fillStyle="rgba(2,6,23,.35)";ctx.beginPath();ctx.ellipse(2,22,22,8,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#334155";ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(0,15);ctx.moveTo(-2,1);ctx.lineTo(-15,9);ctx.moveTo(2,1);ctx.lineTo(15,7);ctx.stroke();ctx.strokeStyle="#111827";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(-4,14);ctx.lineTo(-8,28);ctx.moveTo(4,14);ctx.lineTo(9,28);ctx.stroke();ctx.fillStyle="#d7a47f";ctx.beginPath();ctx.arc(0,-17,9,0,Math.PI*2);ctx.fill();ctx.fillStyle="#475569";ctx.beginPath();ctx.arc(0,-20,10,Math.PI,Math.PI*2);ctx.fill();ctx.strokeStyle="#94a3b8";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(10,3);ctx.lineTo(28,-2);ctx.stroke();ctx.fillStyle="rgba(2,6,23,.86)";roundRect(ctx,-48,-54,96,10,5);ctx.fill();ctx.fillStyle="#ef4444";roundRect(ctx,-46,-52,92*pct,6,3);ctx.fill();ctx.fillStyle="#fee2e2";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText("GOV RESPONSE",0,-61);ctx.restore();return;
+    }
     if(tiger.defeated) return;const alpha=!!tiger.boss;const tigerId=String(tiger.id||"");const ghost=tigerId==="ghoststripe_alpha"||tigerId==="s83_shadeclaw"||tigerId==="s90_phantom_tiger";const blood=tigerId==="s20_blood_tiger"||tigerId==="s70_legendary_blood_tiger";const ancient=tigerId==="s100_ancient_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":(ancient?"#facc15":"#f59e0b"));const ear=blood?"#fb7185":(ghost?"#e2e8f0":(ancient?"#fef08a":"#fbbf24"));const leg=blood?"#7f1d1d":(ghost?"#94a3b8":(ancient?"#a16207":"#d97706"));const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const nearest=(state.snapshot?.players||[]).slice().sort((a,b)=>distance(a,tiger)-distance(b,tiger))[0];const facing=nearest?(Number(nearest.x)>=Number(tiger.x)?1:-1):1;
     if(window.TigerStrikeBattlefieldRenderer?.drawTiger){
       const key=`tiger:${tiger.id}`;const prior=state.walkVisual.get(key)||{x:Number(tiger.x),y:Number(tiger.y),phase:0};const moved=Math.hypot(Number(tiger.x)-prior.x,Number(tiger.y)-prior.y);const walking=moved>.14&&!tiger.captured;prior.phase=walking?prior.phase+Math.min(1.15,moved*.2):prior.phase*.86;prior.x=Number(tiger.x);prior.y=Number(tiger.y);state.walkVisual.set(key,prior);
@@ -1941,6 +1961,9 @@
 
   function drawTigerCarcass(ctx,tiger,now){
     if(!tiger?.carcass || tiger.captured) return;
+    if(tiger?.faction === "government"){
+      ctx.save();ctx.translate(tiger.x,tiger.y);ctx.fillStyle="rgba(15,23,42,.48)";ctx.beginPath();ctx.ellipse(0,8,38,13,-.15,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#64748b";ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(-20,4);ctx.lineTo(22,12);ctx.stroke();ctx.fillStyle="rgba(2,6,23,.9)";roundRect(ctx,-64,-38,128,24,8);ctx.fill();ctx.fillStyle="#cbd5e1";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText("RESPONSE UNIT DOWN",0,-22);ctx.restore();return;
+    }
     const radius=clamp(Number(tiger.bloodScentRadius||360),220,430),pulse=.5+Math.sin(now/480+String(tiger.id||"").length)*.5;
     ctx.save();ctx.translate(tiger.x,tiger.y);
     ctx.strokeStyle=`rgba(251,113,133,${.14+pulse*.12})`;ctx.lineWidth=3;ctx.setLineDash([14,16]);ctx.beginPath();ctx.arc(0,0,radius,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
@@ -2697,7 +2720,8 @@
     state.code = cleanCode(record.code);
     state.launchType = normalizeLaunchType(record.launchType);
     state.storyMissionLevel = Math.max(0, Math.floor(Number(record.storyMissionLevel || 0)));
-    open({ storyMissionLevel:state.storyMissionLevel, launchType:state.launchType });
+    state.postCampaignOperation = record.postCampaignOperation || null;
+    open({ storyMissionLevel:state.storyMissionLevel, launchType:state.launchType, postCampaignOperation:state.postCampaignOperation });
     setMessage(`Reconnecting to ${missionName()}…`);
     try{
       await api("status", { code:state.code });
@@ -2730,6 +2754,7 @@
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });
+  window.openLiveSquadPostCampaignCrisis=(postCampaignOperation)=>open({ launchType:postCampaignOperation?.launchType, postCampaignOperation });
   window.closeLiveSquadOps=close;
   window.liveSquadCreate=create;
   window.liveSquadJoin=()=>join();

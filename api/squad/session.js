@@ -3,6 +3,7 @@ const { telegramBotApi } = require("../_lib/telegram-api");
 const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { getCommunitySnapshot } = require("../_lib/community");
 const { storageMode } = require("../_lib/metrics-store");
+const postCampaign = require("../../post-campaign");
 const {
   ROLE_DEFS,
   COOP_GEAR_CATALOG,
@@ -46,6 +47,7 @@ async function prepareInvite(botToken, user, session){
   const playUrl = appLink(session.code, username);
   const community = await getCommunitySnapshot({ botToken, userId:userIdOf(user) });
   const sharedStory = session.launchType === "shared-story";
+  const crisis = postCampaign.crisisByLaunchType(session.launchType);
   const operation = {
     "tiger-den":{
         id:"tiger_den",
@@ -98,13 +100,15 @@ async function prepareInvite(botToken, user, session){
       };
   const buttons = [];
   const sharedLevel = Math.max(1, Number(session.storyMissionLevel || 1));
-  if(playUrl) buttons.push([{ text:sharedStory ? `📖 Join Story Mission ${sharedLevel}` : operation.button, url:playUrl }]);
+  if(playUrl) buttons.push([{ text:crisis ? `${crisis.icon} Join ${crisis.name}` : (sharedStory ? `📖 Join Story Mission ${sharedLevel}` : operation.button), url:playUrl }]);
   if(community.joinUrl) buttons.push([{ text:`👥 Join ${community.title}`.slice(0, 64), url:community.joinUrl }]);
-  const missionName = sharedStory ? `Shared Story Mission ${Math.max(1, Number(session.storyMissionLevel || 1))}` : operation.name;
+  const missionName = crisis?.name || (sharedStory ? `Shared Story Mission ${Math.max(1, Number(session.storyMissionLevel || 1))}` : operation.name);
   const shareText = [
-    sharedStory ? `📖 STORY MISSION ${sharedLevel} TEAMMATE REQUEST` : operation.heading,
+    crisis ? `${crisis.icon} LIVING WORLD CRISIS TEAMMATE REQUEST` : (sharedStory ? `📖 STORY MISSION ${sharedLevel} TEAMMATE REQUEST` : operation.heading),
     `I need one teammate for ${missionName}.`,
-    sharedStory
+    crisis
+      ? `${crisis.desc} You can join this operation even if I already deployed.`
+      : sharedStory
       ? `Play Story Mission ${sharedLevel} together on the shared map, finish its real objective, and extract.`
       : operation.detail,
     `Squad code: ${session.code}`,
@@ -175,7 +179,8 @@ module.exports = async function handler(req, res){
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 100
           ? "shared-story"
-          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival", ...postCampaign.CRISIS_TYPES.map((row)=>row.coopLaunchType)].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+        postCampaignOperation:body?.postCampaignOperation,
       });
     }else if(action === "quick-match"){
       const requestedStoryLevel = Math.max(0, Math.min(100, Math.floor(Number(body?.storyMissionLevel || 0))));

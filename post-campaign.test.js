@@ -8,8 +8,8 @@ const game=fs.readFileSync("game.js","utf8");
 const html=fs.readFileSync("index.html","utf8");
 const squad=fs.readFileSync("squad-coop.js","utf8");
 
-test("V11.0 exposes exactly three real post-campaign crisis types",()=>{
-  assert.equal(postCampaign.VERSION,"11.0");
+test("V11.1 exposes exactly three real post-campaign crisis types",()=>{
+  assert.equal(postCampaign.VERSION,"11.1");
   assert.deepEqual(postCampaign.CRISIS_TYPES.map((row)=>row.id),[
     "settlement_siege","escaped_alpha","government_raid",
   ]);
@@ -17,6 +17,7 @@ test("V11.0 exposes exactly three real post-campaign crisis types",()=>{
     assert(crisis.objective.length>30);
     assert(crisis.rewardCash>0);
     assert(crisis.rewardXp>0);
+    assert(postCampaign.isCrisisLaunchType(crisis.coopLaunchType));
   }
 });
 
@@ -73,9 +74,9 @@ test("post-campaign launch, completion, replay, and save migration are wired",()
   assert(html.includes("View all 30 command districts")||game.includes("View all 30 command districts"));
 });
 
-test("release labels and cache point at V11.0",()=>{
-  assert(html.includes("V11.0"));
-  assert(html.includes("5221-world-after-ancient-tiger"));
-  assert(squad.includes("Tiger Strike V11.0"));
+test("release labels and cache point at V11.1",()=>{
+  assert(html.includes("V11.1"));
+  assert(html.includes("5222-shared-living-world"));
+  assert(squad.includes("Tiger Strike V11.1"));
   assert.equal(/V10\.34/.test(squad),false);
 });

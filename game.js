@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5221";
+const TS_BUILD = "5222";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11473,7 +11473,7 @@ function storyMissionForState(state=S){
     }
   }
 
-  // V11.0 post-campaign crises reuse the real Story battlefield and systems.
+  // V11.1 post-campaign crises reuse the real Story battlefield and systems.
   // The active operation changes the objective/encounter, never the player's
   // saved Story unlock level or the authored Mission 1–100 truth manifest.
   if(variant === STORY_VARIANTS.CAMPAIGN){
@@ -13910,7 +13910,7 @@ function worldMapPostCampaignHtml(wm=ensureWorldMapCampaignState(S)){
   const living = livingWorldState(wm);
   if(!api || !livingApi || !living) return "";
   if(!postCampaignUnlocked(S)){
-    return `<section class="card" style="margin-top:10px;border-color:rgba(148,163,184,.40)"><div class="hudTitle">🔒 V11.0 • World After the Ancient Tiger</div><div class="small">Complete Story Mission 100 to unlock the thirty-district command network, ending replay, and playable world crises.</div></section>`;
+    return `<section class="card" style="margin-top:10px;border-color:rgba(148,163,184,.40)"><div class="hudTitle">🔒 V11.1 • Shared Living World</div><div class="small">Complete Story Mission 100 to unlock the thirty-district command network, ending replay, and solo-or-squad world crises.</div></section>`;
   }
   const board = api.crisisBoard(livingApi.DISTRICTS, living, Date.now());
   const active = wm.postCampaignOperation?.active ? wm.postCampaignOperation : null;
@@ -13923,7 +13923,7 @@ function worldMapPostCampaignHtml(wm=ensureWorldMapCampaignState(S)){
       <div class="small">${worldMapEsc(crisis.desc)}</div>
       <div class="small">District state: Tiger Pressure ${Math.round(Number(district?.tigerPressure || 0))}% • Safety ${Math.round(Number(district?.settlementSafety || 0))}% • Blood Scent ${Math.round(Number(district?.bloodScent || 0))}%</div>
       <div class="small">Real objective: ${worldMapEsc(crisis.objective)}</div>
-      <button class="good" onclick="startPostCampaignCrisis('${crisis.id}','${crisis.districtId}',${crisis.missionLevel})">${isActive ? "Resume Crisis" : "Deploy Solo"}</button>
+      <div class="row" style="margin-top:8px"><button class="good" onclick="startPostCampaignCrisis('${crisis.id}','${crisis.districtId}',${crisis.missionLevel})">${isActive ? "Resume Solo Crisis" : "Play Solo"}</button><button class="ghost" onclick="openPostCampaignCrisisSquad('${crisis.id}','${crisis.districtId}',${crisis.missionLevel},${crisis.cycle})">👥 Solo or Invite Teammate</button></div>
     </div>`;
   }).join("");
   const districtRows = livingApi.DISTRICTS.map((definition)=>{
@@ -13933,7 +13933,7 @@ function worldMapPostCampaignHtml(wm=ensureWorldMapCampaignState(S)){
   }).join("");
   const ending = resolveStoryEndingFromState(S);
   return `<section class="card" id="postCampaignCommandNetwork" style="margin-top:10px;border-color:rgba(192,132,252,.66);background:linear-gradient(145deg,rgba(45,20,70,.72),rgba(8,15,29,.97))">
-    <div class="hudTitle">🌐 V11.0 • World After the Ancient Tiger</div>
+    <div class="hudTitle">🌐 V11.1 • Shared Living World</div>
     <div class="hudLine">Post-Campaign Command Network • 30/30 districts online • ${Math.max(0,Number(wm.postCampaignClears || 0))} crisis clears</div>
     <div class="small">Story Missions 1–100 remain complete and replayable. These rotating crises launch real Story battlefields with new objectives and leave your campaign unlocks untouched.</div>
     <div class="row" style="margin-top:8px"><button class="ghost" onclick="replayPostCampaignFinale()">🎬 Watch ${worldMapEsc(ending.title)} Again</button><button class="ghost" onclick="startStoryNgPlus()">🧬 Start New Game+</button></div>
@@ -13975,6 +13975,44 @@ function startPostCampaignCrisis(typeId, districtId, missionLevel){
   toast(`${type.icon} ${type.name} • ${district.name}. This is a real playable crisis.`);
   save(true);
   return false;
+}
+
+function openPostCampaignCrisisSquad(typeId, districtId, missionLevel, cycle){
+  if(!postCampaignUnlocked(S)) return toast("Complete Story Mission 100 before entering the shared post-campaign world.");
+  const api = window.TigerPostCampaign;
+  const type = api?.crisisById?.(typeId);
+  const district = livingWorldApi()?.districtById?.(districtId);
+  if(!type || !district) return toast("That crisis is unavailable. Refresh the command map.");
+  const level = clamp(Math.floor(Number(missionLevel || district.minMission || 1)), district.minMission, district.maxMission);
+  const operation = {
+    typeId:type.id,
+    launchType:type.coopLaunchType,
+    districtId:district.id,
+    districtName:district.name,
+    missionLevel:level,
+    cycle:Math.max(0, Math.floor(Number(cycle || api.cycleKey(Date.now())))),
+    runId:`POST-${Math.max(0, Math.floor(Number(cycle || api.cycleKey(Date.now()))))}-${type.id}-${district.id}`,
+  };
+  const overlay = document.getElementById("worldMapCampaignOverlay");
+  if(overlay) overlay.style.display = "none";
+  if(typeof window.openLiveSquadPostCampaignCrisis !== "function") return toast("Shared Living World is still loading. Try again in a moment.");
+  window.openLiveSquadPostCampaignCrisis(operation);
+  return false;
+}
+
+function recordPostCampaignCoopClaim(rewardPayload=null){
+  const operation = rewardPayload?.postCampaignOperation;
+  const receipt = String(rewardPayload?.receipt || "");
+  if(!rewardPayload?.firstClaim || !operation?.runId || !receipt) return false;
+  const wm = ensureWorldMapCampaignState(S);
+  wm.postCampaignCompleted = wm.postCampaignCompleted && typeof wm.postCampaignCompleted === "object" ? wm.postCampaignCompleted : {};
+  const localReceipt = `coop:${receipt}`;
+  if(wm.postCampaignCompleted[localReceipt]) return false;
+  wm.postCampaignCompleted[localReceipt] = Date.now();
+  wm.postCampaignClears = Math.max(0, Math.floor(Number(wm.postCampaignClears || 0))) + 1;
+  wm.lastOutcome = `${operation.districtName || "Living World district"} crisis cleared in ${rewardPayload?.profile?.stats?.missions ? "Shared Living World" : "co-op"}. Your personal reward was saved once.`;
+  save(true);
+  return true;
 }
 
 function recordPostCampaignCrisisOutcome({missionStats=null}={}){

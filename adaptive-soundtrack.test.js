@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V11.0 cache key forces Telegram to load World After the Ancient Tiger", () => {
-  assert(game.includes('const TS_BUILD = "5221"'));
-  assert(html.includes("game.js?v=5221-world-after-ancient-tiger"));
-  assert(html.includes("tutorial.js?v=5221-world-after-ancient-tiger"));
+test("V11.1 cache key forces Telegram to load Shared Living World", () => {
+  assert(game.includes('const TS_BUILD = "5222"'));
+  assert(html.includes("game.js?v=5222-shared-living-world"));
+  assert(html.includes("tutorial.js?v=5222-shared-living-world"));
 });

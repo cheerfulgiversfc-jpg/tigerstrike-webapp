@@ -864,6 +864,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Three rotating crisis operations are fully playable on real Story battlefields: Settlement Siege, Escaped Alpha Transport, and Government Response Raid. They modify encounter counts and objectives, pay receipt-protected rewards, return to the command network after completion, and never reset Missions 1–100.
 - Settlement Siege requires a six-civilian evacuation against an eight-tiger pack. Escaped Alpha Transport requires a live Alpha recapture. Government Response Raid forces four hostile government units into a civilian-and-tiger battlefield.
 
+### V11.1 Shared Living World — Crisis Squads
+
+- All three post-campaign crises can now start with one player or deploy with two through the existing server-authoritative Live Squad battlefield.
+- A solo crisis remains open for one invited teammate to join after deployment. Closing and reopening Tiger Strike restores the same room, mission state, and player position.
+- Crisis health, damage, and mission time scale between one and two players. If a teammate leaves, their completed rescues, captures, tiger damage, cages, and bodies transfer safely to the remaining player and the crisis continues in Solo scaling.
+- Both soldiers may rescue different civilians and attack threats simultaneously; the server still reserves each live tiger capture for only one player.
+- Every participating Telegram player receives a separate co-op profile reward protected by a crisis-cycle receipt, so reopening or creating another room cannot pay the same rotating crisis twice.
+- Government Response Raid renders and validates four government response units separately from its five tigers. Government units cannot be tranquilized or captured.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
