@@ -891,6 +891,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo event play uses Protect Civilians First as its safe default. A solo squad room may choose a different response, but inviting a teammate before deployment reopens the ballot so the second player always gets a vote.
 - Expired and completed events disappear from that player's command network. Event and response bonuses use the existing per-player reward receipt, so reconnecting or replaying cannot pay the same operation twice.
 
+### V11.5 Player Experience — first release
+
+- Solo Story and Arcade receive a Next Objective button tied to real pending map locations, civilians, required live captures, threats and extraction. Tapping highlights the destination and draws a seven-second direction line; it does not move the soldier or complete an objective.
+- Capture feedback explains Rubber weakening, missing tranquilizers, boss strategy, lethal injuries and capture readiness. Live Squad uses the same feedback rules with its authoritative 30% capture threshold. Survival remains lethal-only.
+- Automatic phone rendering uses the fast map path under sustained frame-lag pressure, including Arcade and Survival, and avoids costly atmospheric grading on that path. Existing solo combat balancing and co-op continuation remain in place.
+- Results show actual mission rescues/captures/kills, current sanctuary residents and the saved Story district headline. Sanctuary and HQ are available directly from results.
+- Build 5227 retains the mission-loading fixes. This release does not claim a new co-op mission locator or new solo difficulty tuning.
+
 ### V11.4 Living Sanctuary & Tiger Strike Headquarters
 
 #### Build 5226 mission-loading hotfix

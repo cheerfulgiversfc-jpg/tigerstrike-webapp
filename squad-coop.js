@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.4 • Living Sanctuary");
+      ? `Tiger Strike V11.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V11.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.5 • Living Sanctuary");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -750,7 +750,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.4 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.5 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -963,7 +963,8 @@
     const tigers = (state.snapshot?.tigers || []).filter((tiger)=>!tiger.defeated);
     const nearest = tigers.sort((a,b)=>Math.hypot((a.x||0)-(mine?.x||0),(a.y||0)-(mine?.y||0))-Math.hypot((b.x||0)-(mine?.x||0),(b.y||0)-(mine?.y||0)))[0];
     if(!nearest) return "🟢 Tiger awareness: Area clear.";
-    return `${nearest.awarenessIcon || "🟢"} Tiger awareness: ${nearest.awarenessLabel || "Calm"}. Gunfire, footsteps, civilians, and blood scent can reveal the squad.`;
+    const capture=window.TigerPlayerExperience?.captureStatus(nearest,{survival:!!state.snapshot?.mission?.survival,threshold:.30,tranqReady:Number(state.profile?.ammo?.tranq||0)>0});
+    return `${nearest.awarenessIcon || "🟢"} Tiger awareness: ${nearest.awarenessLabel || "Calm"}. ${capture?.text||'Gunfire, footsteps, civilians, and blood scent can reveal the squad.'}`;
   }
 
   function pauseSummary(){

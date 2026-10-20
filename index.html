@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V11.4 (Living Sanctuary)</title>
+  <title>Tiger Strike 🐅 — V11.5 (Player Experience)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5226-mission-loading">
+  <link rel="stylesheet" href="./squad-coop.css?v=5227-player-experience">
 
   <style>
     :root{
@@ -2566,15 +2566,18 @@
 .postCampaignEndingProgress{height:8px;border-radius:999px;background:rgba(148,163,184,.22);overflow:hidden;margin-top:10px}.postCampaignEndingProgress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#a855f7,#22c55e)}
 .baseHqSanctuary{display:grid;gap:8px;margin-top:10px;padding:10px;border:1px solid rgba(74,222,128,.42);border-radius:16px;background:linear-gradient(145deg,rgba(6,78,59,.28),rgba(15,23,42,.86))}.baseHqSanctuary .baseHqWorldActions{display:flex;gap:7px;overflow-x:auto;padding-bottom:3px}.baseHqSanctuary .baseHqWorldActions button{min-width:max-content}.baseHqSanctuary .baseHqUpgrade{margin-top:0}
   </style>
+<style>
+.missionExperience{display:grid;gap:5px;margin:7px 0}.missionExperience[hidden],.missionExperience [hidden]{display:none!important}.missionExperience button{width:100%;text-align:left;padding:10px 12px;min-height:44px;border:1px solid #4b8f76;border-radius:12px;background:#0b2925;color:#ecfdf5;font-size:12px;line-height:1.4}.missionExperience [role=status]{font-size:12px;padding:7px 10px;border-radius:10px;background:#172033;color:#dbeafe}.missionExperience [data-stage=ready]{background:#14532d;color:#dcfce7}.missionExperience [data-stage=blocked]{background:#541b2c;color:#ffe4e6}
+</style>
 </head>
 
 <body>
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V11.4</span> <span class="tag">Living Sanctuary</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V11.5</span> <span class="tag">Player Experience</span></div>
       <div class="sub">
-        V11.4 turns the walkable Tiger Pens into a living sanctuary where captured tigers recover, rescued civilians become staff, facility upgrades help Story missions, and healthy residents can return to restored districts.<br>
+        V11.5 adds a Next Objective locator, clear live-capture instructions, automatic smooth phone rendering, and a mission impact report with direct access to Sanctuary and HQ.<br>
         Settlement Siege, Escaped Alpha Transport, and Government Response Raid are real playable Solo crises with their own enemies, civilians, objectives, rewards, completion receipts, and safe return to the command network.<br>
         All 100 Story missions now share one authored map-truth system across Solo and Shared Story. Every future mission batch includes Mission Map Truth &amp; Parity in the same update—not as a later visual patch.<br>
         Mission 98 is the exact eighteen-tiger final swarm with no fake side objective. Mission 99 fields exactly fourteen temple guards and requires all four guardian seals activated in order. Mission 100 is the single 8,500-HP Ancient Tiger; defeating it or capturing it alive is valid before the final Story extraction.<br>
@@ -3340,6 +3343,7 @@
         <div class="storySceneTitle">Shareable Mission Recap</div>
         <div class="storySceneText" id="completeRecapCard">Mission recap preparing...</div>
       </div>
+      <div class="storyScene"><div class="storySceneTitle">Your Mission Impact</div><div id="missionImpact" class="storySceneText"></div></div>
       <div class="cinemaOutroCard" id="completeCinemaOutro" style="display:none">
         <div class="cinemaOutroTitle">🎬 Cinematic Escape Recap</div>
         <div class="cinemaOutroLine" id="completeCinemaOutroText">Escape recap preparing...</div>
@@ -3416,6 +3420,8 @@
         <button class="ghost" onclick="openTelegramCommunityGroup()">Join Group</button>
         <button class="ghost" onclick="openShop()">Shop First</button>
         <button class="ghost" onclick="openInventory()">Inventory</button>
+        <button class="ghost" onclick="openSanctuaryFromResults()">Visit Sanctuary</button>
+        <button class="ghost" onclick="openBaseHQ({home:true})">Return to HQ</button>
       </div>
     </div>
   </div>
@@ -3539,7 +3545,7 @@
     <div class="modalTop"><div class="modalTitle">🎬 Story Finale</div><button class="ghost" type="button" onclick="closePostCampaignEnding()">Skip / Continue</button></div>
     <div class="modalBody">
       <div class="postCampaignEndingHero">
-        <div class="small">V11.4 • LIVING SANCTUARY</div>
+        <div class="small">V11.5 • LIVING SANCTUARY</div>
         <div class="hudTitle" id="postCampaignEndingTitle">The World Changes</div>
         <div class="hudLine" id="postCampaignEndingRoute">Campaign ending</div>
       </div>
@@ -3554,7 +3560,7 @@
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V11.4 • Living Sanctuary</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V11.5 • Living Sanctuary</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3599,22 +3605,23 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5226-mission-loading"></script>
-  <script src="./ammo-modes.js?v=5226-mission-loading"></script>
-  <script src="./government-policy.js?v=5226-mission-loading"></script>
-  <script src="./tiger-intelligence.js?v=5226-mission-loading"></script>
-  <script src="./living-world.js?v=5226-mission-loading"></script>
-  <script src="./mission-map-truth.js?v=5226-mission-loading"></script>
-  <script src="./post-campaign.js?v=5226-mission-loading"></script>
-  <script src="./sanctuary.js?v=5226-mission-loading"></script>
-  <script src="./game.js?v=5226-mission-loading"></script>
-  <script src="./story-cinematics.js?v=5226-mission-loading"></script>
-  <script src="./field-systems.js?v=5226-mission-loading"></script>
-  <script src="./tutorial.js?v=5226-mission-loading"></script>
-  <script src="./squad-motion.js?v=5226-mission-loading"></script>
-  <script src="./shared-battlefield-renderer.js?v=5226-mission-loading"></script>
-  <script src="./squad-coop.js?v=5226-mission-loading"></script>
-  <script src="./extraction-qa.js?v=5226-mission-loading"></script>
+  <script src="./extraction-geometry.js?v=5227-player-experience"></script>
+  <script src="./ammo-modes.js?v=5227-player-experience"></script>
+  <script src="./government-policy.js?v=5227-player-experience"></script>
+  <script src="./tiger-intelligence.js?v=5227-player-experience"></script>
+  <script src="./living-world.js?v=5227-player-experience"></script>
+  <script src="./mission-map-truth.js?v=5227-player-experience"></script>
+  <script src="./post-campaign.js?v=5227-player-experience"></script>
+  <script src="./sanctuary.js?v=5227-player-experience"></script>
+  <script src="./player-experience.js?v=5227-player-experience"></script>
+  <script src="./game.js?v=5227-player-experience"></script>
+  <script src="./story-cinematics.js?v=5227-player-experience"></script>
+  <script src="./field-systems.js?v=5227-player-experience"></script>
+  <script src="./tutorial.js?v=5227-player-experience"></script>
+  <script src="./squad-motion.js?v=5227-player-experience"></script>
+  <script src="./shared-battlefield-renderer.js?v=5227-player-experience"></script>
+  <script src="./squad-coop.js?v=5227-player-experience"></script>
+  <script src="./extraction-qa.js?v=5227-player-experience"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

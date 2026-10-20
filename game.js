@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5226";
+const TS_BUILD = "5227";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4896,6 +4896,16 @@ function renderMissionVictoryHero(summary=null){
   if(savedEl) savedEl.innerText = String(saved);
   if(tigerEl) tigerEl.innerText = String(captures + kills);
   if(cashEl) cashEl.innerText = `$${cash.toLocaleString()}`;
+  const impact=document.getElementById('missionImpact');
+  if(impact){
+    const residents=S.sanctuary?.residents?.length||0;
+    const world=mode==='Story'?S.worldMapCampaign?.livingWorld?.headline:'';
+    impact.textContent=`${saved} civilians rescued • ${captures} tigers captured alive • ${kills} killed. Sanctuary residents: ${residents}.${world?` District report: ${world}`:''}`;
+  }
+}
+
+function openSanctuaryFromResults(){
+  openBaseHQ({home:true});selectBaseHqRoom('pens',true);
 }
 
 function missionPremiumGrade(stats){
@@ -49630,7 +49640,64 @@ function renderBattleStatus(){
   tigerMeta.innerText = t
     ? `${t.type}${mutation ? ` • ${mutation}` : ""} • ${t.lethalWounded ? "CAPTURE BLOCKED: Real round hit" : `Capture window ${captureWindowPctLabel()} to 1% HP • Rubber hits ${Math.max(0, Number(t.rubberHitCount || 0))}`}${isBossTiger(t) ? ` • ${bossCaptureStrategyStatus(t)}` : ""}`
     : "Target lost";
+  if(t && window.TigerPlayerExperience) tigerMeta.innerText = `${t.type} • ${fieldCaptureStatus(t).text}`;
   renderCombatControls();
+}
+
+let __objectiveHighlight = null;
+function fieldCaptureStatus(t){
+  return window.TigerPlayerExperience?.captureStatus(t,{
+    survival:S.mode==='Survival',threshold:storyCaptureWindowPct(),
+    bossReady:!isBossTiger(t)||bossCaptureStrategyReady(t),
+    bossHint:isBossTiger(t)?bossCaptureStrategyStatus(t):'',
+    tranqReady:canAttemptCapture(t)
+  }) || {stage:'none',text:''};
+}
+function fieldNextObjective(){
+  const pending = new Set(missionMapTruthPending(S));
+  const landmarks = (S.mapInteractables||[]).filter(it=>it.missionTruth && pending.has(String(it.missionTruthId)));
+  const mission = currentModeMission();
+  return window.TigerPlayerExperience?.nextObjective({player:S.me,landmarks,civilians:S.civilians,tigers:S.tigers,
+    evac:S.evacZone,captures:S.stats?.captures||0,captureRequired:mission?.captureRequired||0});
+}
+function highlightNextObjective(){
+  const target=fieldNextObjective();
+  if(!target)return;
+  __objectiveHighlight={...target,until:Date.now()+7000};
+  toast(`${target.action}: ${target.label}. ${target.why}`);
+  renderPlayerExperience();
+}
+function renderPlayerExperience(){
+  let root=document.getElementById('missionExperience');
+  if(!root){
+    const canvas=document.getElementById('cv');
+    if(!canvas)return;
+    root=document.createElement('div');root.id='missionExperience';root.className='missionExperience';
+    root.innerHTML='<button type="button" id="nextObjectiveButton" onclick="highlightNextObjective()"></button><div id="fieldCaptureHint" role="status"></div>';
+    canvas.parentNode.insertBefore(root,canvas);
+  }
+  const hidden=baseHqActive()||S.missionEnded||S.gameOver||window.TigerTutorial?.isRunning;
+  root.hidden=!!hidden;
+  if(hidden)return;
+  const target=S.mode==='Survival'?null:fieldNextObjective();
+  const button=document.getElementById('nextObjectiveButton');
+  button.hidden=!target;
+  if(target){
+    const text=`🎯 ${target.action}: ${target.label}${Number.isFinite(target.x)?` • ${target.distance}m`:''} • Tap to locate`;
+    if(button.textContent!==text)button.textContent=text;
+  }
+  const tiger=tigerById(S.activeTigerId)||lockedTiger();
+  const hint=document.getElementById('fieldCaptureHint');
+  const status=tiger?fieldCaptureStatus(tiger):null;
+  hint.hidden=!status;
+  if(status){hint.textContent=status.text;hint.dataset.stage=status.stage;}
+}
+function drawObjectiveHighlight(now=Date.now()){
+  const target=__objectiveHighlight;
+  if(!target||now>target.until||!Number.isFinite(target.x)||!Number.isFinite(target.y))return;
+  ctx.save();ctx.strokeStyle='#fde047';ctx.lineWidth=4;ctx.setLineDash([10,7]);
+  ctx.beginPath();ctx.moveTo(S.me.x,S.me.y);ctx.lineTo(target.x,target.y);ctx.stroke();ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(target.x,target.y,30+Math.sin(now/180)*5,0,Math.PI*2);ctx.stroke();ctx.restore();
 }
 function renderWeaponGrid(){
   const box=document.getElementById("weaponGrid");
@@ -53092,6 +53159,7 @@ function renderHUD(){
   }
   renderFirstHuntCoach(t);
   renderFieldAlert(t);
+  renderPlayerExperience();
 
     const takeoverBtn = document.getElementById("escortTakeoverBtn");
     if(takeoverBtn){
@@ -53980,6 +54048,7 @@ function shouldUseMobileFastMapRenderer(state=S){
   // older, muted road/map renderer.
   if(normalizeModeName(state?.mode) === "Story") return true;
   if(!isMobileViewport()) return false;
+  if(window.TigerPlayerExperience?.performancePolicy({mobile:true,preference:state.performanceMode,lagTier:frameLagTier()}).fastMap) return true;
   const now = Date.now();
   if(__startupLoadingGuard?.active) return false;
   if(now < Number(__forceFullMapRepaintUntil || 0)) return false;
@@ -64946,7 +65015,7 @@ function draw(){
             drawUltraSafeMapFrame(viewW, viewH, camX, camY);
           });
         }
-        const brightSharedStoryMap = S.mode === "Story" && shouldUseMobileFastMapRenderer(S);
+        const brightSharedStoryMap = shouldUseMobileFastMapRenderer(S);
         if(mapDrawOk && !brightSharedStoryMap && shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
           safeTick("drawSceneAtmosphere", drawAtmosphericParallax);
         }
@@ -64970,6 +65039,7 @@ function draw(){
         if(entityDrawOk && window.TigerTutorial?.isRunning){
           safeTick("drawTutorialStepWorldHighlight", ()=>drawTutorialStepWorldHighlight(Date.now()));
         }
+        if(entityDrawOk) safeTick('drawObjectiveHighlight',()=>drawObjectiveHighlight(Date.now()));
         if(entityDrawOk && !brightSharedStoryMap){
           safeTick("drawDynamicDayNightOverlay", ()=>drawDynamicDayNightOverlay(Date.now()));
         }
