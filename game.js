@@ -7813,7 +7813,140 @@ function recordCapturedTigerTrophy(tiger, source="player"){
   collection.trophies[type] = Math.max(0, Number(collection.trophies[type] || 0)) + 1;
   collection.recentTrophies.push({ type, name:String(tiger.alias || tiger.name || type), capturedAt:Date.now(), source });
   collection.recentTrophies = collection.recentTrophies.slice(-12);
+  recordSanctuaryCapture(tiger, source);
   __savePending = true;
+}
+
+function sanctuaryApi(){
+  return window.TigerSanctuary || null;
+}
+function ensureSanctuaryState(state=S){
+  const api = sanctuaryApi();
+  if(!state || typeof state !== "object") return api?.defaultState?.() || null;
+  if(!api) return state.sanctuary || null;
+  const captures = Math.max(0, Math.floor(Number(state?.opsTotals?.captures || state?.stats?.captures || 0)));
+  state.sanctuary = api.syncLegacyCaptures(api.normalizeState(state.sanctuary), captures);
+  return state.sanctuary;
+}
+function sanctuaryGovernmentIdentity(state=S){
+  const government = ensureGovernmentProgramState(state);
+  return sanctuaryApi()?.baseIdentity?.({
+    rogue:governmentRogueActive(state),
+    path:government.path,
+    status:government.status,
+    trust:state.trust,
+    funded:government.status !== "FUNDING_SUSPENDED",
+  }) || { icon:"🌿", name:"Living Sanctuary", tone:"neutral", desc:"A safe wildlife recovery base." };
+}
+function sanctuaryBenefits(state=S){
+  return sanctuaryApi()?.missionBenefits?.(ensureSanctuaryState(state)) || {captureWindowBonus:0,rubberAmmoMinimum:0,tranqAmmoMinimum:0,medkitMinimum:1,releaseRewardMultiplier:1};
+}
+function recordSanctuaryCapture(tiger, source="player"){
+  const api = sanctuaryApi();
+  if(!api || !tiger || source === "rival") return null;
+  const result = api.addCapture(ensureSanctuaryState(S), tiger, {
+    source,
+    runId:String(S._missionRunId || `mission-${Date.now()}`),
+    receipt:`${String(S._missionRunId || "mission")}:${String(tiger.id || tiger.alias || tiger.name || S.stats?.captures || Date.now())}`,
+    mission:S.mode === "Story" ? S.storyLevel : missionIndexForMode(S.mode),
+    boss:isBossTiger(tiger),
+    alpha:String(tiger.type || "").toLowerCase().includes("alpha"),
+  });
+  S.sanctuary = result.state;
+  return result;
+}
+function advanceSanctuaryAfterMission(runId, missionStats={}){
+  const api = sanctuaryApi();
+  if(!api || S.mode !== "Story") return "";
+  const result = api.advanceCare(ensureSanctuaryState(S), String(runId || S._missionRunId || ""), missionStats);
+  S.sanctuary = result.state;
+  if(!result.applied) return "";
+  return `\nLiving Sanctuary: veterinary care reached ${result.healed} resident${result.healed===1?"":"s"}${result.ready?` • ${result.ready} now ready for release`:""}.\n`;
+}
+function buySanctuaryFacility(facilityId){
+  const api = sanctuaryApi();
+  const result = api?.upgradeFacility?.(ensureSanctuaryState(S), facilityId, S.funds);
+  if(!result?.applied){
+    if(result?.reason === "insufficient-funds") return toast(`You need $${Number(result.cost || 0).toLocaleString()} for that sanctuary upgrade.`);
+    if(result?.reason === "max-level") return toast("That sanctuary facility is already fully upgraded.");
+    return toast("That sanctuary facility is unavailable.");
+  }
+  S.sanctuary = result.state;
+  S.funds = result.fundsRemaining;
+  toast(`${result.facility.icon} ${result.facility.name} upgraded to Level ${result.level}.`);
+  save(true);
+  showBaseHqHud(12000);
+  renderBaseHQ();
+  return false;
+}
+function selectSanctuaryResident(residentId){
+  const sanctuary = ensureSanctuaryState(S);
+  if(!sanctuary?.residents?.some((resident)=>resident.id === String(residentId || ""))) return false;
+  sanctuary.selectedResidentId = String(residentId);
+  save();
+  showBaseHqHud(12000);
+  renderBaseHQ();
+  return false;
+}
+function releaseSanctuaryResident(residentId=""){
+  const api = sanctuaryApi();
+  const wm = ensureWorldMapCampaignState(S);
+  const living = livingWorldState(wm);
+  const target = api?.releaseTarget?.(window.TigerLivingWorld?.DISTRICTS || [], living);
+  const result = api?.releaseResident?.(ensureSanctuaryState(S), residentId, target, { rogue:governmentRogueActive(S) });
+  if(!result?.applied){
+    if(result?.reason === "not-ready") return toast("That tiger still needs veterinary care. Finish more Story missions first.");
+    if(result?.reason === "district-unavailable") return toast("No Living World district is safe enough yet. Restore one on the World Map first.");
+    return toast("That sanctuary resident cannot be released right now.");
+  }
+  S.sanctuary = result.state;
+  S.funds += result.reward;
+  if(!governmentRogueActive(S)) S.trust = clamp(Number(S.trust || 0) + result.trustGain, 0, 100);
+  const district = living?.districts?.[result.districtId];
+  if(district){
+    district.tigerPressure = clamp(Number(district.tigerPressure || 0) - result.pressureRelief, 5, 96);
+    district.bloodScent = clamp(Number(district.bloodScent || 0) - result.bloodRelief, 0, 100);
+    district.settlementSafety = clamp(Number(district.settlementSafety || 0) + result.safetyGain, 0, 100);
+    district.lastUpdatedAt = Date.now();
+    living.headline = `${result.resident.name} released into ${result.districtName}. Pressure fell and habitat safety improved.`;
+    living.lastUpdatedAt = Date.now();
+  }
+  wm.livingWorld = living;
+  toast(`🌿 ${result.resident.name} released in ${result.districtName}. +$${result.reward.toLocaleString()}.`);
+  save(true);
+  showBaseHqHud(12000);
+  renderBaseHQ();
+  return false;
+}
+function baseHqSanctuaryHtml(){
+  const api = sanctuaryApi();
+  const sanctuary = ensureSanctuaryState(S);
+  if(!api || !sanctuary) return "";
+  const summary = api.collectionSummary(sanctuary);
+  const identity = sanctuaryGovernmentIdentity(S);
+  const rescued = Math.max(0, Math.floor(Number(S?.opsTotals?.evac || S?.stats?.evac || 0)));
+  const staff = api.staffFromRescues(rescued);
+  const residentCards = sanctuary.residents.length ? sanctuary.residents.slice(0,8).map((resident)=>{
+    const selected = sanctuary.selectedResidentId === resident.id;
+    return `<button class="${selected?"good":"ghost"}" onclick="selectSanctuaryResident('${baseHqEsc(resident.id)}')">🐅 ${baseHqEsc(resident.name)} • ${baseHqEsc(resident.type)} • Health ${resident.condition}%${resident.status==="HOLDING"?" • Holding":""}${resident.releaseReady?" • Release Ready":""}</button>`;
+  }).join("") : `<div class="baseHqWorldNpc">Capture a tiger alive and it will safely arrive here after the mission.</div>`;
+  const selected = sanctuary.residents.find((resident)=>resident.id === sanctuary.selectedResidentId);
+  const upgrades = api.FACILITY_DEFS.map((def)=>{
+    const level = sanctuary.upgrades[def.id] || 0;
+    const cost = api.facilityCost(sanctuary, def.id);
+    return `<div class="baseHqUpgrade"><div><b>${def.icon} ${baseHqEsc(def.name)} Lv ${level}/${def.maxLevel}</b><small>${baseHqEsc(def.desc)}</small></div><button ${level>=def.maxLevel?"disabled":""} onclick="buySanctuaryFacility('${def.id}')">${level>=def.maxLevel?"Maxed":`$${cost.toLocaleString()}`}</button></div>`;
+  }).join("");
+  const airdrop = postCampaignAvailableEvents().find((event)=>event.typeId === "sanctuary_airdrop");
+  return `<section class="baseHqSanctuary">
+    <div class="baseHqWorldNpc"><b>${identity.icon} ${baseHqEsc(identity.name)}</b><br>${baseHqEsc(identity.desc)}</div>
+    <div class="baseHqWorldNpc">Residents ${summary.active}/${summary.capacity} • Holding ${summary.holding} • Release ready ${summary.ready} • Released ${summary.released} • Legacy records ${summary.legacy}</div>
+    <div class="baseHqWorldNpc">Sanctuary staff from rescued civilians: 🩺 ${staff.doctors} doctors • 🛡️ ${staff.rangers} rangers • 🔧 ${staff.mechanics} mechanics • 🔬 ${staff.researchers} researchers • 🚁 ${staff.pilots} pilots.</div>
+    <div class="baseHqWorldActions">${residentCards}</div>
+    ${selected?`<div class="baseHqWorldNpc"><b>Selected:</b> ${baseHqEsc(selected.name)} • Condition ${selected.condition}% • ${selected.releaseReady?"Ready for a restored habitat.":"Veterinary care continues after each completed Story mission."}</div><div class="baseHqWorldActions"><button class="good" ${selected.releaseReady?"":"disabled"} onclick="releaseSanctuaryResident('${baseHqEsc(selected.id)}')">🌿 Release to Living World</button></div>`:""}
+    ${sanctuary.lastEvent?`<div class="baseHqWorldNpc">Latest: ${baseHqEsc(sanctuary.lastEvent)}</div>`:""}
+    ${airdrop?`<div class="baseHqWorldNpc"><b>🪂 Sanctuary emergency:</b> ${baseHqEsc(airdrop.name)} is active in ${baseHqEsc(airdrop.districtName)}.</div><div class="baseHqWorldActions"><button class="good" onclick="openWorldMapCampaign()">Open Live Emergency</button></div>`:""}
+    <div class="baseHqWorldTitle" style="font-size:15px;margin-top:8px">Facility Upgrades</div>${upgrades}
+  </section>`;
 }
 function cosmeticCollectionStats(){
   const pass = ensureSeasonPassState(S);
@@ -11473,7 +11606,7 @@ function storyMissionForState(state=S){
     }
   }
 
-  // V11.3 post-campaign crises and events reuse the real Story battlefield and systems.
+  // V11.4 keeps post-campaign crises and events on the real Story battlefield and systems.
   // The active operation changes the objective/encounter, never the player's
   // saved Story unlock level or the authored Mission 1–100 truth manifest.
   if(variant === STORY_VARIANTS.CAMPAIGN){
@@ -13918,7 +14051,7 @@ function worldMapPostCampaignHtml(wm=ensureWorldMapCampaignState(S)){
   let living = livingWorldState(wm);
   if(!api || !livingApi || !living) return "";
   if(!postCampaignUnlocked(S)){
-    return `<section class="card" style="margin-top:10px;border-color:rgba(148,163,184,.40)"><div class="hudTitle">🔒 V11.3 • World Emergencies</div><div class="small">Complete Story Mission 100 to unlock the thirty-district command network, rebuilding projects, crisis spread, rare events, squad voting, ending replay, and solo-or-squad world crises.</div></section>`;
+    return `<section class="card" style="margin-top:10px;border-color:rgba(148,163,184,.40)"><div class="hudTitle">🔒 V11.4 • Living World</div><div class="small">Complete Story Mission 100 to unlock the thirty-district command network, rebuilding projects, crisis spread, rare events, squad voting, ending replay, and solo-or-squad world crises.</div></section>`;
   }
   let recovery = api.normalizeRecovery?.(wm.postCampaignRecovery, livingApi.DISTRICTS) || wm.postCampaignRecovery || {};
   const spread = api.advanceCrisisSpread?.(living, livingApi.DISTRICTS, recovery, api.cycleKey(Date.now()));
@@ -13969,7 +14102,7 @@ function worldMapPostCampaignHtml(wm=ensureWorldMapCampaignState(S)){
   const coopLiving=wm.postCampaignCoopLivingWorld;
   const ending = resolveStoryEndingFromState(S);
   return `<section class="card" id="postCampaignCommandNetwork" style="margin-top:10px;border-color:rgba(192,132,252,.66);background:linear-gradient(145deg,rgba(45,20,70,.72),rgba(8,15,29,.97))">
-    <div class="hudTitle">🌐 V11.3 • World Emergencies</div>
+    <div class="hudTitle">🌐 V11.4 • Living World</div>
     <div class="hudLine">Post-Campaign Command Network • 30/30 districts online • ${Math.max(0,Number(wm.postCampaignClears || 0))} crisis clears • $${Math.max(0,Number(recovery.totalInvested||0)).toLocaleString()} rebuilt</div>
     <div class="small">Story Missions 1–100 remain complete and replayable. Crises now change their district, dangerous pressure can spread every 12-hour command cycle, and permanent recovery projects protect neighboring communities.</div>
     <div class="small" style="margin-top:5px"><b>Solo district record:</b> ${worldMapEsc(living.headline||"Command network ready.")}</div>
@@ -14870,7 +15003,7 @@ const MODE_PROFILE_KEYS = Object.freeze([
   "medkits","medkitSelectedId","repairKits","armorPlates","armorPlatesFallback","armorPlateSelectedId","trapsOwned","shields",
   "soldierAttackersOwned","soldierRescuersOwned","soldierAttackersDowned","soldierRescuersDowned","squadOwnershipLedger",
   "squadProgression","civilianSettlement","specialistStarUnlocks","stats","opsTotals","balanceStats","nemesis","cinematicBossHuntSeason",
-  "seasonPass","masteryRewards","cosmeticCollection","achievements","title","xp","level","perkPoints","perks",
+  "seasonPass","masteryRewards","cosmeticCollection","sanctuary","achievements","title","xp","level","perkPoints","perks",
   "progressionUnlocks","metaBase","metaHQ","specialistPerks","chapterRewardsUnlocked","contractTallies","contracts",
   "liveOps","liveOpsModifierCards","missionRewardStreak"
 ]);
@@ -15185,6 +15318,7 @@ const DEFAULT = {
   seasonPass: defaultSeasonPassState(),
   masteryRewards: defaultMasteryRewardsState(),
   cosmeticCollection: defaultCosmeticCollectionState(),
+  sanctuary: null,
   achievements:{},
   title:"Rookie",
   playerHandle:"",
@@ -23689,7 +23823,8 @@ function storyCaptureWindowPct(){
   const capRank = storySpecialistRank("SP_ATK_CAPTURE");
   const chapterBonus = storyChapterRewardUnlocked(2) ? 0.03 : 0;
   const hqBonus = storyHQRank("HQ_RD") * 0.01;
-  return clamp(0.25 + (capRank * 0.02) + chapterBonus + hqBonus, 0.25, 0.40);
+  const sanctuaryBonus = Number(sanctuaryBenefits(S).captureWindowBonus || 0);
+  return clamp(0.25 + (capRank * 0.02) + chapterBonus + hqBonus + sanctuaryBonus, 0.25, 0.43);
 }
 function storyStaminaDrainMul(){
   const biomeMul = clamp(Number(biomeHazardModifiers(S.mode).staminaDrainMul || 1), 0.70, 1.35);
@@ -23732,10 +23867,13 @@ function storyMissionSupplyMinimums(){
   const logistics = storyBaseRank("BASE_LOGISTICS");
   const medbay = storyHQRank("HQ_MEDBAY");
   const armory = storyHQRank("HQ_ARMORY");
+  const sanctuary = sanctuaryBenefits(S);
   return {
-    medkits: 1 + logistics + (medbay >= 2 ? 1 : 0),
+    medkits: Math.max(1 + logistics + (medbay >= 2 ? 1 : 0), Number(sanctuary.medkitMinimum || 1)),
     traps: 2 + Math.floor((logistics + 1) / 2),
-    repair: 1 + (logistics >= 2 ? 1 : 0) + (armory >= 3 ? 1 : 0)
+    repair: 1 + (logistics >= 2 ? 1 : 0) + (armory >= 3 ? 1 : 0),
+    rubberAmmo:Math.max(0, Math.floor(Number(sanctuary.rubberAmmoMinimum || 0))),
+    tranqAmmo:Math.max(0, Math.floor(Number(sanctuary.tranqAmmoMinimum || 0)))
   };
 }
 function storyAttackerDamageMul(){
@@ -29679,6 +29817,7 @@ function writeStoryProfileData(source="autosave", state=S){
     socialRescue: cloneState(ensureSocialRescueState(src)),
     governmentProgram: cloneState(ensureGovernmentProgramState(src)),
     cosmeticCollection: cloneState(ensureCosmeticCollectionState(src)),
+    sanctuary: cloneState(ensureSanctuaryState(src)),
     savedAt: Date.now(),
     source: String(source || "autosave"),
   };
@@ -30013,6 +30152,10 @@ function applyStoryProfileToState(state, profile){
     state.cosmeticCollection = mergeCosmeticCollectionStates(state.cosmeticCollection, profile.cosmeticCollection);
   }
   ensureCosmeticCollectionState(state);
+  if(profile.sanctuary && typeof profile.sanctuary === "object"){
+    state.sanctuary = sanctuaryApi()?.normalizeState?.(profile.sanctuary) || cloneState(profile.sanctuary);
+  }
+  ensureSanctuaryState(state);
 
   if(typeof profile.equippedWeaponId === "string" && profile.equippedWeaponId && state.ownedWeapons?.includes(profile.equippedWeaponId)){
     state.equippedWeaponId = profile.equippedWeaponId;
@@ -30196,6 +30339,9 @@ function writeStoryProgressData(payload={}){
     governmentProgram: (payload.governmentProgram && typeof payload.governmentProgram === "object")
       ? cloneState(payload.governmentProgram)
       : cloneState(ensureGovernmentProgramState(S)),
+    sanctuary: (payload.sanctuary && typeof payload.sanctuary === "object")
+      ? cloneState(sanctuaryApi()?.normalizeState?.(payload.sanctuary) || payload.sanctuary)
+      : cloneState(ensureSanctuaryState(S)),
     mag: {
       loaded: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).loaded || 0))),
       cap: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).cap || 0))),
@@ -32939,10 +33085,12 @@ function baseHqStatsHtml(){
   const soldiers = Math.max(0, Number(S.soldierAttackersOwned || 0) + Number(S.soldierRescuersOwned || 0));
   const government = ensureGovernmentProgramState(S);
   const governmentDef = GOVERNMENT_PROGRAM_STATUS[government.status] || GOVERNMENT_PROGRAM_STATUS.GOOD_STANDING;
+  const sanctuary = sanctuaryApi()?.collectionSummary?.(ensureSanctuaryState(S));
   return `
     <div class="baseHqStat"><span>Funds</span><b>$${Number(S.funds || 0).toLocaleString()}</b></div>
     <div class="baseHqStat"><span>HQ Rank</span><b>${hqRank}/${hqMax}</b></div>
     <div class="baseHqStat"><span>Captured Tigers</span><b>${captures}</b></div>
+    <div class="baseHqStat"><span>Sanctuary</span><b>${sanctuary ? `${sanctuary.active}/${sanctuary.capacity} safe • ${sanctuary.ready} ready` : "Opening"}</b></div>
     <div class="baseHqStat"><span>Civilians Saved</span><b>${rescued}</b></div>
     <div class="baseHqStat"><span>Squad</span><b>${soldiers} owned</b></div>
     <div class="baseHqStat"><span>Government</span><b>${governmentDef.icon} ${baseHqEsc(governmentDef.label)}</b></div>
@@ -33638,9 +33786,11 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       upgrades:["HQ_INTEL","HQ_RD"],
     },
     pens:{
-      title:"Captured Tiger Pens",
-      desc:`Base Intel: ${factList[factIndex]} Lifetime captures recorded: ${captures}.`,
+      title:"Living Sanctuary & Tiger Pens",
+      desc:`Base Intel: ${factList[factIndex]} Captured tigers now live here, recover through real mission progress, and can return to restored Living World habitats. Lifetime captures recorded: ${captures}.`,
       actions:[
+        ["Sanctuary Residents","selectBaseHqRoom('pens', true)"],
+        ["Living World","openWorldMapCampaign()"],
         ["Trophy Showcase","openInventoryFromBaseHQ('showcase')"],
         ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
         ["Cosmetics","openInventoryFromBaseHQ('cosmetics')"],
@@ -34628,7 +34778,7 @@ function renderBaseHqWorldHud(){
       ? baseHqTutorialStationHtml()
       : (room.id === "contracts"
         ? baseHqDailyRewardDeskHtml()
-        : (room.id === "specialists" ? baseHqSquadRoomHtml() : "")));
+        : (room.id === "specialists" ? baseHqSquadRoomHtml() : (room.id === "pens" ? baseHqSanctuaryHtml() : ""))));
   const boardHtml = baseHqBoardHubHtml(room.id);
   const missionControlHtml = (room.id === "command" || room.id === "mission") ? baseHqMissionControlHtml() : "";
   const newsHtml = (room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
@@ -35332,12 +35482,15 @@ function drawBaseHqCasualPlayer(now){
   ctx.restore();
 }
 function drawBaseHqTigerPen(now){
+  const sanctuary = ensureSanctuaryState(S);
+  const residents = Array.isArray(sanctuary?.residents) ? sanctuary.residents.filter((resident)=>resident.status === "ACTIVE").slice(0,4) : [];
   const captures = Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)));
-  const tigerCount = clamp(Math.min(4, Math.ceil(captures / 8) || 1), 1, 4);
+  const tigerCount = residents.length || clamp(Math.min(4, Math.ceil(captures / 8)), 0, 4);
   const pen = baseHqRoomById("pens");
   const startX = (pen?.x || 1020) - 56;
   const baseY = (pen?.y || 498) + 36;
   for(let i=0;i<tigerCount;i++){
+    const resident = residents[i] || null;
     const x = startX + i * 38;
     const y = baseY + Math.sin(now / 360 + i) * 2;
     const s = 0.58 + (i % 2) * 0.06;
@@ -35348,7 +35501,8 @@ function drawBaseHqTigerPen(now){
     ctx.beginPath();
     ctx.ellipse(0, 15, 26, 8, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = i % 3 === 0 ? "#f59e0b" : (i % 3 === 1 ? "#d97706" : "#eab308");
+    const residentType = String(resident?.type || "").toLowerCase();
+    ctx.fillStyle = residentType.includes("ice") ? "#93c5fd" : (residentType.includes("shadow") ? "#64748b" : (residentType.includes("blood") ? "#ef4444" : (i % 3 === 0 ? "#f59e0b" : (i % 3 === 1 ? "#d97706" : "#eab308"))));
     ctx.beginPath();
     ctx.ellipse(0, 0, 29, 14, -0.08, 0, Math.PI * 2);
     ctx.fill();
@@ -35374,6 +35528,15 @@ function drawBaseHqTigerPen(now){
     ctx.moveTo(-27, -2);
     ctx.quadraticCurveTo(-43, -19, -50, -4);
     ctx.stroke();
+    if(resident){
+      ctx.scale(i % 2 ? -1/s : 1/s, 1/s);
+      ctx.fillStyle = "rgba(2,6,23,.86)";
+      roundedRectFill(-31, -43, 62, 15, 6);
+      ctx.fillStyle = resident.releaseReady ? "#86efac" : "#e2e8f0";
+      ctx.font = "900 7px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(String(resident.name || resident.type).slice(0,12), 0, -33);
+    }
     ctx.restore();
   }
 }
@@ -35501,6 +35664,7 @@ function drawBaseHQScene(now=Date.now()){
   const cam = baseHqCameraOffset();
   const progressSnap = baseHqProgressSnapshot();
   const tier = progressSnap.tier;
+  const sanctuaryIdentity = sanctuaryGovernmentIdentity(S);
   ctx.setTransform(1,0,0,1,0,0);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
@@ -35510,9 +35674,15 @@ function drawBaseHQScene(now=Date.now()){
   ctx.save();
   ctx.translate(-cam.x, -cam.y);
   const grd = ctx.createLinearGradient(0,0,cv.width,cv.height);
-  grd.addColorStop(0, tier >= 4 ? "#17334a" : (tier >= 2 ? "#132b42" : "#10243a"));
-  grd.addColorStop(0.52, tier >= 3 ? "#102033" : "#0b1728");
-  grd.addColorStop(1, tier >= 5 ? "#0d1f2b" : "#07131d");
+  if(sanctuaryIdentity.id === "rogue"){
+    grd.addColorStop(0,"#351522");grd.addColorStop(0.52,"#172033");grd.addColorStop(1,"#071018");
+  }else if(sanctuaryIdentity.id === "official"){
+    grd.addColorStop(0,tier>=4?"#14514b":"#164e3b");grd.addColorStop(0.52,"#123047");grd.addColorStop(1,"#071b20");
+  }else{
+    grd.addColorStop(0, tier >= 4 ? "#17334a" : (tier >= 2 ? "#132b42" : "#10243a"));
+    grd.addColorStop(0.52, tier >= 3 ? "#102033" : "#0b1728");
+    grd.addColorStop(1, tier >= 5 ? "#0d1f2b" : "#07131d");
+  }
   ctx.fillStyle = grd;
   ctx.fillRect(0,0,BASE_HQ_WORLD.w,BASE_HQ_WORLD.h);
   ctx.save();
@@ -42884,6 +43054,12 @@ function deploy(opts={}){
     S.medkits["M_SMALL"] = Math.max(S.medkits["M_SMALL"] || 0, mins.medkits);
     S.trapsOwned = Math.max(S.trapsOwned || 0, mins.traps);
     S.repairKits["T_REPAIR"] = Math.max(S.repairKits["T_REPAIR"] || 0, mins.repair);
+    if(mins.tranqAmmo > 0) S.ammoReserve.TRANQ_DARTS = Math.max(Number(S.ammoReserve.TRANQ_DARTS || 0), mins.tranqAmmo);
+    if(mins.rubberAmmo > 0){
+      const humaneWeapon = WEAPONS.find((weapon)=>weaponSupportsAmmoMode(weapon) && compatibleAmmoIdsForWeapon(weapon, "rubber").length);
+      const rubberAmmoId = humaneWeapon ? compatibleAmmoIdsForWeapon(humaneWeapon, "rubber")[0] : "9MM_RUBBER";
+      if(rubberAmmoId) S.ammoReserve[rubberAmmoId] = Math.max(Number(S.ammoReserve[rubberAmmoId] || 0), mins.rubberAmmo);
+    }
   }
   prepareLivingWorldMissionConsequences(S);
 
@@ -52129,6 +52305,7 @@ function checkMissionComplete(){
       const governmentNote = governmentAudit?.exempt
         ? "\nGovernment Oversight: Survival exemption — no capture-policy review or funding decision.\n"
         : `\nGovernment Oversight: ${governmentAudit?.statusLabel||"Good Standing"} • Trust ${Math.round(Number(S.trust||0))}/100 • Review ${Math.round(Number(governmentAudit?.reviewPoints||0))}/100 • Funding +$${Math.max(0,Number(governmentAudit?.funding||0)).toLocaleString()}${governmentAudit?.caseId?` • ${governmentAudit.caseId}`:""}\n`;
+      const sanctuaryNote = advanceSanctuaryAfterMission(S._missionRunId, missionStats);
       const storyCampaign3Note = recordStoryCampaignMissionOutcome({
         missionStats,
         civTotal,
@@ -52206,7 +52383,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${governmentNote}${fieldCashTruthNote}${livingWorldNote}${worldMapCampaignNote}${postCampaignCrisisNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${governmentNote}${sanctuaryNote}${fieldCashTruthNote}${livingWorldNote}${worldMapCampaignNote}${postCampaignCrisisNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       renderWildlifeTransportCinematic({ missionStats, activeMission, storyMission, arcadeMission });
       if(storyMission?.number === 100 && storyVariant === STORY_VARIANTS.CAMPAIGN){

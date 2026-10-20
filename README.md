@@ -891,6 +891,20 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo event play uses Protect Civilians First as its safe default. A solo squad room may choose a different response, but inviting a teammate before deployment reopens the ballot so the second player always gets a vote.
 - Expired and completed events disappear from that player's command network. Event and response bonuses use the existing per-player reward receipt, so reconnecting or replaying cannot pay the same operation twice.
 
+### V11.4 Living Sanctuary & Tiger Strike Headquarters
+
+- The existing walkable Base HQ Tiger Pens are now a real Living Sanctuary, not a second decorative menu.
+- Every tiger captured alive becomes a named, persistent resident. Capture receipts prevent the same tiger from being added twice.
+- Residents recover after completed Story missions. Tigers at 90% condition can be released into a genuinely safe Living World district.
+- Releases pay conservation rewards and directly lower district tiger pressure and blood scent while raising settlement safety. Release receipts prevent duplicate payouts.
+- Four facilities have real effects: Habitat Expansion increases capacity, the Veterinary Clinic improves recovery and the capture window, the Ranger Station prepares rubber/tranquilizer ammunition, and the Wildlife Transport Depot improves release rewards and district recovery.
+- Rescued civilians populate the sanctuary staff roster as doctors, rangers, mechanics, researchers, and pilots.
+- The same headquarters changes identity with the government path: official funded sanctuary, independent conservation outpost, or a dark Rogue Underground Haven.
+- Sanctuary progress is persisted in Story saves and separated by the same Solo/Arcade/Survival profile boundaries as inventory, money, and achievements.
+- Existing capture history is preserved as legacy records; the upgrade never invents fake individual residents for old aggregate capture totals.
+- Sanctuary Medical Airdrop remains a real Living World emergency and links to the playable command network when active.
+- Shared Story has a separate server-backed sanctuary. A captured co-op tiger belongs to the player who completed that capture, progresses through duplicate-safe mission care, and appears in a read-only Squad Leader Sanctuary visit without exposing or mixing Solo inventory.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

@@ -5,6 +5,7 @@ const tigerIntelligence = require("../../tiger-intelligence");
 const livingWorld = require("../../living-world");
 const missionMapTruth = require("../../mission-map-truth");
 const postCampaign = require("../../post-campaign");
+const sanctuarySystem = require("../../sanctuary");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -1960,7 +1961,7 @@ const COOP_GEAR_CATALOG = Object.freeze([
 function coopProfileKey(userId){ return `live_squad_profile_v1_${userIdOf(userId)}`; }
 function defaultCoopProfile(user){
   return {
-    version:2,
+    version:3,
     userId:userIdOf(user),
     name:playerName(user),
     funds:2500,
@@ -1975,6 +1976,7 @@ function defaultCoopProfile(user){
     badges:{},
     achievements:{},
     government:{ trust:100, reviews:0, lethalKills:0, captures:0, status:"FUNDED" },
+    sanctuary:sanctuarySystem.defaultState(),
     livingWorld:livingWorld.defaultState(),
     rewardReceipts:{},
     updatedAt:nowMs(),
@@ -2020,8 +2022,9 @@ function normalizeCoopProfile(raw, user){
       captures:clamp(Math.floor(Number(src?.government?.captures || 0)), 0, 999999),
       status:["FUNDED","WATCHLIST","SUSPENDED","GONE_ROGUE"].includes(src?.government?.status) ? src.government.status : "FUNDED",
     },
-    version:2,
+    version:3,
     livingWorld:livingWorld.normalizeState(src.livingWorld),
+    sanctuary:sanctuarySystem.syncLegacyCaptures(sanctuarySystem.normalizeState(src.sanctuary),stats.captures),
     rewardReceipts:cleanMap(src.rewardReceipts),
     updatedAt:Math.max(0, Number(src.updatedAt || base.updatedAt)),
   };
@@ -3230,6 +3233,9 @@ async function buildSnapshot(session, viewerId){
   const mission = missionDefinition(session);
   const derived = sessionDerived(session, players, at);
   const viewerProfile = await readCoopProfile(viewerId);
+  const leaderProfile = session.hostId === userIdOf(viewerId) ? viewerProfile : await readCoopProfile(session.hostId);
+  const leaderSanctuaryState = sanctuarySystem.syncLegacyCaptures(leaderProfile.sanctuary, leaderProfile.stats.captures);
+  const leaderSanctuarySummary = sanctuarySystem.collectionSummary(leaderSanctuaryState);
   const livingWorldEffect = activeLivingWorldMission(session);
   return {
     code:session.code,
@@ -3319,6 +3325,12 @@ async function buildSnapshot(session, viewerId){
       : 0,
     squadWiped:derived.squadWiped,
     viewerProfile,
+    leaderSanctuary:{
+      leaderName:leaderProfile.name,
+      identity:sanctuarySystem.baseIdentity({trust:leaderProfile.government?.trust,status:leaderProfile.government?.status,funded:leaderProfile.government?.status === "FUNDED",path:leaderProfile.government?.status}),
+      summary:leaderSanctuarySummary,
+      residents:leaderSanctuaryState.residents.filter((resident)=>resident.status === "ACTIVE").slice(0,4).map((resident)=>({id:resident.id,name:resident.name,type:resident.type,condition:resident.condition,releaseReady:resident.releaseReady})),
+    },
     gearCatalog:COOP_GEAR_CATALOG,
     extractionReadyIds:derived.extractionReadyIds,
     players:players.map((p)=>({ ...p, online:at - p.lastSeenAt <= 15000 })),
@@ -3710,6 +3722,13 @@ async function applyAction(session, user, action, payload={}){
     player.lastSeenAt = now;
     profile.ammo.tranq -= 1;
     profile.stats.captures += 1;
+    profile.sanctuary = sanctuarySystem.addCapture(profile.sanctuary, target, {
+      source:"shared-story",
+      receipt:`${session.code}:${session.startedAt}:${target.id}`,
+      mission:Number(session.storyMissionLevel || 0),
+      boss:!!target.boss,
+      condition:72,
+    }).state;
     await writeCoopProfile(profile, user);
     await writePlayer(session.code, player);
   }else if(action === "rescue"){
@@ -3920,6 +3939,7 @@ async function claimReward(session, user){
     ? `post-crisis:${crisisRunId}:${uid}`
     : `${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`;
   let livingWorldOutcome = null;
+  let sanctuaryCare = null;
   const rewardApplied = firstClaim && !profile.rewardReceipts[receipt];
   if(rewardApplied){
     profile.rewardReceipts[receipt] = nowMs();
@@ -3954,6 +3974,8 @@ async function claimReward(session, user){
       livingWorldOutcome = postCampaign.applyCrisisDistrictOutcome(profile.livingWorld,{...session.postCampaignOperation,responseId:session.crisisVote?.resolvedOptionId},{captures:governmentAudit.captures,kills:governmentAudit.kills,rescues:governmentAudit.evac,civiliansLost:0,responseId:session.crisisVote?.resolvedOptionId,coop:true});
       profile.livingWorld = livingWorldOutcome.state;
     }
+    sanctuaryCare = sanctuarySystem.advanceCare(profile.sanctuary, `coop-care:${receipt}`, {captures:governmentAudit.captures});
+    profile.sanctuary = sanctuaryCare.state;
     profile = await writeCoopProfile(profile, user);
   }
   return {
@@ -3963,6 +3985,7 @@ async function claimReward(session, user){
     reward:awardedReward,
     governmentAudit,
     livingWorldOutcome,
+    sanctuaryCare:sanctuaryCare ? {applied:sanctuaryCare.applied,healed:sanctuaryCare.healed,ready:sanctuaryCare.ready} : null,
     postCampaignOperation:session.postCampaignOperation || null,
     crisisVote:session.crisisVote || null,
     profile,

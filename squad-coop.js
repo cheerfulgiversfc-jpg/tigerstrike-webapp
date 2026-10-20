@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.3 • World Emergencies");
+      ? `Tiger Strike V11.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V11.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.4 • Living Sanctuary");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -638,6 +638,13 @@
     return `<section class="squadEquipmentPanel"><div class="squadKicker">🗳️ SERVER-VERIFIED SQUAD VOTE</div><div class="squadSectionTitle">Choose the emergency response</div><div class="squadDesc">${esc(status)}</div><div class="squadGearList">${ballots}</div></section>`;
   }
 
+  function leaderSanctuaryHtml(){
+    const sanctuary=state.snapshot?.leaderSanctuary;
+    if(!sanctuary?.summary)return "";
+    const residents=(sanctuary.residents||[]).map((resident)=>`<div class="squadGearCard"><div class="squadGearIcon">🐅</div><div class="squadGearInfo"><b>${esc(resident.name)} • ${esc(resident.type)}</b><small>Condition ${Number(resident.condition||0)}% • ${resident.releaseReady?"Ready for conservation release":"Recovering under veterinary care"}</small></div></div>`).join("");
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">🌿 SQUAD LEADER SANCTUARY</div><div class="squadSectionTitle">${esc(sanctuary.identity?.icon||"🌿")} ${esc(sanctuary.identity?.name||"Living Sanctuary")}</div><div class="squadDesc">You are viewing ${esc(sanctuary.leaderName||"the squad leader")}'s server-backed co-op sanctuary record. It is read-only for teammates and never mixes either player's Solo inventory.</div><div class="squadSmall">Residents ${Number(sanctuary.summary.active||0)}/${Number(sanctuary.summary.capacity||4)} • Holding ${Number(sanctuary.summary.holding||0)} • Released ${Number(sanctuary.summary.released||0)} • Legacy captures ${Number(sanctuary.summary.legacy||0)}</div>${residents?`<div class="squadGearList">${residents}</div>`:`<div class="squadSmall">No named co-op residents yet. The next tiger captured alive will arrive here.</div>`}</section>`;
+  }
+
   function lobbyHtml(){
     const snapshot = state.snapshot;
     if(!snapshot){
@@ -655,6 +662,7 @@
         <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</span></button>
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
+      ${leaderSanctuaryHtml()}
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
       <div id="squadCrisisVote">${crisisVoteHtml()}</div>
       ${livingWorldMissionText() ? `<div class="squadConnection">🌍 <b>${esc(snapshot.mission?.livingWorld?.districtName || "District")} deployment briefing:</b> ${esc(livingWorldMissionText())}</div>` : ""}
@@ -683,7 +691,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V11.3 Tiger Strike • World Emergencies</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for any of the 100 Shared Story missions or a Special Operation. After Mission 100, the command network also supports drop-in Living World crisis squads, limited events, and server-verified response voting.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V11.4 Tiger Strike • Living Sanctuary</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for any of the 100 Shared Story missions or a Special Operation. Personal sanctuary progress remains safely separated from co-op inventory while squads continue to share real mission outcomes.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -742,7 +750,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.3 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.4 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){

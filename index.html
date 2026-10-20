@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V11.3 (World Emergencies)</title>
+  <title>Tiger Strike 🐅 — V11.4 (Living Sanctuary)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5224-world-emergencies">
+  <link rel="stylesheet" href="./squad-coop.css?v=5225-living-sanctuary">
 
   <style>
     :root{
@@ -2564,6 +2564,7 @@
 #postCampaignEndingCanvas{display:block;width:100%;height:auto;max-height:52dvh;border-radius:18px;border:2px solid rgba(192,132,252,.55);background:#052e16}
 .postCampaignEndingHero{padding:14px;border-radius:18px;background:linear-gradient(145deg,rgba(53,22,78,.85),rgba(5,15,29,.96));border:1px solid rgba(192,132,252,.50)}
 .postCampaignEndingProgress{height:8px;border-radius:999px;background:rgba(148,163,184,.22);overflow:hidden;margin-top:10px}.postCampaignEndingProgress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#a855f7,#22c55e)}
+.baseHqSanctuary{display:grid;gap:8px;margin-top:10px;padding:10px;border:1px solid rgba(74,222,128,.42);border-radius:16px;background:linear-gradient(145deg,rgba(6,78,59,.28),rgba(15,23,42,.86))}.baseHqSanctuary .baseHqWorldActions{display:flex;gap:7px;overflow-x:auto;padding-bottom:3px}.baseHqSanctuary .baseHqWorldActions button{min-width:max-content}.baseHqSanctuary .baseHqUpgrade{margin-top:0}
   </style>
 </head>
 
@@ -2571,9 +2572,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V11.3</span> <span class="tag">World Emergencies</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V11.4</span> <span class="tag">Living Sanctuary</span></div>
       <div class="sub">
-        V11.3 turns spreading danger into playable emergencies, adds limited rare world events, and lets two-player squads vote on their response before deployment.<br>
+        V11.4 turns the walkable Tiger Pens into a living sanctuary where captured tigers recover, rescued civilians become staff, facility upgrades help Story missions, and healthy residents can return to restored districts.<br>
         Settlement Siege, Escaped Alpha Transport, and Government Response Raid are real playable Solo crises with their own enemies, civilians, objectives, rewards, completion receipts, and safe return to the command network.<br>
         All 100 Story missions now share one authored map-truth system across Solo and Shared Story. Every future mission batch includes Mission Map Truth &amp; Parity in the same update—not as a later visual patch.<br>
         Mission 98 is the exact eighteen-tiger final swarm with no fake side objective. Mission 99 fields exactly fourteen temple guards and requires all four guardian seals activated in order. Mission 100 is the single 8,500-HP Ancient Tiger; defeating it or capturing it alive is valid before the final Story extraction.<br>
@@ -3538,7 +3539,7 @@
     <div class="modalTop"><div class="modalTitle">🎬 Story Finale</div><button class="ghost" type="button" onclick="closePostCampaignEnding()">Skip / Continue</button></div>
     <div class="modalBody">
       <div class="postCampaignEndingHero">
-        <div class="small">V11.3 • WORLD EMERGENCIES</div>
+        <div class="small">V11.4 • LIVING SANCTUARY</div>
         <div class="hudTitle" id="postCampaignEndingTitle">The World Changes</div>
         <div class="hudLine" id="postCampaignEndingRoute">Campaign ending</div>
       </div>
@@ -3553,7 +3554,7 @@
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V11.3 • World Emergencies</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V11.4 • Living Sanctuary</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3598,21 +3599,22 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5224-world-emergencies"></script>
-  <script src="./ammo-modes.js?v=5224-world-emergencies"></script>
-  <script src="./government-policy.js?v=5224-world-emergencies"></script>
-  <script src="./tiger-intelligence.js?v=5224-world-emergencies"></script>
-  <script src="./living-world.js?v=5224-world-emergencies"></script>
-  <script src="./mission-map-truth.js?v=5224-world-emergencies"></script>
-  <script src="./post-campaign.js?v=5224-world-emergencies"></script>
-  <script src="./game.js?v=5224-world-emergencies"></script>
-  <script src="./story-cinematics.js?v=5224-world-emergencies"></script>
-  <script src="./field-systems.js?v=5224-world-emergencies"></script>
-  <script src="./tutorial.js?v=5224-world-emergencies"></script>
-  <script src="./squad-motion.js?v=5224-world-emergencies"></script>
-  <script src="./shared-battlefield-renderer.js?v=5224-world-emergencies"></script>
-  <script src="./squad-coop.js?v=5224-world-emergencies"></script>
-  <script src="./extraction-qa.js?v=5224-world-emergencies"></script>
+  <script src="./extraction-geometry.js?v=5225-living-sanctuary"></script>
+  <script src="./ammo-modes.js?v=5225-living-sanctuary"></script>
+  <script src="./government-policy.js?v=5225-living-sanctuary"></script>
+  <script src="./tiger-intelligence.js?v=5225-living-sanctuary"></script>
+  <script src="./living-world.js?v=5225-living-sanctuary"></script>
+  <script src="./mission-map-truth.js?v=5225-living-sanctuary"></script>
+  <script src="./post-campaign.js?v=5225-living-sanctuary"></script>
+  <script src="./sanctuary.js?v=5225-living-sanctuary"></script>
+  <script src="./game.js?v=5225-living-sanctuary"></script>
+  <script src="./story-cinematics.js?v=5225-living-sanctuary"></script>
+  <script src="./field-systems.js?v=5225-living-sanctuary"></script>
+  <script src="./tutorial.js?v=5225-living-sanctuary"></script>
+  <script src="./squad-motion.js?v=5225-living-sanctuary"></script>
+  <script src="./shared-battlefield-renderer.js?v=5225-living-sanctuary"></script>
+  <script src="./squad-coop.js?v=5225-living-sanctuary"></script>
+  <script src="./extraction-qa.js?v=5225-living-sanctuary"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

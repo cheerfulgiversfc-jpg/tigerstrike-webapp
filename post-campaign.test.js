@@ -8,8 +8,8 @@ const game=fs.readFileSync("game.js","utf8");
 const html=fs.readFileSync("index.html","utf8");
 const squad=fs.readFileSync("squad-coop.js","utf8");
 
-test("V11.3 preserves the three real post-campaign crisis types",()=>{
-  assert.equal(postCampaign.VERSION,"11.3");
+test("V11.4 preserves the three real post-campaign crisis types",()=>{
+  assert.equal(postCampaign.VERSION,"11.4");
   assert.deepEqual(postCampaign.CRISIS_TYPES.map((row)=>row.id),[
     "settlement_siege","escaped_alpha","government_raid",
   ]);
@@ -157,9 +157,9 @@ test("squad response choices create different district consequences",()=>{
   assert.equal(contain.after.coopClears,1);
 });
 
-test("release labels and cache point at V11.3",()=>{
-  assert(html.includes("V11.3"));
-  assert(html.includes("5224-world-emergencies"));
-  assert(squad.includes("Tiger Strike V11.3"));
+test("release labels and cache point at V11.4",()=>{
+  assert(html.includes("V11.4"));
+  assert(html.includes("5225-living-sanctuary"));
+  assert(squad.includes("Tiger Strike V11.4"));
   assert.equal(/V10\.34/.test(squad),false);
 });

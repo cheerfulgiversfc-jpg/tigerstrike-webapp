@@ -8,10 +8,10 @@ const coop=fs.readFileSync("squad-coop.js","utf8");
 const css=fs.readFileSync("squad-coop.css","utf8");
 const html=fs.readFileSync("index.html","utf8");
 
-test("V11.3 keeps one reusable premium battlefield renderer",()=>{
+test("V11.4 keeps one reusable premium battlefield renderer",()=>{
   assert.equal(renderer.VERSION,"10.22");
   for(const name of ["drawSoldier","drawCivilian","drawTiger","drawBattlefieldFinish"])assert.equal(typeof renderer[name],"function");
-  assert(html.includes('shared-battlefield-renderer.js?v=5224-world-emergencies'));
+  assert(html.includes('shared-battlefield-renderer.js?v=5225-living-sanctuary'));
   assert(html.indexOf("shared-battlefield-renderer.js")<html.indexOf("squad-coop.js"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawSoldier"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawCivilian"));

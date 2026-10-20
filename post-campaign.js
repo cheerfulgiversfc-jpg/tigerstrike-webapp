@@ -5,7 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(root){
   "use strict";
 
-  const VERSION = "11.3";
+  const VERSION = "11.4";
   const CYCLE_MS = 12 * 60 * 60 * 1000;
   const RECOVERY_PROJECTS = Object.freeze([
     Object.freeze({ id:"field_clinic", icon:"🏥", name:"Field Clinic", desc:"Protects civilians and restores settlement safety.", baseCost:10000, maxLevel:3, safety:8, pressure:-3, bloodScent:0 }),
