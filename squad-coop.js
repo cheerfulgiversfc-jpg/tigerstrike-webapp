@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.2 • Living District Recovery");
+      ? `Tiger Strike V11.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V11.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.3 • World Emergencies");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -479,10 +479,13 @@
     document.querySelectorAll("#liveSquadOverlay [data-squad-role]").forEach((button)=>{
       button.classList.toggle("active", button.dataset.squadRole === mine?.role);
     });
+    const votePanel=$("squadCrisisVote");
+    if(votePanel){votePanel.innerHTML=crisisVoteHtml();bindCommandButtons();}
     const startButton = $("squadStartButton");
     if(startButton){
-      startButton.disabled = state.pending.has("start");
-      startButton.textContent = snapshot.memberCount < 2 ? (postCampaignActive() ? "Start Solo Now" : "Need Teammate") : "Start Mission";
+      const voteRequired=postCampaignActive()&&snapshot.memberCount===2&&!snapshot.crisisVote?.resolvedOptionId;
+      startButton.disabled = state.pending.has("start")||voteRequired;
+      startButton.textContent = voteRequired?"Both Players Must Vote":(snapshot.memberCount < 2 ? (postCampaignActive() ? "Start Solo Now" : "Need Teammate") : "Start Mission");
     }
   }
 
@@ -622,6 +625,19 @@
     return roles.map((role)=>`<button type="button" class="squadRole ${mine?.role === role.key ? "active" : ""}" ${waiting ? "" : "disabled"} data-squad-command="role" data-squad-role="${esc(role.key)}">${esc(role.label)}</button>`).join("");
   }
 
+  function crisisVoteHtml(){
+    const snap=state.snapshot,vote=snap?.crisisVote;
+    if(!postCampaignActive()||snap?.status!=="waiting"||!vote)return "";
+    const myVote=vote.votes?.[String(viewerId())]||"",resolved=vote.resolvedOptionId||"";
+    const ballots=(vote.options||[]).map((option)=>{
+      const voters=(snap.players||[]).filter((player)=>vote.votes?.[String(player.userId)]===option.id).map((player)=>player.name);
+      return `<button type="button" class="squadMissionChoice ${myVote===option.id?"active":""} ${resolved===option.id?"good":""}" data-squad-command="vote" data-squad-vote="${esc(option.id)}"><span>${esc(option.icon)} ${esc(option.label)}</span><small>${esc(option.desc)}</small><small>${voters.length?`Votes: ${esc(voters.join(", "))}`:"No votes yet"}</small></button>`;
+    }).join("");
+    const winner=(vote.options||[]).find((option)=>option.id===resolved);
+    const status=resolved?`✅ Squad plan: ${winner?.label||resolved} • ${vote.resolvedBy==="leader-tiebreak"?"Split vote—squad leader broke the tie":"Unanimous decision"}`:(snap.memberCount>1?"Both players must vote. If the vote splits, the squad leader's choice wins the tie.":"Choose a response or deploy now with Protect Civilians First as the safe default.");
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">🗳️ SERVER-VERIFIED SQUAD VOTE</div><div class="squadSectionTitle">Choose the emergency response</div><div class="squadDesc">${esc(status)}</div><div class="squadGearList">${ballots}</div></section>`;
+  }
+
   function lobbyHtml(){
     const snapshot = state.snapshot;
     if(!snapshot){
@@ -631,6 +647,7 @@
     }
     const full = snapshot.memberCount >= 2;
     const waiting = snapshot.status === "waiting";
+    const voteRequired=postCampaignActive()&&full&&!snapshot.crisisVote?.resolvedOptionId;
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
       <div class="squadHero">
@@ -639,12 +656,13 @@
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
+      <div id="squadCrisisVote">${crisisVoteHtml()}</div>
       ${livingWorldMissionText() ? `<div class="squadConnection">🌍 <b>${esc(snapshot.mission?.livingWorld?.districtName || "District")} deployment briefing:</b> ${esc(livingWorldMissionText())}</div>` : ""}
       <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : selectedOperation().title} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Either player can rescue an available civilian or attack a tiger. A following civilian belongs to that rescuer, and only one player can complete each tiger capture.<br><b>4.</b> Bring your followers to the Rescue House and tap Take to House. ${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Then clear the final threat and extract together to complete the Shared Story campaign." : `Then clear the Story threats and extract together. After both rewards are claimed, the same squad can continue to Mission ${Number(state.storyMissionLevel || 1) + 1}.`) : `${esc(missionMeta().objective || selectedOperation().short)} Special Operation progress stays separate from Story.`}</div></details>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
         ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
-        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" data-squad-command="start">${full ? "Start Mission" : (postCampaignActive() ? "Start Solo Now" : "Need Teammate")}</button>` : ""}
+        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" data-squad-command="start" ${voteRequired?"disabled":""}>${voteRequired?"Both Players Must Vote":(full ? "Start Mission" : (postCampaignActive() ? "Start Solo Now" : "Need Teammate"))}</button>` : ""}
         ${waiting && !snapshot.isHost ? `<button type="button" class="squadBtn good" disabled>Waiting for Leader</button>` : ""}
         ${waiting && full && snapshot.isHost ? `<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>` : ""}
         <button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>
@@ -665,7 +683,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V11.2 Tiger Strike • Living District Recovery</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for any of the 100 Shared Story missions or a Special Operation. After Mission 100, the command network also supports drop-in Living World crisis squads whose results change each player's district record.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V11.3 Tiger Strike • World Emergencies</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for any of the 100 Shared Story missions or a Special Operation. After Mission 100, the command network also supports drop-in Living World crisis squads, limited events, and server-verified response voting.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -724,7 +742,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.2 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes now update this server-owned co-op district record while preserving separate once-only player rewards.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.3 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -1076,6 +1094,7 @@
       "quick-match":()=>quickMatch(),
       join:()=>join(),
       role:()=>chooseRole(role),
+      vote:()=>voteResponse(button?.dataset?.squadVote||""),
       invite:()=>invite(),
       start:()=>start(),
       restart:()=>restart(),
@@ -1421,6 +1440,15 @@
       setMessage(`${error.message} Your role will be retried when the connection returns.`, true);
       sync().catch(()=>{});
     }
+  }
+
+  async function voteResponse(optionId){
+    if(!postCampaignActive()||state.snapshot?.status!=="waiting")return;
+    const option=(state.snapshot.crisisVote?.options||[]).find((row)=>row.id===optionId);
+    if(!option)return setMessage("That emergency response is unavailable.",true);
+    setMessage(`Voting for ${option.label}…`);
+    try{await api("vote",{optionId});setMessage(`Your vote for ${option.label} is saved on the squad server.`);}
+    catch(error){setMessage(error.message,true);}
   }
 
   async function invite(){

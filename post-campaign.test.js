@@ -8,8 +8,8 @@ const game=fs.readFileSync("game.js","utf8");
 const html=fs.readFileSync("index.html","utf8");
 const squad=fs.readFileSync("squad-coop.js","utf8");
 
-test("V11.2 exposes exactly three real post-campaign crisis types",()=>{
-  assert.equal(postCampaign.VERSION,"11.2");
+test("V11.3 preserves the three real post-campaign crisis types",()=>{
+  assert.equal(postCampaign.VERSION,"11.3");
   assert.deepEqual(postCampaign.CRISIS_TYPES.map((row)=>row.id),[
     "settlement_siege","escaped_alpha","government_raid",
   ]);
@@ -111,6 +111,9 @@ test("high-risk crises spread once per cycle and recovery defenses reduce the da
   const spread=postCampaign.advanceCrisisSpread(living,livingWorld.DISTRICTS,recovery,91);
   assert.equal(spread.applied,true);
   assert(spread.events.length>=1);
+  assert.equal(spread.emergencies.length,spread.events.length);
+  assert(spread.emergencies.every((event)=>event.kind==="emergency"&&event.rewardBonusCash===5000));
+  assert(postCampaign.activeEmergencies(spread.recovery,91).length>=1);
   const defendedRecovery=postCampaign.normalizeRecovery({lastCycle:90},livingWorld.DISTRICTS);
   const targetId=spread.events[0].targetId;
   for(const project of postCampaign.RECOVERY_PROJECTS) defendedRecovery.projects[targetId][project.id]=project.maxLevel;
@@ -123,9 +126,40 @@ test("high-risk crises spread once per cycle and recovery defenses reduce the da
   assert.equal(repeated.reason,"already-applied");
 });
 
-test("release labels and cache point at V11.2",()=>{
-  assert(html.includes("V11.2"));
-  assert(html.includes("5223-living-district-recovery"));
-  assert(squad.includes("Tiger Strike V11.2"));
+test("rare events are deterministic, limited, playable, and removable after completion",()=>{
+  const living=livingWorld.defaultState();
+  const rare=postCampaign.rareEventForCycle(livingWorld.DISTRICTS,living,100);
+  assert(rare);
+  assert.equal(rare.kind,"rare");
+  assert(rare.rewardBonusCash>=10000);
+  assert.equal(postCampaign.rareEventForCycle(livingWorld.DISTRICTS,living,102),null);
+  const changed=livingWorld.defaultState();
+  for(const district of Object.values(changed.districts))district.tigerPressure=100-district.tigerPressure;
+  assert.equal(postCampaign.rareEventForCycle(livingWorld.DISTRICTS,changed,100).id,rare.id,"the client and squad server must derive the same rare event");
+  const operation=postCampaign.operationForEvent(rare);
+  assert.equal(operation.eventId,rare.id);
+  assert(postCampaign.crisisById(operation.typeId));
+  const recovery=postCampaign.resolveWorldEvent({},rare.id,12345);
+  assert.equal(recovery.resolvedEvents[rare.id],12345);
+});
+
+test("squad response choices create different district consequences",()=>{
+  const living=livingWorld.defaultState();
+  living.districts.river_gate.bloodScent=50;
+  const base={runId:"A",typeId:"settlement_siege",districtId:"river_gate",districtName:"River Gate"};
+  const rescue=postCampaign.applyCrisisDistrictOutcome(living,{...base,responseId:"rescue_first"},{rescues:2});
+  const humane=postCampaign.applyCrisisDistrictOutcome(living,{...base,runId:"B",responseId:"humane_route"},{rescues:2});
+  const contain=postCampaign.applyCrisisDistrictOutcome(living,{...base,runId:"C",responseId:"contain_pack"},{rescues:2,coop:true});
+  assert(rescue.after.settlementSafety>contain.after.settlementSafety);
+  assert(humane.after.bloodScent<rescue.after.bloodScent);
+  assert(contain.after.tigerPressure<rescue.after.tigerPressure);
+  assert.equal(rescue.after.soloClears,1);
+  assert.equal(contain.after.coopClears,1);
+});
+
+test("release labels and cache point at V11.3",()=>{
+  assert(html.includes("V11.3"));
+  assert(html.includes("5224-world-emergencies"));
+  assert(squad.includes("Tiger Strike V11.3"));
   assert.equal(/V10\.34/.test(squad),false);
 });

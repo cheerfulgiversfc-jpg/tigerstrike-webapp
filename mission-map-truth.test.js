@@ -7,7 +7,7 @@ assert.equal(truth.VERSION, "10.34");
 assert.equal(truth.MAX_MISSION, 100);
 assert.deepEqual(truth.validate(), [], "all 100 missions must have valid authored map truth");
 assert.equal(Object.keys(truth.MISSIONS).length, 100, "all 100 Story missions are covered");
-assert.equal(truth.get(101), null, "V11.2 must not invent Mission 101");
+assert.equal(truth.get(101), null, "V11.3 must not invent Mission 101");
 
 for(let level=1; level<=100; level++){
   const spec = truth.get(level);
@@ -193,6 +193,6 @@ assert(server.includes('require("../../mission-map-truth")'), "Live Squad uses t
 assert(server.includes("mapTruthLandmarks:mission.mapTruthLandmarks || []"), "Live Squad sends authored landmarks to both phones");
 assert(coop.includes("drawSharedMissionTruth(ctx,snap)"), "Live Squad renders the shared mission landmarks");
 assert(game.includes("missionMapTruthHazardTick"), "Solo Mission 37 fire is a real gameplay hazard");
-assert(html.includes("mission-map-truth.js?v=5223-living-district-recovery"), "mission truth loads before gameplay");
+assert(html.includes("mission-map-truth.js?v=5224-world-emergencies"), "mission truth loads before gameplay");
 
 console.log("mission-map-truth tests passed");

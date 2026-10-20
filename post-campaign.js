@@ -5,12 +5,27 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(root){
   "use strict";
 
-  const VERSION = "11.2";
+  const VERSION = "11.3";
   const CYCLE_MS = 12 * 60 * 60 * 1000;
   const RECOVERY_PROJECTS = Object.freeze([
     Object.freeze({ id:"field_clinic", icon:"🏥", name:"Field Clinic", desc:"Protects civilians and restores settlement safety.", baseCost:10000, maxLevel:3, safety:8, pressure:-3, bloodScent:0 }),
     Object.freeze({ id:"ranger_watch", icon:"🗼", name:"Ranger Watch", desc:"Detects roaming packs before they reach the district.", baseCost:15000, maxLevel:3, safety:5, pressure:-8, bloodScent:-2 }),
     Object.freeze({ id:"conservation_corridor", icon:"🌿", name:"Conservation Corridor", desc:"Moves tigers away from settlements and clears blood scent.", baseCost:20000, maxLevel:3, safety:4, pressure:-6, bloodScent:-10 }),
+  ]);
+  const RESPONSE_OPTIONS = Object.freeze([
+    Object.freeze({ id:"rescue_first", icon:"🛟", label:"Protect Civilians First", desc:"Adds emergency evacuation support and gives the district extra safety after success.", rewardBonusCash:2500, safetyBonus:5, pressureBonus:0, bloodBonus:0 }),
+    Object.freeze({ id:"contain_pack", icon:"🐅", label:"Contain the Tiger Migration", desc:"Prioritizes stopping the pack before it spreads again and grants stronger pressure relief.", rewardBonusCash:3500, safetyBonus:0, pressureBonus:-5, bloodBonus:0 }),
+    Object.freeze({ id:"humane_route", icon:"🌿", label:"Use the Humane Route", desc:"Prioritizes nonlethal control and conservation, reducing blood scent after success.", rewardBonusCash:4500, safetyBonus:2, pressureBonus:-2, bloodBonus:-7 }),
+  ]);
+  const EMERGENCY_TYPES = Object.freeze([
+    Object.freeze({ id:"civilian_exodus", icon:"🚐", name:"Civilian Exodus", crisisTypeId:"settlement_siege", desc:"Families are fleeing the spreading tiger front. Reach the new district and secure the evacuation route." }),
+    Object.freeze({ id:"alpha_migration", icon:"🐾", name:"Alpha Migration", crisisTypeId:"escaped_alpha", desc:"A migrating Alpha followed the spreading pressure into a neighboring district and must be recovered alive." }),
+    Object.freeze({ id:"response_blockade", icon:"🚧", name:"Response Blockade", crisisTypeId:"government_raid", desc:"A government blockade trapped civilians between armed units and the spreading pack." }),
+  ]);
+  const RARE_EVENT_TYPES = Object.freeze([
+    Object.freeze({ id:"white_tiger_sighting", icon:"🐯", name:"White Tiger Sighting", crisisTypeId:"escaped_alpha", desc:"A rare pale Alpha has appeared along a conservation route. Capture it alive before it vanishes.", rewardBonusCash:14000 }),
+    Object.freeze({ id:"sanctuary_airdrop", icon:"🪂", name:"Sanctuary Medical Airdrop", crisisTypeId:"settlement_siege", desc:"A sanctuary aircraft dropped emergency medicine inside a besieged settlement. Rescue the civilians and recover the route.", rewardBonusCash:10000 }),
+    Object.freeze({ id:"rogue_unit_cache", icon:"📡", name:"Abandoned Response Cache", crisisTypeId:"government_raid", desc:"A vanished response team left rare field equipment inside an active tiger corridor.", rewardBonusCash:12000 }),
   ]);
   const CRISIS_TYPES = Object.freeze([
     Object.freeze({
@@ -55,6 +70,9 @@
   const clamp=(value,min,max)=>Math.max(min,Math.min(max,Number(value)||0));
   const clone=(value)=>JSON.parse(JSON.stringify(value||{}));
   const projectById=(id)=>RECOVERY_PROJECTS.find((row)=>row.id===String(id||""))||null;
+  const responseById=(id)=>RESPONSE_OPTIONS.find((row)=>row.id===String(id||""))||null;
+  const emergencyTypeById=(id)=>EMERGENCY_TYPES.find((row)=>row.id===String(id||""))||null;
+  const rareEventTypeById=(id)=>RARE_EVENT_TYPES.find((row)=>row.id===String(id||""))||null;
   function normalizeRecovery(raw={},districts=[]){
     const src=raw&&typeof raw==="object"?raw:{};
     const projects={};
@@ -71,6 +89,59 @@
       lastCycle:Math.max(0,Math.floor(Number(src.lastCycle||0))),
       spreadReceipts:src.spreadReceipts&&typeof src.spreadReceipts==="object"?{...src.spreadReceipts}:{},
       spreadEvents:Array.isArray(src.spreadEvents)?src.spreadEvents.slice(-10):[],
+      emergencies:Array.isArray(src.emergencies)?src.emergencies.filter((row)=>row&&row.id).slice(-12):[],
+      resolvedEvents:src.resolvedEvents&&typeof src.resolvedEvents==="object"?{...src.resolvedEvents}:{},
+    };
+  }
+  function eventMissionLevel(district,seed=""){
+    const span=Math.max(1,Number(district?.maxMission||1)-Number(district?.minMission||1)+1);
+    return Math.max(1,Math.min(100,Number(district?.minMission||1)+(hash(seed)%span)));
+  }
+  function emergencyFromSpread(event,districts=[]){
+    const target=normalizeDistricts(districts).find((row)=>row.id===event?.targetId);
+    if(!target)return null;
+    const type=EMERGENCY_TYPES[hash(`${event.cycle}:${event.sourceId}:${event.targetId}`)%EMERGENCY_TYPES.length];
+    return {
+      id:`EMG-${event.cycle}-${type.id}-${target.id}`,
+      kind:"emergency",typeId:type.id,name:type.name,icon:type.icon,desc:type.desc,crisisTypeId:type.crisisTypeId,
+      districtId:target.id,districtName:target.name,sourceId:event.sourceId,sourceName:event.sourceName,
+      missionLevel:eventMissionLevel(target,`${event.cycle}:${type.id}:${target.id}`),cycle:event.cycle,expiresCycle:event.cycle+2,rewardBonusCash:5000,
+    };
+  }
+  function activeEmergencies(rawRecovery,currentCycle=cycleKey()){
+    const recovery=rawRecovery&&typeof rawRecovery==="object"?rawRecovery:{};
+    const cycle=Math.max(0,Math.floor(Number(currentCycle||0)));
+    return (Array.isArray(recovery.emergencies)?recovery.emergencies:[]).filter((event)=>event&&Number(event.cycle||0)<=cycle&&Number(event.expiresCycle||0)>=cycle&&!recovery.resolvedEvents?.[event.id]);
+  }
+  function resolveWorldEvent(rawRecovery,eventId,at=Date.now()){
+    const recovery={...(rawRecovery||{}),resolvedEvents:{...(rawRecovery?.resolvedEvents||{})}};
+    const id=String(eventId||"");if(!id)return recovery;
+    recovery.resolvedEvents[id]=Math.max(0,Number(at||Date.now()));recovery.resolvedEvents=Object.fromEntries(Object.entries(recovery.resolvedEvents).slice(-40));return recovery;
+  }
+  function rareEventForCycle(districts,livingState,currentCycle=cycleKey()){
+    const defs=normalizeDistricts(districts),cycle=Math.max(0,Math.floor(Number(currentCycle||0)));
+    if(!defs.length)return null;
+    const anchor=cycle-(cycle%5);
+    if(cycle-anchor>1)return null;
+    const type=RARE_EVENT_TYPES[hash(`rare:${anchor}`)%RARE_EVENT_TYPES.length];
+    // Rare-event identity is global for the cycle so a Solo command map and
+    // the server-owned Shared Living World always agree on the same room.
+    const ranked=defs.map((district)=>({district,score:hash(`${anchor}:${district.id}`)})).sort((a,b)=>b.score-a.score);
+    const district=ranked[hash(`${anchor}:${type.id}`)%Math.min(6,ranked.length)].district;
+    return {
+      id:`RARE-${anchor}-${type.id}-${district.id}`,
+      kind:"rare",typeId:type.id,name:type.name,icon:type.icon,desc:type.desc,crisisTypeId:type.crisisTypeId,
+      districtId:district.id,districtName:district.name,missionLevel:eventMissionLevel(district,`${anchor}:${type.id}`),cycle:anchor,expiresCycle:anchor+1,rewardBonusCash:type.rewardBonusCash,
+    };
+  }
+  function responseOptionsForOperation(){ return RESPONSE_OPTIONS.map((row)=>({...row})); }
+  function operationForEvent(event){
+    if(!event)return null;
+    const crisis=crisisById(event.crisisTypeId),runId=String(event.id||"");
+    if(!crisis||!runId)return null;
+    return {
+      typeId:crisis.id,launchType:crisis.coopLaunchType,districtId:String(event.districtId||""),districtName:String(event.districtName||""),missionLevel:Math.max(1,Math.min(100,Math.floor(Number(event.missionLevel||1)))),cycle:Math.max(0,Math.floor(Number(event.cycle||0))),runId,
+      eventId:runId,eventKind:String(event.kind||"emergency"),eventTypeId:String(event.typeId||""),eventName:String(event.name||crisis.name),eventIcon:String(event.icon||crisis.icon),eventDescription:String(event.desc||crisis.desc),rewardBonusCash:Math.max(0,Math.floor(Number(event.rewardBonusCash||0))),responseOptions:responseOptionsForOperation(event),
     };
   }
   function recoveryCost(projectId,currentLevel=0){
@@ -115,12 +186,15 @@
     if(living.receipts[receipt])return {applied:false,reason:"duplicate",state:living,before:{...district},after:{...district}};
     const rescues=Math.max(0,Math.floor(Number(stats.rescues??stats.evac??0))),captures=Math.max(0,Math.floor(Number(stats.captures||0))),kills=Math.max(0,Math.floor(Number(stats.kills||0))),lost=Math.max(0,Math.floor(Number(stats.civiliansLost??stats.civDead??0)));
     const profile=operation.typeId==="escaped_alpha"?{pressure:-14,safety:6,blood:-6}:operation.typeId==="government_raid"?{pressure:-9,safety:9,blood:-2}:{pressure:-11,safety:12,blood:-3};
+    const response=responseById(stats.responseId||operation.responseId);
     const before={...district};
     const after={...before,
-      tigerPressure:clamp(Math.round(Number(before.tigerPressure||0)+profile.pressure-captures*2+kills+lost*4),5,96),
-      settlementSafety:clamp(Math.round(Number(before.settlementSafety||0)+profile.safety+rescues-lost*5),0,100),
-      bloodScent:clamp(Math.round(Number(before.bloodScent||0)+profile.blood+kills*5-captures*2),0,100),
+      tigerPressure:clamp(Math.round(Number(before.tigerPressure||0)+profile.pressure+Number(response?.pressureBonus||0)-captures*2+kills+lost*4),5,96),
+      settlementSafety:clamp(Math.round(Number(before.settlementSafety||0)+profile.safety+Number(response?.safetyBonus||0)+rescues-lost*5),0,100),
+      bloodScent:clamp(Math.round(Number(before.bloodScent||0)+profile.blood+Number(response?.bloodBonus||0)+kills*5-captures*2),0,100),
       clears:Math.max(0,Number(before.clears||0))+1,
+      soloClears:Math.max(0,Number(before.soloClears||0))+(stats.coop?0:1),
+      coopClears:Math.max(0,Number(before.coopClears||0))+(stats.coop?1:0),
       rescues:Math.max(0,Number(before.rescues||0))+rescues,
       captures:Math.max(0,Number(before.captures||0))+captures,
       kills:Math.max(0,Number(before.kills||0))+kills,
@@ -151,9 +225,10 @@
       living.districts[target.id]=after;
       events.push({cycle,sourceId:source.definition.id,sourceName:source.definition.name,targetId:target.id,targetName:target.name,pressureRise,bloodRise,safetyLoss,shield:targetRecovery.spreadShield});
     }
-    recovery.lastCycle=cycle;recovery.spreadReceipts[receipt]=Date.now();recovery.spreadReceipts=Object.fromEntries(Object.entries(recovery.spreadReceipts).slice(-24));recovery.spreadEvents=[...recovery.spreadEvents,...events].slice(-10);
+    const emergencies=events.map((event)=>emergencyFromSpread(event,defs)).filter(Boolean);
+    recovery.lastCycle=cycle;recovery.spreadReceipts[receipt]=Date.now();recovery.spreadReceipts=Object.fromEntries(Object.entries(recovery.spreadReceipts).slice(-24));recovery.spreadEvents=[...recovery.spreadEvents,...events].slice(-10);recovery.emergencies=[...(recovery.emergencies||[]),...emergencies].filter((event,index,rows)=>rows.findIndex((row)=>row.id===event.id)===index).slice(-12);
     if(events.length){living.headline=`Crisis spread: ${events.map((event)=>`${event.sourceName} → ${event.targetName}`).join(" • ")}.`;living.lastUpdatedAt=Date.now();}
-    return {applied:events.length>0,reason:events.length?"spread":"stable",state:living,recovery,events};
+    return {applied:events.length>0,reason:events.length?"spread":"stable",state:living,recovery,events,emergencies};
   }
 
   function cycleKey(now=Date.now()){
@@ -264,5 +339,5 @@
   root.openPostCampaignEnding=openEnding;
   root.replayPostCampaignEnding=replayEnding;
   root.closePostCampaignEnding=closeEnding;
-  return Object.freeze({VERSION,CYCLE_MS,CRISIS_TYPES,RECOVERY_PROJECTS,ENDING_SCENES,ENDING_DURATION,crisisById,crisisByLaunchType,isCrisisLaunchType,difficultyForPlayers,projectById,normalizeRecovery,recoveryCost,recoveryStatus,fundRecoveryProject,applyCrisisDistrictOutcome,advanceCrisisSpread,cycleKey,crisisBoard,applyCrisisProfile,sceneFor,drawEndingFrame,openEnding,replayEnding,closeEnding});
+  return Object.freeze({VERSION,CYCLE_MS,CRISIS_TYPES,RECOVERY_PROJECTS,RESPONSE_OPTIONS,EMERGENCY_TYPES,RARE_EVENT_TYPES,ENDING_SCENES,ENDING_DURATION,crisisById,crisisByLaunchType,isCrisisLaunchType,difficultyForPlayers,projectById,responseById,emergencyTypeById,rareEventTypeById,normalizeRecovery,recoveryCost,recoveryStatus,fundRecoveryProject,eventMissionLevel,emergencyFromSpread,activeEmergencies,resolveWorldEvent,rareEventForCycle,responseOptionsForOperation,operationForEvent,applyCrisisDistrictOutcome,advanceCrisisSpread,cycleKey,crisisBoard,applyCrisisProfile,sceneFor,drawEndingFrame,openEnding,replayEnding,closeEnding});
 });

@@ -2,6 +2,7 @@ const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const test=require("node:test");
 const postCampaign=require("./post-campaign");
+const livingWorld=require("./living-world");
 const squad=require("./api/_lib/squad-session");
 
 const server=fs.readFileSync("api/_lib/squad-session.js","utf8");
@@ -69,6 +70,55 @@ test("drop-in, drop-out, reconnect, and once-only reward protections are wired",
   assert(client.includes("Invite Teammate During Crisis"));
   assert(client.includes("openLiveSquadPostCampaignCrisis"));
   assert(game.includes("function recordPostCampaignCoopClaim("));
+});
+
+test("two-player crisis deployment requires both server ballots and the leader breaks a split vote",async()=>{
+  const host={id:91007801,first_name:"Vote Host"};
+  const teammate={id:91007802,first_name:"Vote Teammate"};
+  const crisis=session("settlement_siege","river_gate",1,1).postCampaignOperation;
+  let room=await squad.createSession(host,{launchType:"crisis-settlement-siege",postCampaignOperation:crisis});
+  room=await squad.joinSession(room.code,teammate);
+  await assert.rejects(()=>squad.applyAction(room,host,"start"),/Both players must vote/);
+  room=await squad.applyAction(room,host,"vote",{optionId:"humane_route"});
+  assert.equal(room.crisisVote.resolvedOptionId,"");
+  room=await squad.applyAction(room,teammate,"vote",{optionId:"contain_pack"});
+  assert.equal(room.crisisVote.resolvedOptionId,"humane_route");
+  assert.equal(room.crisisVote.resolvedBy,"leader-tiebreak");
+  room=await squad.applyAction(room,host,"start");
+  const snapshot=await squad.buildSnapshot(room,host.id);
+  assert.equal(snapshot.status,"active");
+  assert.equal(snapshot.postCampaignOperation.responseId,"humane_route");
+  assert(snapshot.mission.dangerNote.includes("Use the Humane Route"));
+});
+
+test("a teammate joining a waiting solo crisis reopens voting for both players",async()=>{
+  const host={id:91007811,first_name:"Early Voter"};
+  const teammate={id:91007812,first_name:"Late Joiner"};
+  const crisis=session("escaped_alpha","ancient_guardian_core",93,1).postCampaignOperation;
+  let room=await squad.createSession(host,{launchType:"crisis-escaped-alpha",postCampaignOperation:crisis});
+  room=await squad.applyAction(room,host,"vote",{optionId:"rescue_first"});
+  assert.equal(room.crisisVote.resolvedOptionId,"rescue_first");
+  room=await squad.joinSession(room.code,teammate);
+  assert.equal(room.crisisVote.resolvedOptionId,"");
+  await assert.rejects(()=>squad.applyAction(room,host,"start"),/Both players must vote/);
+});
+
+test("timed event rooms accept only current identities and derive their bonuses on the server",async()=>{
+  const host={id:91007821,first_name:"Event Host"};
+  const cycle=postCampaign.cycleKey(Date.now());
+  const rare=postCampaign.rareEventForCycle(livingWorld.DISTRICTS,livingWorld.defaultState(),cycle);
+  if(rare){
+    const operation={...postCampaign.operationForEvent(rare),rewardBonusCash:99999999};
+    const room=await squad.createSession(host,{launchType:operation.launchType,postCampaignOperation:operation});
+    assert.equal(room.postCampaignOperation.eventId,rare.id);
+    assert.equal(room.postCampaignOperation.rewardBonusCash,rare.rewardBonusCash);
+    await assert.rejects(()=>squad.createSession({...host,id:91007822},{launchType:operation.launchType,postCampaignOperation:{...operation,eventId:`${operation.eventId}-forged`,runId:`${operation.runId}-forged`}}),/no longer available/);
+  }
+  const emergencyType=postCampaign.EMERGENCY_TYPES[0],district=livingWorld.DISTRICTS[0];
+  const event={id:`EMG-${cycle}-${emergencyType.id}-${district.id}`,kind:"emergency",typeId:emergencyType.id,name:emergencyType.name,icon:emergencyType.icon,desc:emergencyType.desc,crisisTypeId:emergencyType.crisisTypeId,districtId:district.id,districtName:district.name,missionLevel:district.minMission,cycle,expiresCycle:cycle+2,rewardBonusCash:99999999};
+  const operation=postCampaign.operationForEvent(event);
+  const room=await squad.createSession({...host,id:91007823},{launchType:operation.launchType,postCampaignOperation:operation});
+  assert.equal(room.postCampaignOperation.rewardBonusCash,5000);
 });
 
 test("a real crisis room starts solo, accepts a live teammate, and scales back without failing",async()=>{

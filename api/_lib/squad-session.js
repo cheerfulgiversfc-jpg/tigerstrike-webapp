@@ -2323,6 +2323,14 @@ function normalizePostCampaignOperation(raw, launchType=""){
   if(!type) return null;
   const district = livingWorld.districtById(cleanText(raw?.districtId, 40));
   if(!district) return null;
+  const requestedEventKind=cleanText(raw?.eventKind,20).toLowerCase();
+  const eventKind=["emergency","rare"].includes(requestedEventKind)?requestedEventKind:"crisis";
+  const eventType=eventKind==="emergency"?postCampaign.emergencyTypeById(raw?.eventTypeId):(eventKind==="rare"?postCampaign.rareEventTypeById(raw?.eventTypeId):null);
+  if(eventKind!=="crisis"&&(!eventType||eventType.crisisTypeId!==type.id))return null;
+  const eventCycle=Math.max(0,Math.floor(Number(raw?.cycle||0)));
+  const expectedEventId=eventKind==="crisis"?"":`${eventKind==="rare"?"RARE":"EMG"}-${eventCycle}-${eventType.id}-${district.id}`;
+  if(eventKind!=="crisis"&&(cleanText(raw?.eventId,120)!==expectedEventId||cleanText(raw?.runId,120)!==expectedEventId))return null;
+  const response=postCampaign.responseById(raw?.responseId);
   return {
     typeId:type.id,
     launchType:type.coopLaunchType,
@@ -2331,7 +2339,45 @@ function normalizePostCampaignOperation(raw, launchType=""){
     missionLevel:clamp(Math.floor(Number(raw?.missionLevel || district.minMission || 1)), district.minMission, district.maxMission),
     cycle:Math.max(0, Math.floor(Number(raw?.cycle || postCampaign.cycleKey(nowMs())))),
     runId:cleanText(raw?.runId || `POST-${postCampaign.cycleKey(nowMs())}-${type.id}-${district.id}`, 100),
+    eventId:cleanText(raw?.eventId,120),
+    eventKind:eventType?eventKind:"crisis",
+    eventTypeId:eventType?.id||"",
+    eventName:eventType?.name||type.name,
+    eventIcon:eventType?.icon||type.icon,
+    eventDescription:eventType?.desc||type.desc,
+    rewardBonusCash:eventKind==="rare"?Math.max(0,Math.floor(Number(eventType?.rewardBonusCash||0))):(eventKind==="emergency"?5000:0),
+    responseId:response?.id||"",
   };
+}
+
+function normalizeCrisisVote(raw,sessionLike={}){
+  if(!postCampaignSession(sessionLike))return null;
+  const memberIds=Array.isArray(sessionLike.memberIds)?sessionLike.memberIds.map(userIdOf):[];
+  const votes={};
+  for(const memberId of memberIds){
+    const option=postCampaign.responseById(raw?.votes?.[String(memberId)]||raw?.votes?.[memberId]);
+    if(option)votes[String(memberId)]=option.id;
+  }
+  const resolved=postCampaign.responseById(raw?.resolvedOptionId||sessionLike.postCampaignOperation?.responseId);
+  return {votes,resolvedOptionId:resolved?.id||"",resolvedAt:Math.max(0,Number(raw?.resolvedAt||0)),resolvedBy:cleanText(raw?.resolvedBy,30),options:postCampaign.responseOptionsForOperation(sessionLike.postCampaignOperation)};
+}
+
+function resolveCrisisVote(session){
+  if(!postCampaignSession(session))return session;
+  session.crisisVote=normalizeCrisisVote(session.crisisVote,session);
+  const ids=session.memberIds.map(String),votes=ids.map((id)=>session.crisisVote.votes[id]).filter(Boolean);
+  if(votes.length<ids.length)return session;
+  const counts=Object.fromEntries(postCampaign.RESPONSE_OPTIONS.map((option)=>[option.id,0]));
+  votes.forEach((id)=>{if(Object.prototype.hasOwnProperty.call(counts,id))counts[id]+=1;});
+  const hostVote=session.crisisVote.votes[String(session.hostId)];
+  let winner=hostVote||postCampaign.RESPONSE_OPTIONS[0].id,maxVotes=-1;
+  for(const option of postCampaign.RESPONSE_OPTIONS){
+    const count=Number(counts[option.id]||0);
+    if(count>maxVotes||(count===maxVotes&&option.id===hostVote)){winner=option.id;maxVotes=count;}
+  }
+  session.crisisVote.resolvedOptionId=winner;session.crisisVote.resolvedAt=nowMs();session.crisisVote.resolvedBy=votes.every((vote)=>vote===winner)?"unanimous":"leader-tiebreak";
+  if(session.postCampaignOperation)session.postCampaignOperation.responseId=winner;
+  return session;
 }
 
 function normalizeLivingWorldMission(raw){
@@ -2466,6 +2512,7 @@ function postCampaignMissionDefinition(session){
   const base = EXPANDED_SHARED_STORY_MISSIONS[operation.missionLevel] || EXPANDED_SHARED_STORY_MISSIONS[100];
   const players = Math.max(1, Math.min(2, Number(session?.memberIds?.length || 1)));
   const difficulty = postCampaign.difficultyForPlayers(players);
+  const response=postCampaign.responseById(operation.responseId||session?.crisisVote?.resolvedOptionId);
   const sx = Number(base.world.width || 4800) / WORLD.width;
   const sy = Number(base.world.height || 2800) / WORLD.height;
   const point = (row)=>Object.freeze({ ...row, x:Math.round(row.x * sx), y:Math.round(row.y * sy) });
@@ -2489,8 +2536,8 @@ function postCampaignMissionDefinition(session){
     ...base,
     level:operation.missionLevel,
     chapter:11,
-    chapterName:`${operation.districtName} • ${type.name}`,
-    title:type.name,
+    chapterName:`${operation.districtName} • ${operation.eventName||type.name}`,
+    title:operation.eventName||type.name,
     objective:type.id === "government_raid"
       ? "Rescue every civilian, clear the five tigers and four government response units, then extract."
       : type.objective,
@@ -2510,8 +2557,8 @@ function postCampaignMissionDefinition(session){
     difficultyLabel:difficulty.label,
     tigerDamageMultiplier:difficulty.tigerDamageMultiplier,
     dangerNote:players === 2
-      ? "Two-player scaling is active. Enemies have more endurance, but both soldiers can rescue and fight at the same time."
-      : "Solo scaling is active. You can invite one teammate during this crisis without restarting it.",
+      ? `Two-player scaling is active. ${response?`Squad response: ${response.label}. `:""}Enemies have more endurance, but both soldiers can rescue and fight at the same time.`
+      : `Solo scaling is active. ${response?`Response plan: ${response.label}. `:""}You can invite one teammate during this crisis without restarting it.`,
   };
 }
 
@@ -2566,6 +2613,7 @@ function normalizeSession(raw){
     ? "live-squad"
     : requestedLaunchType;
   const postCampaignOperation = normalizePostCampaignOperation(raw.postCampaignOperation, launchType);
+  const sessionLike={...raw,launchType,memberIds,hostId,postCampaignOperation};
   return {
     version:2,
     code,
@@ -2588,6 +2636,7 @@ function normalizeSession(raw){
     survivalIntermissionUntil:Math.max(0, Number(raw.survivalIntermissionUntil || 0)),
     livingWorldMission:normalizeLivingWorldMission(raw.livingWorldMission),
     postCampaignOperation,
+    crisisVote:normalizeCrisisVote(raw.crisisVote,sessionLike),
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -2852,6 +2901,15 @@ async function createSession(user, opts={}){
   const storyMissionLevel = launchType === "shared-story" ? requestedStoryMissionLevel : 0;
   const postCampaignOperation = normalizePostCampaignOperation(opts?.postCampaignOperation, launchType);
   if(postCampaignSession({ launchType }) && !postCampaignOperation) throw new Error("This Living World crisis is no longer available. Reopen the command network.");
+  if(postCampaignOperation?.eventKind==="rare"){
+    const currentCycle=postCampaign.cycleKey(nowMs());
+    const currentRare=postCampaign.rareEventForCycle(livingWorld.DISTRICTS,hostProfile.livingWorld,currentCycle);
+    if(!currentRare||currentRare.id!==postCampaignOperation.eventId)throw new Error("That rare event expired. Reopen the command network.");
+  }
+  if(postCampaignOperation?.eventKind==="emergency"){
+    const currentCycle=postCampaign.cycleKey(nowMs()),eventCycle=Number(postCampaignOperation.cycle||0);
+    if(currentCycle<eventCycle||currentCycle>eventCycle+2)throw new Error("That spreading emergency expired. Reopen the command network.");
+  }
   let session = await writeSession({
     code,
     hostId:uid,
@@ -2865,6 +2923,7 @@ async function createSession(user, opts={}){
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
     postCampaignOperation,
+    crisisVote:postCampaignSession({launchType})?normalizeCrisisVote(null,{launchType,memberIds:[uid],hostId:uid,postCampaignOperation}):null,
     livingWorldMission:launchType === "shared-story" && storyMissionLevel <= livingWorld.PILOT_MAX_MISSION
       ? livingWorld.missionConsequences(hostProfile.livingWorld, storyMissionLevel, { playerCount:2 })
       : null,
@@ -2887,6 +2946,13 @@ async function joinSession(codeValue, user){
     if(session.memberIds.length >= 2) throw new Error("This squad already has two players.");
     session.memberIds.push(uid);
     session.departedIds = session.departedIds.filter((id)=>id !== uid);
+    if(postCampaignSession(session)&&session.status==="waiting"){
+      session.crisisVote=normalizeCrisisVote(session.crisisVote,session);
+      session.crisisVote.resolvedOptionId="";
+      session.crisisVote.resolvedAt=0;
+      session.crisisVote.resolvedBy="";
+      if(session.postCampaignOperation)session.postCampaignOperation.responseId="";
+    }
     await writeSession(session);
     const teammateId = session.memberIds.find((id)=>id !== uid);
     const teammate = await readPlayer(code, teammateId, teammateId, 0);
@@ -3171,6 +3237,7 @@ async function buildSnapshot(session, viewerId){
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
     postCampaignOperation:session.postCampaignOperation,
+    crisisVote:session.crisisVote,
     matchmaking:session.matchmaking,
     hostId:session.hostId,
     viewerId:userIdOf(viewerId),
@@ -3246,7 +3313,7 @@ async function buildSnapshot(session, viewerId){
     capturedIds:derived.capturedIds,
     checkpointCompletedIds:derived.checkpointCompletedIds,
     objectivesReady:derived.objectivesReady,
-    allRewardsClaimed:players.length === session.memberIds.length && players.length >= 1 && players.every((player)=>player.rewardClaimed),
+    allRewardsClaimed:players.length === session.memberIds.length && players.length === 2 && players.every((player)=>player.rewardClaimed),
     nextStoryMissionLevel:session.launchType === "shared-story" && EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0) + 1]
       ? Number(session.storyMissionLevel || 0) + 1
       : 0,
@@ -3419,6 +3486,18 @@ async function applyAction(session, user, action, payload={}){
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
   const now = nowMs();
+  if(action === "vote"){
+    if(!postCampaignSession(session))throw new Error("Squad voting is available for Living World operations.");
+    if(session.status!=="waiting")throw new Error("The response vote closes when deployment begins.");
+    const option=postCampaign.responseById(payload?.optionId);
+    if(!option)throw new Error("Choose a valid emergency response.");
+    session.crisisVote=normalizeCrisisVote(session.crisisVote,session);
+    session.crisisVote.votes[String(uid)]=option.id;
+    session.crisisVote.resolvedOptionId="";session.crisisVote.resolvedAt=0;session.crisisVote.resolvedBy="";
+    resolveCrisisVote(session);
+    player.lastSeenAt=now;await writePlayer(session.code,player);
+    return writeSession(session);
+  }
   if(action === "handoff"){
     if(session.hostId !== uid) throw new Error("Only the squad leader can hand off leadership.");
     if(session.memberIds.length !== 2) throw new Error("A teammate must be in the squad before handing off leadership.");
@@ -3469,6 +3548,15 @@ async function applyAction(session, user, action, payload={}){
       const nextLevel = Number(session.storyMissionLevel || 0) + 1;
       if(!EXPANDED_SHARED_STORY_MISSIONS[nextLevel]) throw new Error("The next Shared Story mission has not been converted yet. You may stay in the squad or leave.");
       session.storyMissionLevel = nextLevel;
+    }
+    if(postCampaignSession(session) && action === "start"){
+      session.crisisVote=normalizeCrisisVote(session.crisisVote,session);
+      if(session.memberIds.length===1 && !session.crisisVote.resolvedOptionId){
+        session.crisisVote.votes[String(uid)]=session.crisisVote.votes[String(uid)]||postCampaign.RESPONSE_OPTIONS[0].id;
+        resolveCrisisVote(session);
+      }
+      if(session.memberIds.length===2 && !session.crisisVote.resolvedOptionId)throw new Error("Both players must vote on the emergency response before deployment.");
+      if(session.postCampaignOperation)session.postCampaignOperation.responseId=session.crisisVote.resolvedOptionId;
     }
     if(session.launchType === "shared-story" && Number(session.storyMissionLevel || 0) <= livingWorld.PILOT_MAX_MISSION){
       const hostProfile = await readCoopProfile(session.hostId);
@@ -3822,7 +3910,10 @@ async function claimReward(session, user){
     civDead:0,
     exempt:operationId === "endless-survival",
   };
-  const awardedReward = sharedStory ? sharedRewards[sharedLevel] : operationReward;
+  const baseAwardedReward = sharedStory ? sharedRewards[sharedLevel] : operationReward;
+  const responseReward=postCampaign.responseById(session?.crisisVote?.resolvedOptionId||session?.postCampaignOperation?.responseId);
+  const eventBonus=postCampaignSession(session)?Math.max(0,Number(session.postCampaignOperation?.rewardBonusCash||0)):0;
+  const awardedReward={...baseAwardedReward,cash:Math.max(0,Number(baseAwardedReward.cash||0))+eventBonus+(postCampaignSession(session)?Math.max(0,Number(responseReward?.rewardBonusCash||0)):0)};
   let profile = await readCoopProfile(user);
   const crisisRunId = postCampaignSession(session) ? cleanText(session.postCampaignOperation?.runId, 100) : "";
   const receipt = crisisRunId
@@ -3860,16 +3951,7 @@ async function claimReward(session, user){
       profile.livingWorld = livingWorldOutcome.state;
     }
     if(crisisRunId){
-      livingWorldOutcome = livingWorld.applyOutcome(profile.livingWorld, {
-        receipt:`coop:${receipt}`,
-        missionLevel:Math.max(1, Number(session.postCampaignOperation?.missionLevel || 100)),
-        captures:governmentAudit.captures,
-        kills:governmentAudit.kills,
-        rescues:governmentAudit.evac,
-        civiliansLost:0,
-        coop:true,
-        at:nowMs(),
-      });
+      livingWorldOutcome = postCampaign.applyCrisisDistrictOutcome(profile.livingWorld,{...session.postCampaignOperation,responseId:session.crisisVote?.resolvedOptionId},{captures:governmentAudit.captures,kills:governmentAudit.kills,rescues:governmentAudit.evac,civiliansLost:0,responseId:session.crisisVote?.resolvedOptionId,coop:true});
       profile.livingWorld = livingWorldOutcome.state;
     }
     profile = await writeCoopProfile(profile, user);
@@ -3882,6 +3964,7 @@ async function claimReward(session, user){
     governmentAudit,
     livingWorldOutcome,
     postCampaignOperation:session.postCampaignOperation || null,
+    crisisVote:session.crisisVote || null,
     profile,
   };
 }

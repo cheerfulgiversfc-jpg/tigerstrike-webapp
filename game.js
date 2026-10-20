@@ -11473,7 +11473,7 @@ function storyMissionForState(state=S){
     }
   }
 
-  // V11.2 post-campaign crises reuse the real Story battlefield and systems.
+  // V11.3 post-campaign crises and events reuse the real Story battlefield and systems.
   // The active operation changes the objective/encounter, never the player's
   // saved Story unlock level or the authored Mission 1–100 truth manifest.
   if(variant === STORY_VARIANTS.CAMPAIGN){
@@ -13918,7 +13918,7 @@ function worldMapPostCampaignHtml(wm=ensureWorldMapCampaignState(S)){
   let living = livingWorldState(wm);
   if(!api || !livingApi || !living) return "";
   if(!postCampaignUnlocked(S)){
-    return `<section class="card" style="margin-top:10px;border-color:rgba(148,163,184,.40)"><div class="hudTitle">🔒 V11.2 • Living District Recovery</div><div class="small">Complete Story Mission 100 to unlock the thirty-district command network, rebuilding projects, crisis spread, ending replay, and solo-or-squad world crises.</div></section>`;
+    return `<section class="card" style="margin-top:10px;border-color:rgba(148,163,184,.40)"><div class="hudTitle">🔒 V11.3 • World Emergencies</div><div class="small">Complete Story Mission 100 to unlock the thirty-district command network, rebuilding projects, crisis spread, rare events, squad voting, ending replay, and solo-or-squad world crises.</div></section>`;
   }
   let recovery = api.normalizeRecovery?.(wm.postCampaignRecovery, livingApi.DISTRICTS) || wm.postCampaignRecovery || {};
   const spread = api.advanceCrisisSpread?.(living, livingApi.DISTRICTS, recovery, api.cycleKey(Date.now()));
@@ -13960,16 +13960,23 @@ function worldMapPostCampaignHtml(wm=ensureWorldMapCampaignState(S)){
   }).join("");
   const spreadEvents=(recovery.spreadEvents||[]).slice(-3).reverse();
   const spreadHtml=spreadEvents.length?spreadEvents.map((event)=>`<div class="small">⚠️ ${worldMapEsc(event.sourceName)} pressure reached ${worldMapEsc(event.targetName)} • +${event.pressureRise}% pressure${event.shield?` • defenses blocked ${event.shield} spread power`:""}</div>`).join(""):`<div class="small">✅ No neighboring crisis spread has been recorded. Recovery projects make future spread weaker.</div>`;
+  const commandCycle=api.cycleKey(Date.now());
+  const emergencies=api.activeEmergencies?.(recovery,commandCycle)||[];
+  const rareCandidate=api.rareEventForCycle?.(livingApi.DISTRICTS,living,commandCycle)||null;
+  const rareEvent=rareCandidate&&!recovery.resolvedEvents?.[rareCandidate.id]?rareCandidate:null;
+  const eventCards=[...emergencies,...(rareEvent?[rareEvent]:[])].map((event)=>{const cyclesLeft=Math.max(1,Number(event.expiresCycle||commandCycle)-commandCycle+1),expiry=cyclesLeft===1?"Ends this 12-hour cycle":`Ends in ${cyclesLeft} command cycles`;return `<div class="card" style="border-color:${event.kind==="rare"?"rgba(216,180,254,.88)":"rgba(251,146,60,.75)"};background:${event.kind==="rare"?"linear-gradient(145deg,rgba(76,29,149,.42),rgba(8,15,29,.96))":"linear-gradient(145deg,rgba(124,45,18,.38),rgba(8,15,29,.96))"}"><div class="small">${event.kind==="rare"?"RARE WORLD EVENT":"SPREADING EMERGENCY"} • ${worldMapEsc(event.districtName)} • ${expiry}</div><div class="hudTitle">${event.icon} ${worldMapEsc(event.name)}</div><div class="small">${worldMapEsc(event.desc)}</div>${event.sourceName?`<div class="small">Spread route: ${worldMapEsc(event.sourceName)} → ${worldMapEsc(event.districtName)}</div>`:""}<div class="small">Bonus: +$${Math.max(0,Number(event.rewardBonusCash||0)).toLocaleString()} before the squad-response bonus.</div><div class="row" style="margin-top:8px"><button class="good" onclick="startPostCampaignEvent('${event.id}',false)">Play Solo</button><button class="ghost" onclick="startPostCampaignEvent('${event.id}',true)">👥 Create Squad & Vote</button></div></div>`;}).join("");
+  const eventsHtml=eventCards||`<div class="small">No limited-time emergency is active this command cycle. New spreading emergencies appear when a high-risk district affects a neighbor; rare events appear only during their short world window.</div>`;
   const coopLiving=wm.postCampaignCoopLivingWorld;
   const ending = resolveStoryEndingFromState(S);
   return `<section class="card" id="postCampaignCommandNetwork" style="margin-top:10px;border-color:rgba(192,132,252,.66);background:linear-gradient(145deg,rgba(45,20,70,.72),rgba(8,15,29,.97))">
-    <div class="hudTitle">🌐 V11.2 • Living District Recovery</div>
+    <div class="hudTitle">🌐 V11.3 • World Emergencies</div>
     <div class="hudLine">Post-Campaign Command Network • 30/30 districts online • ${Math.max(0,Number(wm.postCampaignClears || 0))} crisis clears • $${Math.max(0,Number(recovery.totalInvested||0)).toLocaleString()} rebuilt</div>
     <div class="small">Story Missions 1–100 remain complete and replayable. Crises now change their district, dangerous pressure can spread every 12-hour command cycle, and permanent recovery projects protect neighboring communities.</div>
     <div class="small" style="margin-top:5px"><b>Solo district record:</b> ${worldMapEsc(living.headline||"Command network ready.")}</div>
     ${coopLiving?`<div class="small"><b>Your Shared Living World record:</b> ${worldMapEsc(coopLiving.headline||"Co-op district profile synchronized.")}</div>`:""}
     <div class="row" style="margin-top:8px"><button class="ghost" onclick="replayPostCampaignFinale()">🎬 Watch ${worldMapEsc(ending.title)} Again</button><button class="ghost" onclick="startStoryNgPlus()">🧬 Start New Game+</button></div>
     <div class="divider"></div><div class="hudTitle">Crisis Spread Monitor</div>${spreadHtml}
+    <div class="divider"></div><div class="hudTitle">Spreading Emergencies & Rare Events</div><div class="small">Emergencies expire if ignored. A two-player squad must vote on its response before deployment; a split vote is decided by the squad leader.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">${eventsHtml}</div>
     <div class="divider"></div><div class="hudTitle">Three Playable Crisis Operations</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">${crisisCards}</div>
     <details style="margin-top:12px"><summary class="hudTitle" style="cursor:pointer">Rebuild all 30 command districts</summary><div class="small" style="margin-top:6px">Spend campaign money on permanent clinics, ranger watches, and conservation corridors. Each project immediately changes real district values and reduces future spread.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-top:10px">${districtRows}</div></details>
@@ -13987,6 +13994,33 @@ function fundPostCampaignRecovery(districtId,projectId){
   }
   S.funds=result.fundsRemaining;wm.livingWorld=result.livingState;wm.postCampaignRecovery=result.recovery;wm.lastOutcome=result.summary;
   save(true);renderWorldMapCampaign();toast(`${result.project.icon} ${result.summary}`);return false;
+}
+
+function postCampaignAvailableEvents(){
+  const api=window.TigerPostCampaign,livingApi=livingWorldApi(),wm=ensureWorldMapCampaignState(S),living=livingWorldState(wm),cycle=api?.cycleKey?.(Date.now())||0;
+  const recovery=api?.normalizeRecovery?.(wm.postCampaignRecovery,livingApi?.DISTRICTS||[])||wm.postCampaignRecovery||{};
+  const emergency=api?.activeEmergencies?.(recovery,cycle)||[],rare=api?.rareEventForCycle?.(livingApi?.DISTRICTS||[],living,cycle);
+  return [...emergency,...(rare&&!recovery.resolvedEvents?.[rare.id]?[rare]:[])];
+}
+
+function launchPostCampaignSoloOperation(operation){
+  if(!operation)return toast("That Living World operation is unavailable.");
+  activateModeProfile("Story",S);S.storyVariant=STORY_VARIANTS.CAMPAIGN;S.storyPartyMode="solo";
+  const wm=ensureWorldMapCampaignState(S);
+  wm.postCampaignOperation={...operation,active:true,responseId:operation.responseId||"rescue_first",startedAt:Date.now()};wm.returnAfterComplete=true;wm.lastOutcome=`${operation.eventName||operation.typeId} launched in ${operation.districtName}.`;
+  S.storyLevel=operation.missionLevel;S.storyLastMission=Math.max(100,Number(S.storyLastMission||100));
+  const overlay=document.getElementById("worldMapCampaignOverlay");if(overlay)overlay.style.display="none";
+  beginMissionTransitionGuard("post-campaign-event",1400);saveResumeTransitionBoundary("post-campaign-event",{preserveWorldMap:true});deploy({skipBrief:false,skipStoryScene:true,source:"post-campaign",carryStats:false});save(true);return false;
+}
+
+function startPostCampaignEvent(eventId,squad=false){
+  if(!postCampaignUnlocked(S))return toast("Complete Story Mission 100 before entering Living World events.");
+  const api=window.TigerPostCampaign,event=postCampaignAvailableEvents().find((row)=>row.id===String(eventId||"")),operation=api?.operationForEvent?.(event);
+  if(!operation)return toast("That limited-time event expired. Reopen the command network.");
+  if(!squad)return launchPostCampaignSoloOperation(operation);
+  const overlay=document.getElementById("worldMapCampaignOverlay");if(overlay)overlay.style.display="none";
+  if(typeof window.openLiveSquadPostCampaignCrisis!=="function")return toast("Shared Living World is still loading. Try again in a moment.");
+  window.openLiveSquadPostCampaignCrisis(operation);return false;
 }
 
 function replayPostCampaignFinale(){
@@ -14057,6 +14091,7 @@ function recordPostCampaignCoopClaim(rewardPayload=null){
   wm.postCampaignCompleted[localReceipt] = Date.now();
   wm.postCampaignClears = Math.max(0, Math.floor(Number(wm.postCampaignClears || 0))) + 1;
   if(rewardPayload?.livingWorldOutcome?.state) wm.postCampaignCoopLivingWorld = rewardPayload.livingWorldOutcome.state;
+  if(operation.eventId)wm.postCampaignRecovery=window.TigerPostCampaign?.resolveWorldEvent?.(wm.postCampaignRecovery,operation.eventId)||wm.postCampaignRecovery;
   wm.lastOutcome = `${operation.districtName || "Living World district"} crisis cleared in ${rewardPayload?.profile?.stats?.missions ? "Shared Living World" : "co-op"}. Your personal reward was saved once.`;
   save(true);
   return true;
@@ -14072,14 +14107,16 @@ function recordPostCampaignCrisisOutcome({missionStats=null,civDead=0}={}){
   wm.postCampaignCompleted = wm.postCampaignCompleted && typeof wm.postCampaignCompleted === "object" ? wm.postCampaignCompleted : {};
   if(runId && wm.postCampaignCompleted[runId]) return "";
   if(runId) wm.postCampaignCompleted[runId] = Date.now();
-  const cash = Math.max(0, Math.floor(Number(type.rewardCash || 0)));
+  const response=window.TigerPostCampaign?.responseById?.(operation.responseId);
+  const cash = Math.max(0, Math.floor(Number(type.rewardCash || 0)+Number(operation.rewardBonusCash||0)+Number(response?.rewardBonusCash||0)));
   const xp = Math.max(0, Math.floor(Number(type.rewardXp || 0)));
   S.funds = Math.max(0, Number(S.funds || 0)) + cash;
   if(cash) trackCashEarned(cash);
   if(xp) addXP(xp);
   wm.postCampaignClears = Math.max(0, Math.floor(Number(wm.postCampaignClears || 0))) + 1;
-  const districtOutcome=window.TigerPostCampaign?.applyCrisisDistrictOutcome?.(livingWorldState(wm),operation,{ rescues:missionStats?.evac, captures:missionStats?.captures, kills:missionStats?.kills, civiliansLost:civDead });
+  const districtOutcome=window.TigerPostCampaign?.applyCrisisDistrictOutcome?.(livingWorldState(wm),operation,{ rescues:missionStats?.evac, captures:missionStats?.captures, kills:missionStats?.kills, civiliansLost:civDead, responseId:operation.responseId });
   if(districtOutcome?.applied) wm.livingWorld=districtOutcome.state;
+  if(operation.eventId)wm.postCampaignRecovery=window.TigerPostCampaign?.resolveWorldEvent?.(wm.postCampaignRecovery,operation.eventId)||wm.postCampaignRecovery;
   wm.lastOutcome = `${type.name} resolved in ${operation.districtName}. +$${cash.toLocaleString()} • +${xp}XP • ${Math.max(0,Number(missionStats?.evac || 0))} civilians evacuated.${districtOutcome?.summary?` ${districtOutcome.summary}`:""}`;
   wm.postCampaignOperation = null;
   wm.returnAfterComplete = true;

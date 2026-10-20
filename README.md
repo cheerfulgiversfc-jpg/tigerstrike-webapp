@@ -882,6 +882,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo crisis outcomes update the Solo Living World. Each Telegram player's Shared Living World outcome remains separate in their server-owned co-op profile and is synchronized into the command network after the once-only reward claim.
 - Story Missions 1–100, the three real crisis operations, drop-in co-op, reconnection, player scaling, and duplicate-proof rewards remain unchanged.
 
+### V11.3 World Emergencies, Rare Events, and Squad Voting
+
+- A high-risk district spreading pressure into its neighbor now creates a real, playable emergency instead of only changing numbers. Civilian Exodus, Alpha Migration, and Response Blockade reuse the correct full Story battlefield and expire after two command cycles if ignored.
+- Limited rare operations now rotate through the command network: White Tiger Sighting, Sanctuary Medical Airdrop, and Abandoned Response Cache. Each has a server-derived event identity, district, mission route, expiration window, and bonus reward.
+- Every Living World crisis squad receives a three-choice response vote before deployment: Protect Civilians First, Contain the Tiger Migration, or Use the Humane Route. Both connected players must vote; if a two-person vote splits, the current squad leader's choice breaks the tie.
+- The selected response is saved on the authoritative squad session, shown in the mission briefing, changes the final district safety, tiger pressure, or blood-scent result, and adds a defined cash bonus.
+- Solo event play uses Protect Civilians First as its safe default. A solo squad room may choose a different response, but inviting a teammate before deployment reopens the ballot so the second player always gets a vote.
+- Expired and completed events disappear from that player's command network. Event and response bonuses use the existing per-player reward receipt, so reconnecting or replaying cannot pay the same operation twice.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
