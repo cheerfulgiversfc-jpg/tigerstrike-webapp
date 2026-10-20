@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5223";
+const TS_BUILD = "5226";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -34826,7 +34826,7 @@ function renderBaseHqQuickBar(){
   if(!bar) return;
   if(!__baseHqActive || document.body?.classList?.contains("baseHqHudOpen")){
     bar.style.display = "none";
-    if(!__baseHqActive) bar.innerHTML = "";
+    if(!__baseHqActive){ bar.innerHTML = ""; bar.__quickHtml = ""; }
     return;
   }
   const snap = baseHqModeMissionSnapshot(S.mode);
@@ -34835,11 +34835,15 @@ function renderBaseHqQuickBar(){
   bar.style.display = "grid";
   bar.classList.toggle("collapsed", !!__baseHqQuickMenuCollapsed);
   if(__baseHqQuickMenuCollapsed){
-    bar.innerHTML = `${button("Open HQ Menu", "setBaseHqQuickMenuCollapsed(false)", "primary")}`;
-    armBaseHqButtons(bar);
+    const html = `${button("Open HQ Menu", "setBaseHqQuickMenuCollapsed(false)", "primary")}`;
+    if(bar.__quickHtml !== html){
+      bar.innerHTML = html;
+      bar.__quickHtml = html;
+      armBaseHqButtons(bar);
+    }
     return;
   }
-  bar.innerHTML = `
+  const html = `
     <div class="baseHqQuickHint"><b>Base HQ Home:</b> ${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
     ${button("Continue", "startMissionFromBaseHQ()", "primary")}
     ${button("Story", "openBaseHqModePreview('Story')", "primary")}
@@ -34863,7 +34867,11 @@ function renderBaseHqQuickBar(){
     ${button("HQ Tour", "resetBaseHqOnboarding()", "utility")}
     ${button("Hide Menu", "setBaseHqQuickMenuCollapsed(true)", "utility")}
   `;
-  armBaseHqButtons(bar);
+  if(bar.__quickHtml !== html){
+    bar.innerHTML = html;
+    bar.__quickHtml = html;
+    armBaseHqButtons(bar);
+  }
 }
 function renderBaseHQ(){
   const roomsWrap = document.getElementById("baseHqRooms");
@@ -63355,6 +63363,8 @@ function ensureStartupLoadingOverlay(){
 }
 
 function beginStartupLoadingGuard(reason="startup"){
+  // Repeated integrity passes for the same launch must not restart its clock.
+  if(__startupLoadingGuard.active) return;
   const now = Date.now();
   __startupLoadingGuard.active = true;
   __startupLoadingGuard.startedAt = now;
@@ -63432,7 +63442,16 @@ function startupPreloadExpectedSectorCount(state=S){
   const src = (state && typeof state === "object") ? state : S;
   const actorCount = Math.min(5, (src.civilians || []).length) + Math.min(6, (src.tigers || []).length);
   const siteCount = Math.min(4, (src.rescueSites || []).length) + Math.min(4, (src.mapInteractables || []).length);
-  return clamp(12 + Math.ceil(actorCount * 0.55) + Math.ceil(siteCount * 0.35), 12, 34);
+  const size = Math.max(1, Number(ensureSectorStreamingState(src).size || STREAM_SECTOR_SIZE));
+  const available = Math.max(1, Math.ceil(worldWidth(src) / size) * Math.ceil(worldHeight(src) / size));
+  return Math.min(available, clamp(12 + Math.ceil(actorCount * 0.55) + Math.ceil(siteCount * 0.35), 12, 34));
+}
+
+function missionExpectsCivilians(state=S){
+  const mode = normalizeModeName(state.mode);
+  if(mode === "Survival") return false;
+  const mission = mode === "Story" ? storyMissionForState(state) : activeArcadeMission(state);
+  return mission?.civilians == null || Number(mission.civilians) > 0;
 }
 
 function computeStartupPreloadProgress(now=Date.now()){
@@ -63463,20 +63482,23 @@ function computeStartupPreloadProgress(now=Date.now()){
     0,
     1
   );
-  scores.terrain = Math.max(scores.terrain || 0, terrainReady ? Math.round(65 + (terrainDensity * 35)) : Math.round(terrainDensity * 55));
+  scores.terrain = Math.max(scores.terrain || 0, terrainReady ? 100 : Math.round(terrainDensity * 55));
 
   const expectedSectors = startupPreloadExpectedSectorCount(S);
   const discovered = Math.max(0, (ss.discoveredKeys || []).length);
   const active = Math.max(0, (ss.activeKeys || []).length);
   const activeExpected = Math.min(expectedSectors, 26);
-  const discoveredExpected = Math.max(expectedSectors, activeExpected + 4);
+  const sectorSize = Math.max(1, Number(ss.size || STREAM_SECTOR_SIZE));
+  const availableSectors = Math.max(1, Math.ceil(worldW / sectorSize) * Math.ceil(worldH / sectorSize));
+  const discoveredExpected = Math.min(availableSectors, Math.max(expectedSectors, activeExpected + 4));
   const sectorScore = clamp(((discovered / discoveredExpected) * 62) + ((active / activeExpected) * 38), 0, 100);
   scores.sectors = Math.max(scores.sectors || 0, Math.round(sectorScore));
 
   const hasPlayer = !!(S.me && Number.isFinite(S.me.x) && Number.isFinite(S.me.y));
   const tigerReady = Array.isArray(S.tigers) && S.tigers.length > 0;
-  const civReady = S.mode === "Survival" || (Array.isArray(S.civilians) && S.civilians.length > 0);
-  const interactReady = Array.isArray(S.mapInteractables) && S.mapInteractables.length > 0;
+  const civReady = Array.isArray(S.civilians) && (!missionExpectsCivilians(S) || S.civilians.length > 0);
+  // An empty, initialized interaction list is valid for combat-only missions.
+  const interactReady = Array.isArray(S.mapInteractables);
   const evacReady = S.mode === "Survival" || !!(S.evacZone && Number.isFinite(S.evacZone.x) && Number.isFinite(S.evacZone.y));
   const entityBits = [hasPlayer, tigerReady, civReady, interactReady, evacReady].filter(Boolean).length;
   scores.entities = Math.max(scores.entities || 0, Math.round((entityBits / 5) * 100));
@@ -63489,7 +63511,9 @@ function computeStartupPreloadProgress(now=Date.now()){
   const detailed = clamp(Number(g.detailedFrames || 0) / STARTUP_LOADING_DETAIL_READY_FRAMES, 0, 1);
   const cacheReady = !!(__mapFrameCacheCanvas && __mapFrameCacheAt >= Number(g.startedAt || 0));
   const recentDetail = (now - Number(__startupLastDetailedMapAt || 0)) < 900;
-  scores.visual = Math.max(scores.visual || 0, Math.round((detailed * 70) + (cacheReady ? 18 : 0) + (recentDetail ? 12 : 0)));
+  // Large maps render directly and may never allocate a full-frame cache.
+  // Completed detail passes are sufficient; the cache is only an optimization.
+  scores.visual = Math.max(scores.visual || 0, Math.min(100, Math.round((detailed * 88) + (cacheReady ? 12 : 0) + (recentDetail ? 12 : 0))));
 
   g.stageScores = scores;
   const stageOrder = ["terrain", "sectors", "entities", "hazards", "visual"];
@@ -64255,7 +64279,8 @@ function missionEntityStateInvalid(state=S){
   );
   if(!hasEvac) return "evac-invalid";
 
-  if(!Array.isArray(state.civilians) || !state.civilians.length) return "civilians-empty";
+  if(!Array.isArray(state.civilians)) return "civilians-empty";
+  if(!state.civilians.length) return missionExpectsCivilians(state) ? "civilians-empty" : "";
   const hasActiveCivilian = state.civilians.some((c)=>
     c &&
     c.alive !== false &&

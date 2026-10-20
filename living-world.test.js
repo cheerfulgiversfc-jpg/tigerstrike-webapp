@@ -592,7 +592,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("PHANTOM RAGE WARD ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5225-living-sanctuary"));
+  assert(html.includes("living-world.js?v=5226-mission-loading"));
   assert(html.includes("V11.4 (Living Sanctuary)"));
 });
 

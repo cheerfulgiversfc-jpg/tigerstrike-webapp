@@ -893,6 +893,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 
 ### V11.4 Living Sanctuary & Tiger Strike Headquarters
 
+#### Build 5226 mission-loading hotfix
+
+- Mission integrity and loading checks accept authored missions with zero civilians without repeatedly redeploying them. Required escort civilians are still checked.
+- Initialized empty interaction lists and scenery caches are valid. Small maps use their available sector count, and direct-rendered large maps no longer require a full-frame cache to finish loading.
+- Repeated loading requests preserve the original timeout rather than resetting it.
+- HQ quick-menu buttons keep the same DOM elements across animation frames, preserving taps and keyboard focus.
+- Five executable regression cases cover these loading and input failures.
+
 - The existing walkable Base HQ Tiger Pens are now a real Living Sanctuary, not a second decorative menu.
 - Every tiger captured alive becomes a named, persistent resident. Capture receipts prevent the same tiger from being added twice.
 - Residents recover after completed Story missions. Tigers at 90% condition can be released into a genuinely safe Living World district.
