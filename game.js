@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5228";
+const TS_BUILD = "5229";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -49713,6 +49713,17 @@ function renderPlayerExperience(){
   document.getElementById('soloRadioEscort').textContent=`Following rescue team: ${followers} • Safely rescued: ${safe}`;
 }
 function drawObjectiveHighlight(now=Date.now()){
+  for(const tiger of (S.tigers||[])){
+    if(!tiger?.alive||dist(tiger.x,tiger.y,S.me.x,S.me.y)>500)continue;
+    const until=Number(tiger._fieldPounceResolveAt||0);
+    if(until>now){
+      const target=fieldPounceTarget(tiger);
+      if(target)window.TigerEncounters?.drawWarning(ctx,tiger,{x:target.x,y:target.y,resolveAt:until},now);
+    }
+    if(now<Number(tiger.rubberSlowUntil||0)){
+      ctx.save();ctx.fillStyle='#bae6fd';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText('RUBBER • SLOWED',tiger.x,tiger.y-75);ctx.restore();
+    }
+  }
   const target=__objectiveHighlight;
   if(!target||now>target.until||!Number.isFinite(target.x)||!Number.isFinite(target.y))return;
   ctx.save();ctx.strokeStyle='#fde047';ctx.lineWidth=4;ctx.setLineDash([10,7]);

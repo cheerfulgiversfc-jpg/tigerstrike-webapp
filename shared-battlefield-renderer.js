@@ -83,14 +83,16 @@
   }
 
   function drawTiger(ctx,entity={},options={}){
+    const encounterNow=Number(options.now||Date.now());
+    const posture=typeof globalThis!=='undefined'?globalThis.TigerEncounters?.posture(entity,encounterNow):null;
     const x=Number(entity.x)||0,y=Number(entity.y)||0;
     const boss=!!entity.boss,scale=Number(options.scale)||(boss?1.28:(entity.type==="Armored"?1.08:.98));
     const facing=Number(options.facing)<0?-1:1,walking=!!options.walking,phase=Number(options.phase)||0;
     const stride=walking?Math.sin(phase)*7:0,bob=walking?Math.abs(Math.sin(phase))*1.8:0;
     const id=String(entity.id||""),ghost=/ghost|shade|phantom/i.test(id),blood=/blood/i.test(id),ancient=/ancient/i.test(id);
-    const coat=blood?"#b91c1c":(ghost?"#dbeafe":(ancient?"#facc15":"#f59e0b"));
+    const coat=posture?.hit?(entity.rubberSlowed?'#bae6fd':'#fda4af'):(blood?"#b91c1c":(ghost?"#dbeafe":(ancient?"#facc15":"#f59e0b")));
     const dark=blood?"#7f1d1d":(ghost?"#94a3b8":(ancient?"#a16207":"#c76808"));
-    ctx.save();ctx.translate(x,y-bob);ctx.scale(facing*scale,scale);
+    ctx.save();ctx.translate(x+(posture?.hit?Math.sin(encounterNow*.08)*3:0),y-bob+(posture?.warning?6:0));ctx.scale(facing*scale*(posture?.warning?1.12:1),scale*(posture?.warning?0.80:1));
     ellipse(ctx,0,25+bob,46,10,"rgba(2,6,23,.42)");
 
     // Tail, body and chest silhouette.

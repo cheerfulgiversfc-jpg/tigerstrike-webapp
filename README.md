@@ -891,6 +891,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo event play uses Protect Civilians First as its safe default. A solo squad room may choose a different response, but inviting a teammate before deployment reopens the ballot so the second player always gets a vote.
 - Expired and completed events disappear from that player's command network. Event and response bonuses use the existing per-player reward receipt, so reconnecting or replaying cannot pay the same operation twice.
 
+### V11.7 Tiger Encounters
+
+- Co-op tiger melee attacks begin with a server-owned windup: one second for two players, 1.25 seconds for a solo crisis player. The marked impact spot is fixed when the attack starts. Moving more than 62 world units away dodges it, and damage also requires the tiger to remain in range.
+- A fresh Rubber hit interrupts the windup. Defeated targets, expired warnings and warnings from a prior mission cannot deal damage. Government response units retain their existing combat rules.
+- Both players see directional attack wedges, marked impact spots and Pounce—Move captions. Tigers visibly crouch and hold position during windup. Confirmed hits produce a brief recoil and colored coat flash; Rubber slowdown is labeled.
+- The shared renderer displays type-based encounter labels for ambush hunters, heavy Armored tigers and Alpha leaders. Existing authored tiger movement and Solo AI personalities remain in place.
+- Solo field pounces expose the same directional warnings using their existing real attack timers. The existing Solo attack limits, warning multipliers, capture rules and mission objectives remain intact.
+- Field Radio identifies whether the pounce targets you or your teammate and suggests covering rescue routes or interrupting with Rubber. Secured civilians acknowledge reaching the Rescue House.
+- Build 5229 adds executable warning, dodge, interrupt, expiry and real two-player presence tests. This is an in-engine combat presentation update; it does not add prerecorded voice acting.
+
 ### V11.6 Field Radio & Squad Commands
 
 - Live Squad has four server-validated signals: Help Me, Follow Me, Rescue Here and Capture Alive. The server picks real available targets, rejects capture signals in Survival, applies a three-second cooldown and expires markers after twelve seconds. Signals survive reconnects within the same mission and do not carry into a new mission.

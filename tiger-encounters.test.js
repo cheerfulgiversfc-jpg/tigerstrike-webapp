@@ -1,0 +1,44 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const encounters=require('./tiger-encounters');
+test('windups give solo more warning and commit to a dodgeable location',()=>{
+  const tiger={id:'t',hp:100},player={userId:1,x:10,y:20};
+  const attack=encounters.beginAttack(tiger,player,10000,false,'run');
+  assert.equal(attack.resolveAt,11000);
+  assert.equal(encounters.beginAttack(tiger,player,10000,true,'run').resolveAt,11250);
+  assert.equal(encounters.resolveAttack(attack,tiger,player,10500,'run'),'warning');
+  assert.equal(encounters.resolveAttack(attack,tiger,player,11000,'run'),'hit');
+  assert.equal(encounters.resolveAttack(attack,tiger,{...player,x:200},11000,'run'),'dodged');
+  assert.equal(encounters.resolveAttack(attack,tiger,player,15000,'run'),'expired');
+});
+test('Rubber interrupts a windup and defeated targets or new runs cannot hit',()=>{
+  const tiger={id:'t',hp:100},player={userId:1,x:10,y:20},attack=encounters.beginAttack(tiger,player,10000,false,'run');
+  assert.equal(encounters.resolveAttack(attack,{...tiger,lastRubberHitAt:10100},player,11000,'run'),'interrupted');
+  assert.equal(encounters.resolveAttack(attack,{...tiger,defeated:true},player,11000,'run'),'cancelled');
+  assert.equal(encounters.resolveAttack(attack,tiger,player,11000,'new-run'),'cancelled');
+  assert.equal(encounters.posture({attackWarnings:[attack]},10500).warning,true);
+  assert.equal(encounters.posture({hitUntil:11000},10500).hit,true);
+});
+test('actual co-op presence warns before damage, then resolves a hit or dodge',async()=>{
+  for(const key of ['KV_REST_API_URL','KV_REST_API_TOKEN','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN'])process.env[key]='';
+  const squad=require('./api/_lib/squad-session'),store=require('./api/_lib/metrics-store');
+  const host={id:9811701,first_name:'Encounter Host'},mate={id:9811702,first_name:'Encounter Mate'};
+  let session=await squad.createSession(host,{launchType:'shared-story',storyMissionLevel:1});
+  session=await squad.joinSession(session.code,mate);session=await squad.applyAction(session,host,'start');
+  const initial=await squad.buildSnapshot(session,host.id),tiger=initial.tigers[0],key=`live_squad_player_${session.code}_${host.id}`;
+  let player=await store.getState(key);
+  await store.setState(key,{...player,x:tiger.x,y:tiger.y,hp:100,armor:100,lastHazardAt:0});
+  await squad.updateOwnPresence(session,host,{});
+  player=await store.getState(key);
+  assert(player.pendingTigerAttack);assert.equal(player.hp,100);assert.equal(player.armor,100);
+  const snapshot=await squad.buildSnapshot(session,mate.id);
+  assert(snapshot.tigers.some(t=>t.attackWarnings.some(w=>w.targetUserId===host.id)));
+  await store.setState(key,{...player,pendingTigerAttack:{...player.pendingTigerAttack,resolveAt:Date.now()-1}});
+  await squad.updateOwnPresence(session,host,{});player=await store.getState(key);
+  assert(player.hp<100||player.armor<100);
+  const hp=player.hp,armor=player.armor;
+  const pending=encounters.beginAttack(tiger,player,Date.now()-1200,false,`${session.code}:${session.startedAt}`);
+  pending.x=player.x+200;pending.resolveAt=Date.now()-1;
+  await store.setState(key,{...player,pendingTigerAttack:pending});
+  await squad.updateOwnPresence(session,host,{});player=await store.getState(key);
+  assert.equal(player.hp,hp);assert.equal(player.armor,armor);assert.equal(player.pendingTigerAttack,null);
+});

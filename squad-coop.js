@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.6 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.6 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.6 • Field Radio");
+      ? `Tiger Strike V11.7 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V11.7 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.7 • Tiger Encounters");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -751,7 +751,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.6 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.7 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -2017,7 +2017,9 @@
     if(window.TigerStrikeBattlefieldRenderer?.drawTiger){
       const key=`tiger:${tiger.id}`;const prior=state.walkVisual.get(key)||{x:Number(tiger.x),y:Number(tiger.y),phase:0};const moved=Math.hypot(Number(tiger.x)-prior.x,Number(tiger.y)-prior.y);const walking=moved>.14&&!tiger.captured;prior.phase=walking?prior.phase+Math.min(1.15,moved*.2):prior.phase*.86;prior.x=Number(tiger.x);prior.y=Number(tiger.y);state.walkVisual.set(key,prior);
       if(blood){ctx.save();ctx.fillStyle=tiger.hp<=tiger.hpMax*.35?"rgba(239,68,68,.28)":"rgba(127,29,29,.18)";ctx.shadowColor="#ef4444";ctx.shadowBlur=tiger.hp<=tiger.hpMax*.35?38:20;ctx.beginPath();ctx.arc(tiger.x,tiger.y,58,0,Math.PI*2);ctx.fill();ctx.restore();}
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,tiger,{facing,walking,phase:prior.phase,scale:s});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,tiger,{facing,walking:walking&&!tiger.attackWarnings?.length,phase:prior.phase,scale:s,now});
+      const encounter=window.TigerEncounters?.posture(tiger,now);
+      if(encounter){ctx.fillStyle=encounter.warning?'#ffe4e6':'#fef3c7';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText(encounter.label,tiger.x,drawn.labelY-16);}
       const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1),barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,drawn.barY,barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,drawn.barY+2,(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(`${tiger.awarenessIcon||"🟢"} ${alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase()} • ${String(tiger.awarenessLabel||"Calm").toUpperCase()}`,tiger.x,drawn.labelY);
       return;
     }
@@ -2776,6 +2778,7 @@
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
     drawFieldRadio(ctx);
+    for(const tiger of (snap.tigers||[]))for(const warning of (tiger.attackWarnings||[]))window.TigerEncounters?.drawWarning(ctx,tiger,warning,now);
     drawSnowstormOverlay(ctx,snap,view,now);
     drawNightVisibilityOverlay(ctx,snap,view);
     ctx.restore();

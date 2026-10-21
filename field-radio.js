@@ -50,11 +50,15 @@
     if(snap.status!=='active')return '';
     const down=(snap.players||[]).find(p=>Number(p.userId)!==Number(viewerId)&&p.downed);
     if(down)return '🆘 Teammate down — reach them to revive.';
+    const incoming=(snap.players||[]).find(p=>p.pendingTigerAttack&&p.pendingTigerAttack.resolveAt>Number(snap.serverNow||0));
+    if(incoming)return Number(incoming.userId)===Number(viewerId)?'⚠️ Pounce aimed at you — move away from the marked spot!':'⚠️ Tiger winding up on teammate — cover the rescue route or interrupt with Rubber.';
     const endangered=(snap.civilians||[]).find(c=>!c.secured&&(snap.tigers||[]).some(t=>!t.defeated&&t.hp>0&&Math.hypot(t.x-c.x,t.y-c.y)<110));
     if(endangered)return `⚠️ ${endangered.name||'Civilian'} is close to a tiger — protect the rescue route.`;
     const ready=(snap.tigers||[]).find(t=>!snap.mission?.survival&&!t.defeated&&!t.lethalWounded&&t.capturable!==false&&t.hp>0&&t.hp<=t.hpMax*.30);
     if(ready)return `💉 ${ready.name||'Tiger'} is ready for capture.`;
     if(snap.objectivesReady)return '🚁 Extraction open — move to the exit together.';
+    const saved=(snap.securedCivilianIds||[]).length;
+    if(saved)return `🛟 Rescue House: ${saved} safely rescued. “Thank you, soldiers!”`;
     return '';
   }
   return Object.freeze({VERSION:'11.6',SIGNALS,COOLDOWN_MS,TTL_MS,makeSignal,activeSignals,guide,civilianStatus,callout});
