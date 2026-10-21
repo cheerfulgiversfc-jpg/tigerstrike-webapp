@@ -1,0 +1,41 @@
+(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.TigerRescueTools=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
+  'use strict';
+  const DEFS=Object.freeze({
+    smoke:Object.freeze({id:'smoke',name:'Smoke Grenade',icon:'💨',charges:2,cooldown:12000,duration:8000}),
+    'med-drone':Object.freeze({id:'med-drone',name:'Med Drone',icon:'🚑',charges:2,cooldown:10000,duration:3000}),
+    flare:Object.freeze({id:'flare',name:'Signal Flare',icon:'🚨',charges:3,cooldown:9000,duration:14000})
+  });
+  function create(id='smoke'){const def=DEFS[id]||DEFS.smoke;return {id:def.id,charges:def.charges,cooldownUntil:0,uses:0,effect:null,lastEffect:''};}
+  function ready(tool,now=Date.now()){
+    if(!DEFS[tool?.id])throw new Error('Choose a valid rescue tool.');
+    if(tool.charges<=0)throw new Error('No rescue-tool charges remain this mission.');
+    if(now<tool.cooldownUntil)throw new Error(`Rescue tool recharges in ${Math.ceil((tool.cooldownUntil-now)/1000)} seconds.`);
+    return DEFS[tool.id];
+  }
+  function used(tool,effect,message,now=Date.now()){
+    const def=ready(tool,now);
+    return {...tool,charges:tool.charges-1,uses:tool.uses+1,cooldownUntil:now+def.cooldown,lastEffect:message,effect:{...effect,kind:tool.id,until:now+def.duration}};
+  }
+  function smokeAt(players,point,now=Date.now()){
+    return players.some(p=>{const e=p.rescueTool?.effect;return e?.kind==='smoke'&&e.until>now&&Math.hypot(e.x-point.x,e.y-point.y)<=300;});
+  }
+  function drawEffect(ctx,e,now=Date.now()){
+    if(!ctx||!e||now>=e.until)return;
+    ctx.save();ctx.textAlign='center';ctx.font='900 12px system-ui';
+    if(e.kind==='smoke'){
+      for(let i=0;i<12;i++){const a=i*.55+now*.0003,r=55+(i%4)*65;ctx.fillStyle='rgba(203,213,225,.12)';ctx.beginPath();ctx.arc(e.x+Math.cos(a)*r,e.y+Math.sin(a)*r,58,0,Math.PI*2);ctx.fill();}
+      ctx.fillStyle='#f1f5f9';ctx.fillText(`SMOKE COVER • ${Math.ceil((e.until-now)/1000)}s`,e.x,e.y-72);
+    }else if(e.kind==='med-drone'){
+      const x=e.x+Math.cos(now*.006)*22,y=e.y-42;
+      ctx.strokeStyle='#94a3b8';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x-20,y);ctx.lineTo(x+20,y);ctx.stroke();
+      ctx.fillStyle='#f8fafc';ctx.fillRect(x-9,y-7,18,14);ctx.fillStyle='#ef4444';ctx.fillRect(x-2,y-5,4,10);ctx.fillRect(x-5,y-2,10,4);
+      ctx.fillStyle='#bbf7d0';ctx.fillText(`${e.name||'Rescue target'} +${e.healed} HP`,e.x,e.y-65);
+    }else if(e.kind==='flare'){
+      const origin=e.origin||e;ctx.setLineDash([10,8]);ctx.lineWidth=3;
+      for(const [p,color] of [[e.target,'#facc15'],[e.extraction,'#4ade80']]){if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y))continue;ctx.strokeStyle=color;ctx.beginPath();ctx.moveTo(origin.x,origin.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.fillStyle=color;ctx.fillText(p.action||p.label||'Extraction',p.x,p.y-36);}
+      ctx.setLineDash([]);ctx.fillStyle='#facc15';ctx.fillText('FLARE • OBJECTIVE ROUTE',origin.x,origin.y-52);
+    }
+    ctx.restore();
+  }
+  return Object.freeze({VERSION:'11.8',DEFS,create,ready,used,smokeAt,drawEffect});
+});

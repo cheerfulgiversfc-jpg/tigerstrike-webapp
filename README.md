@@ -891,6 +891,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo event play uses Protect Civilians First as its safe default. A solo squad room may choose a different response, but inviting a teammate before deployment reopens the ballot so the second player always gets a vote.
 - Expired and completed events disappear from that player's command network. Event and response bonuses use the existing per-player reward receipt, so reconnecting or replaying cannot pay the same operation twice.
 
+### V11.8 Living Civilian Rescue — Phase 2 (build 5231)
+
+- Civilians wave for help, show a nearby-tiger warning based on live enemy positions, and raise their arms while entering safety. These are visual reactions, not new panic penalties or extra enemy damage. Existing Solo AI and mission completion rules are preserved.
+- Each co-op player chooses Smoke Grenade (2 uses), Med Drone (2) or Signal Flare (3) in the waiting lobby. The mission button shows remaining uses and cooldown. The server owns tool effects, charges and activation deduplication. Reconnecting does not refill supplies; full mission restarts refill them, checkpoint restarts retain remaining charges.
+- Co-op smoke remains at its deployment location for eight seconds and prevents tiger pounces against soldiers within 300 world units. Government response combat and environmental hazards are not blocked. Both players see the smoke.
+- Co-op Med Drone heals the lowest-health nearby standing soldier (+38 HP maximum) or authored injured civilian (+48 maximum), capped at their real maximum health and within 360 world units. With no eligible patient it consumes no charge. Both players receive the resulting health state, target name and exact amount healed. Co-op civilians are not given new tiger damage in this update.
+- Flare guidance highlights the current real objective and extraction for fourteen seconds. Guidance updates when objectives change. Existing Solo flare scanning remains available alongside the clearer route.
+- Solo smoke now stays where deployed and its civilian damage reduction applies within the visible 300-unit area. Drone feedback identifies the healed target and amount. Existing Solo tool charges/cooldowns, rescue rewards, captures and transport boarding remain intact.
+- Automated verification includes smoke interruption/expiry/range, healing and no-target behavior, reconnect limits, paused/downed restrictions, flare objectives, civilian reactions and regression tests. Physical Telegram two-phone testing remains outstanding.
+
 ### V11.8 Living Civilian Rescue — first phase
 
 - Co-op followers now walk a saved route behind their own rescuer instead of snapping to a fixed offset. Route corners, spacing, downed-player stops and slower injured escorts are handled on the server. Reconnecting restores ownership and route progress; respawning/checkpoint restarts regroup retained followers at the soldier's checkpoint.

@@ -9,6 +9,7 @@ const sanctuarySystem = require("../../sanctuary");
 const fieldRadio = require("../../field-radio");
 const tigerEncounters = require("../../tiger-encounters");
 const civilianRescue = require("../../civilian-rescue");
+const rescueTools = require("../../rescue-tools");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -137,7 +138,7 @@ const SHARED_STORY_MISSIONS = Object.freeze({
     objective:"Escort the injured villager to the safe zone, clear the road tigers, and extract.", rescueRequired:1,
     timeLimitMs:7 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
     civilians:Object.freeze([
-      Object.freeze({ id:"story7_injured_villager", x:515, y:330, name:"Injured Villager", look:"medic" }),
+      Object.freeze({ id:"story7_injured_villager", x:515, y:330, name:"Injured Villager", look:"medic", injured:true }),
     ]),
     tigers:Object.freeze([
       Object.freeze({ id:"story7_road_scout", name:"Roadside Scout", type:"Scout", hpMax:195, baseX:405, baseY:540, rangeX:98, rangeY:78, speed:.76, phase:.9 }),
@@ -1914,8 +1915,8 @@ const CONVOY_RESCUE_TIGERS = Object.freeze([
   Object.freeze({ id:"roadclaw_alpha", name:"Roadclaw Alpha", type:"Alpha", hpMax:2000, baseX:665, baseY:600, rangeX:175, rangeY:138, speed:.43, phase:1.2, boss:true }),
 ]);
 const ALPHA_HUNT_CIVILIANS = Object.freeze([
-  Object.freeze({ id:"alpha_tracker_lead", x:275, y:250, name:"Lead Tracker", look:"scout" }),
-  Object.freeze({ id:"alpha_tracker_field", x:925, y:260, name:"Field Tracker", look:"medic" }),
+  Object.freeze({ id:"alpha_tracker_lead", x:275, y:250, name:"Lead Tracker", look:"scout", injured:true }),
+  Object.freeze({ id:"alpha_tracker_field", x:925, y:260, name:"Field Tracker", look:"medic", injured:true }),
 ]);
 const ALPHA_HUNT_TIGERS = Object.freeze([
   Object.freeze({ id:"alpha_highland", name:"Highland Prowler", type:"Scout", hpMax:440, baseX:330, baseY:460, rangeX:110, rangeY:84, speed:.82, phase:.6 }),
@@ -2689,6 +2690,8 @@ function newPlayer(user, slot=0){
     rescuedIds:[],
     securedCivilianIds:[],
     civilianEscorts:{},
+    civilianHealing:{},
+    rescueTool:rescueTools.create(),
     checkpointIds:[],
     revives:0,
     joinedAt:nowMs(),
@@ -2774,6 +2777,8 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     securedCivilianIds:[...new Set((Array.isArray(src.securedCivilianIds) ? src.securedCivilianIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     civilianEscorts:src.civilianEscorts && typeof src.civilianEscorts === 'object' ? src.civilianEscorts : {},
+    civilianHealing:src.civilianHealing && typeof src.civilianHealing === 'object' ? src.civilianHealing : {},
+    rescueTool:rescueTools.DEFS[src.rescueTool?.id] ? src.rescueTool : rescueTools.create(),
     checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id)))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     revives:clamp(src.revives, 0, 999),
@@ -3119,6 +3124,8 @@ function civilianSnapshots(session, players, rescuedIds, securedCivilianIds){
   const mission = missionDefinition(session);
   const rescueHouse = rescueHouseFor(mission);
   return mission.civilians.map((civilian, index)=>{
+    const hpMax=100,hp=Math.min(hpMax,(civilian.injured?55:100)+players.reduce((sum,p)=>sum+Math.max(0,Number(p.civilianHealing?.[civilian.id]||0)),0));
+    civilian={...civilian,hp,hpMax,injured:hp<hpMax};
     const owner = players.find((player)=>(player.rescuedIds || []).includes(civilian.id));
     if(!owner) return { ...civilian, following:false, followingUserId:0, secured:false };
     const row = Math.floor(index / 2);
@@ -3431,11 +3438,13 @@ async function updateOwnPresence(session, user, patch={}){
     player.moveY = 0;
   }
   if(session.status === "active"){
+    const healingPlayers=mission.civilians.some(c=>c.injured) && (player.rescuedIds||[]).length ? await memberPlayers(session) : [player];
     for(const civilian of mission.civilians){
       if(!(player.rescuedIds || []).includes(civilian.id) || (player.securedCivilianIds || []).includes(civilian.id)) continue;
       const escort=player.civilianEscorts[civilian.id] || civilianRescue.start(civilian,player,now);
       const order=(player.rescuedIds || []).filter(id=>!(player.securedCivilianIds || []).includes(id)).indexOf(civilian.id);
-      player.civilianEscorts[civilian.id]=civilianRescue.advance(escort,player,now,{injured:!!civilian.injured,paused:player.downed,gap:Math.min(108,36+Math.max(0,order)*14)});
+      const healed=healingPlayers.reduce((sum,p)=>sum+Number(p.civilianHealing?.[civilian.id]||0),0)>=45;
+      player.civilianEscorts[civilian.id]=civilianRescue.advance(escort,player,now,{injured:!!civilian.injured&&!healed,paused:player.downed,gap:Math.min(108,36+Math.max(0,order)*14)});
     }
   }
   if(session.status === "active" && !player.downed && (mission.checkpoints || []).length){
@@ -3494,8 +3503,11 @@ async function updateOwnPresence(session, user, patch={}){
     const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0) - persistentBloodScent * 120) * (threat?.rubberSlowed ? 1.65 : 1) * livingBalance.pounceCooldownMul;
     const huntRange = ((threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0) + persistentBloodScent * 24) * livingBalance.detectMul;
     const attackRun=`${session.code}:${session.startedAt}`;
+    const smokeCovered=rescueTools.smokeAt(players,player,now);
     let attackHit=false;
-    if(player.pendingTigerAttack){
+    if(smokeCovered){
+      player.pendingTigerAttack=null;player.lastHazardAt=now;
+    }else if(player.pendingTigerAttack){
       const pending=player.pendingTigerAttack;
       const attacker=threats.find(t=>t.id===pending.tigerId);
       const resolution=tigerEncounters.resolveAttack(pending,attacker,player,now,attackRun);
@@ -3540,6 +3552,12 @@ async function applyAction(session, user, action, payload={}){
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
   const now = nowMs();
+  if(action === 'tool-select'){
+    if(session.status!=='waiting')throw new Error('Choose your rescue tool before deployment.');
+    if(!rescueTools.DEFS[payload.toolId])throw new Error('Choose Smoke Grenade, Med Drone, or Signal Flare.');
+    player.rescueTool=rescueTools.create(payload.toolId);
+    await writePlayer(session.code,player);return session;
+  }
   if(action === "vote"){
     if(!postCampaignSession(session))throw new Error("Squad voting is available for Living World operations.");
     if(session.status!=="waiting")throw new Error("The response vote closes when deployment begins.");
@@ -3676,7 +3694,9 @@ async function applyAction(session, user, action, payload={}){
       p.moveY = 0;
       p.motionAt = now;
       p.ammoMode = session.launchType === "endless-survival" ? "real" : "rubber";
+      p.rescueTool=restartCheckpoint ? {...p.rescueTool,effect:null} : rescueTools.create(p.rescueTool?.id);
       if(!restartCheckpoint){
+        p.civilianHealing={};
         p.bossDamage = 0;
         p.tigerDamage = {};
         p.lethalWoundedIds = [];
@@ -3706,7 +3726,36 @@ async function applyAction(session, user, action, payload={}){
     if(player.respawnAt > now) throw new Error("Your field life is bringing you back at Base Camp.");
     throw new Error("You are out of lives. Your teammate must revive you or the leader can restart after a squad wipe.");
   }
-  if(action === "ammo-mode"){
+  if(action === 'tool-use'){
+    const tool=player.rescueTool;
+    rescueTools.ready(tool,now);
+    const players=await memberPlayers(session);
+    const derived=sessionDerived(session,players,now),civilians=civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds);
+    let effect={x:player.x,y:player.y},message='',healTarget=null;
+    if(tool.id==='smoke'){
+      message='Smoke cover deployed for 8 seconds. Tiger pounces cannot hit soldiers inside the smoke.';
+    }else if(tool.id==='med-drone'){
+      const candidates=[...players.filter(p=>!p.downed&&p.hp<p.maxHp).map(p=>({target:p,kind:'soldier',ratio:p.hp/p.maxHp})),...civilians.filter(c=>!c.secured&&c.hp<c.hpMax).map(c=>({target:c,kind:'civilian',ratio:c.hp/c.hpMax}))].filter(row=>distance(row.target,player)<=360).sort((a,b)=>a.ratio-b.ratio);
+      healTarget=candidates[0];
+      if(!healTarget)throw new Error('Nobody injured is within 360m. No Med Drone charge was used.');
+      const target=healTarget.target,healed=Math.min(healTarget.kind==='soldier'?38:48,(target.maxHp||target.hpMax)-target.hp);
+      effect={x:target.x,y:target.y,name:target.name||'Soldier',healed,targetId:target.userId||target.id};
+      message=`Med Drone: ${effect.name} +${healed} HP.`;
+    }else{
+      const target=fieldRadio.guide({players,civilians,tigers:derived.tigers,mission:missionDefinition(session),checkpoints:missionDefinition(session).checkpoints,checkpointCompletedIds:derived.checkpointCompletedIds,capturedIds:derived.capturedIds,rescueHouse:rescueHouseFor(missionDefinition(session)),extraction:missionDefinition(session).extraction},uid);
+      effect={...effect,origin:{x:player.x,y:player.y},target,extraction:missionDefinition(session).extraction};
+      message='Signal Flare: the next real objective and extraction route are highlighted for 14 seconds.';
+    }
+    const reserved=await setStateIfAbsent(`live_squad_tool_${session.code}_${session.startedAt}_${uid}_${tool.uses}`,{at:now});
+    if(!reserved)throw new Error('That tool activation is already being processed.');
+    if(healTarget){
+      if(healTarget.kind==='civilian')player.civilianHealing[healTarget.target.id]=Number(player.civilianHealing[healTarget.target.id]||0)+effect.healed;
+      else if(healTarget.target.userId===uid)player.hp=Math.min(player.maxHp,player.hp+effect.healed);
+      else{healTarget.target.hp=Math.min(healTarget.target.maxHp,healTarget.target.hp+effect.healed);await writePlayer(session.code,healTarget.target);}
+    }
+    player.rescueTool=rescueTools.used(tool,effect,message,now);
+    player.lastSeenAt=now;await writePlayer(session.code,player);
+  }else if(action === "ammo-mode"){
     if(session.launchType === "endless-survival") throw new Error("Endless Survival is kill-only and uses Real ammunition only.");
     player.ammoMode = ammoRules.normalizeAmmoMode(payload.ammoMode, "real") === "rubber" ? "rubber" : "real";
     player.lastSeenAt = now;
@@ -4080,6 +4129,7 @@ async function closeSession(session, user){
       staying.killSites = { ...(leaving.killSites || {}), ...(staying.killSites || {}) };
       staying.captureSites = { ...(leaving.captureSites || {}), ...(staying.captureSites || {}) };
       staying.civilianEscorts = { ...(leaving.civilianEscorts || {}), ...(staying.civilianEscorts || {}) };
+      for(const [id,healed] of Object.entries(leaving.civilianHealing||{}))staying.civilianHealing[id]=Number(staying.civilianHealing[id]||0)+Number(healed||0);
       await writePlayer(session.code, staying);
       leaving.tigerDamage = {};
       leaving.lethalWoundedIds = [];
@@ -4087,6 +4137,7 @@ async function closeSession(session, user){
       leaving.rescuedIds = [];
       leaving.securedCivilianIds = [];
       leaving.civilianEscorts = {};
+      leaving.civilianHealing = {};
       leaving.killSites = {};
       leaving.captureSites = {};
       await writePlayer(session.code, leaving);

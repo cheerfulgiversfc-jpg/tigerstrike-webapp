@@ -40,6 +40,7 @@
     const def=SECONDARY_DEFS[id];
     state.missionSecondary={id,runId:String(state._missionRunId||""),charges:def.charges,cooldownUntil:0,activeUntil:0,uses:0,lastEffect:""};
     state.secondarySmokeUntil=0;
+    state.secondarySmokeAt=null;
     state.secondaryFlareUntil=0;
     state.secondaryDroneUntil=0;
     state.secondaryShockUntil=0;
@@ -79,6 +80,7 @@
   }
   function useSmoke(state,now){
     state.secondarySmokeUntil=now+8000;
+    state.secondarySmokeAt={x:state.me.x,y:state.me.y};
     for(const tiger of (state.tigers||[])){
       if(!tiger?.alive||distance(tiger,state.me)>300) continue;
       tiger.holdUntil=Math.max(Number(tiger.holdUntil||0),now+4200);
@@ -86,7 +88,7 @@
       tiger.attackTelegraphUntil=0;
     }
     if(state.inBattle&&typeof root.endBattle==="function") root.endBattle();
-    return {ok:true,message:"Smoke deployed. Nearby tigers lost sight of soldiers and civilians for 8 seconds."};
+    return {ok:true,message:"Smoke deployed here for 8 seconds: breaks nearby pounces and reduces civilian damage inside its 300m cover."};
   }
   function useMedDrone(state,now){
     const candidates=[];
@@ -109,11 +111,12 @@
       const before=Number(pick.target.hp||0);pick.target.hp=clampLocal(before+48,0,max);healed=Math.round(pick.target.hp-before);
     }
     state.secondaryDroneUntil=now+3000;
-    state.secondaryDroneTarget={x:pick.target.x,y:pick.target.y,kind:pick.kind};
-    return {ok:true,message:`Med Drone healed ${pick.kind} +${healed} HP.`};
+    state.secondaryDroneTarget={x:pick.target.x,y:pick.target.y,kind:pick.kind,name:pick.kind==='soldier'?'You':(pick.target.name||`Civilian ${pick.target.id}`),healed};
+    return {ok:true,message:`Med Drone healed ${state.secondaryDroneTarget.name} +${healed} HP.`};
   }
   function useFlare(state,now){
     state.secondaryFlareUntil=now+14000;
+    state.secondaryFlareTarget=typeof root.fieldNextObjective==='function'?root.fieldNextObjective():null;
     state.scanPing=Math.max(Number(state.scanPing||0),900);
     const tiger=nearestTiger(state,Infinity);
     if(tiger){state.scanTargetTigerId=tiger.id;state.scanTargetUntil=now+14000;}
@@ -181,10 +184,7 @@
     if(!context||!state?.me) return;
     context.save();
     if(now<Number(state.secondarySmokeUntil||0)){
-      for(let i=0;i<9;i++){
-        const angle=(now/900)+(i*.72);const radius=24+(i%3)*24;const x=state.me.x+Math.cos(angle)*radius;const y=state.me.y+Math.sin(angle*.8)*radius*.55;
-        context.beginPath();context.fillStyle=`rgba(203,213,225,${.08+(i%3)*.035})`;context.arc(x,y,28+(i%2)*12,0,Math.PI*2);context.fill();
-      }
+      root.TigerRescueTools?.drawEffect(context,{...state.secondarySmokeAt,kind:'smoke',until:state.secondarySmokeUntil},now);
     }
     if(now<Number(state.secondaryFlareUntil||0)){
       const pulse=18+Math.sin(now/130)*5;context.strokeStyle="rgba(251,191,36,.92)";context.lineWidth=3;context.beginPath();context.arc(state.me.x,state.me.y,pulse,0,Math.PI*2);context.stroke();
@@ -192,10 +192,12 @@
       context.setLineDash([7,7]);context.lineWidth=2;
       for(const point of points.slice(0,18)){context.strokeStyle=point===state.evacZone?"rgba(74,222,128,.75)":((state.tigers||[]).includes(point)?"rgba(251,113,133,.66)":"rgba(56,189,248,.62)");context.beginPath();context.moveTo(state.me.x,state.me.y);context.lineTo(point.x,point.y);context.stroke();}
       context.setLineDash([]);
+      root.TigerRescueTools?.drawEffect(context,{kind:'flare',until:state.secondaryFlareUntil,origin:state.me,target:root.fieldNextObjective?.()||state.secondaryFlareTarget,extraction:state.evacZone},now);
     }
     if(now<Number(state.secondaryDroneUntil||0)){
-      const target=state.secondaryDroneTarget||state.me;const x=Number(target.x||state.me.x)+Math.cos(now/180)*28;const y=Number(target.y||state.me.y)-38+Math.sin(now/160)*5;
+      const target=state.secondaryDroneTarget||state.me;const x=Number(target.x??state.me.x)+Math.cos(now/180)*28;const y=Number(target.y??state.me.y)-38+Math.sin(now/160)*5;
       context.font="24px system-ui";context.textAlign="center";context.fillText("🚑",x,y);context.strokeStyle="rgba(74,222,128,.8)";context.beginPath();context.arc(Number(target.x||state.me.x),Number(target.y||state.me.y),24,0,Math.PI*2);context.stroke();
+      context.fillStyle='#bbf7d0';context.font='900 12px system-ui';context.fillText(`${target.name||target.kind} +${target.healed||0} HP`,target.x,target.y-65);
     }
     if(now<Number(state.secondaryShockUntil||0)){
       const target=state.secondaryShockTarget||state.me;const pct=1-((Number(state.secondaryShockUntil||0)-now)/900);context.strokeStyle=`rgba(250,204,21,${1-pct})`;context.lineWidth=4;context.beginPath();context.arc(target.x,target.y,20+pct*62,0,Math.PI*2);context.stroke();

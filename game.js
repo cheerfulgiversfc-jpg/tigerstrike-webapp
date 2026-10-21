@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5230";
+const TS_BUILD = "5231";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -46472,7 +46472,8 @@ function tickCiviliansAndThreats(){
       const nearbySupport = (S.supportUnits || []).filter(unit => dist(unit.x, unit.y, best.x, best.y) < 96).length;
       const guardMult = nearbySupport ? clamp(1 - nearbySupport * 0.35, 0.3, 1) : 1;
       const protectMult = S._protectTicks > 0 ? 0.45 : 1;
-      const smokeMult = (squadAbilityActive("smoke_screen", now, S) || now < Number(S.secondarySmokeUntil || 0)) ? 0.32 : 1;
+      const smokeAt=S.secondarySmokeAt||S.me;
+      const smokeMult = (squadAbilityActive("smoke_screen", now, S) || (now < Number(S.secondarySmokeUntil || 0) && dist(best.x,best.y,smokeAt.x,smokeAt.y)<=300)) ? 0.32 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
       const personaDmgMul = best.aiState === "panicked" ? 1.08 : (best.aiState === "cooperative" ? 0.94 : 1.12);
       const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * personaDmgMul * perkCivMul() * storyCivilianDamageMul() * livingWorldCivilianDamageMul(S) * liveOpsMissionModifierValue("civilianDamageMul", 1, S);
@@ -48271,7 +48272,8 @@ function fieldPounceTarget(t){
 
 function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
   if(!t || !target || S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
-  if(now < Number(S.secondarySmokeUntil || 0) && dist(t.x, t.y, S.me.x, S.me.y) <= 320) return false;
+  const smokeAt=S.secondarySmokeAt||S.me;
+  if(now < Number(S.secondarySmokeUntil || 0) && (dist(t.x,t.y,smokeAt.x,smokeAt.y)<=300 || dist(target.x,target.y,smokeAt.x,smokeAt.y)<=300)) return false;
   if(now < Number(t._fieldPounceCooldownUntil || 0)) return false;
   const livingBalance = livingTigerBalance(t);
   if(Number(t._livingGlobalAttackSlot || 0) >= livingBalance.maxCoordinatedAttackers) return false;
@@ -59430,6 +59432,7 @@ function drawCivilian(c){
     if(arrival.done)return;
     ctx.save();ctx.globalAlpha=arrival.alpha;
     drawRealisticCivilianModel(c,arrival.x,arrival.y,{blend:1,topSpeed:2.1,face:-Math.PI/2,phase:nowMs*.008,scale:.96});
+    window.TigerCivilianRescue?.drawReaction(ctx,{...c,x:arrival.x,y:arrival.y},[],nowMs);
     ctx.fillStyle='#bbf7d0';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText('Thank you! • Entering safety',arrival.x,arrival.y-48);ctx.restore();return;
   }
   if(c?.evac){
@@ -59625,6 +59628,7 @@ function drawCivilian(c){
     phase:(c.id || 0) * 0.31,
     scale:0.96
   });
+  window.TigerCivilianRescue?.drawReaction(ctx,{...c,x:bx,y:by},S.tigers||[],nowMs);
 
   const rescuedAge = nowMs - Math.max(0, Number(c._rescuedAt || 0));
   if(c.evac && rescuedAge >= 0 && rescuedAge < 1800){

@@ -566,6 +566,13 @@
     const houseNear = rescueHouse && distance(state.local,rescueHouse) <= Number(rescueHouse.r || 105);
     const reviveNear = teammate?.downed && distance(state.local,teammate) <= 108;
     const unavailable = !!state.local.downed || !!state.snapshot?.paused;
+    const toolButton=$('squadRescueToolButton'),tool=localSnapshotPlayer()?.rescueTool,toolDef=window.TigerRescueTools?.DEFS[tool?.id];
+    if(toolButton && toolDef){
+      const remaining=Math.max(0,Math.ceil((tool.cooldownUntil-Number(state.snapshot.serverNow||Date.now()))/1000));
+      toolButton.innerHTML=`${toolDef.icon} ${esc(toolDef.name)}<br><small>${tool.charges} uses${remaining?` • ${remaining}s`:''}</small>`;
+      toolButton.disabled=unavailable||tool.charges<=0||remaining>0;
+      toolButton.title=tool.lastEffect||'Use your selected rescue tool';
+    }
     const survival = !!state.snapshot?.mission?.survival;
     const searchReady = !state.snapshot?.mission?.checkpointsBeforeRescue || (state.snapshot?.checkpointCompletedIds || []).length >= checkpointRequired();
     const captureReady = tiger && !tiger.lethalWounded && Number(tiger.hp || 0) > 0 && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
@@ -631,6 +638,21 @@
     ];
     return roles.map((role)=>`<button type="button" class="squadRole ${mine?.role === role.key ? "active" : ""}" ${waiting ? "" : "disabled"} data-squad-command="role" data-squad-role="${esc(role.key)}">${esc(role.label)}</button>`).join("");
   }
+  function rescueToolChoicesHtml(){
+    const chosen=localSnapshotPlayer()?.rescueTool?.id||'smoke';
+    return `<div class="squadSmall">Choose one rescue tool for this mission</div><div class="squadRoleGrid">${Object.values(window.TigerRescueTools?.DEFS||{}).map(def=>`<button type="button" class="squadRole ${chosen===def.id?'active':''}" data-squad-command="tool-select" data-tool-id="${def.id}" ${state.snapshot?.status==='waiting'?'':'disabled'}>${esc(def.icon)} ${esc(def.name)} • ${def.charges} uses</button>`).join('')}</div>`;
+  }
+  async function rescueToolCommand(toolId){
+    if(state.actionBusy)return;
+    state.actionBusy=true;
+    try{
+      if(!toolId && state.local)await sync(true);
+      await api(toolId?'tool-select':'tool-use',toolId?{toolId}:{});
+      if(toolId){render();setMessage('Rescue tool selected for the next deployment.');}
+      else setMessage(localSnapshotPlayer()?.rescueTool?.lastEffect||'Rescue tool deployed.');
+    }catch(error){setMessage(error.message,true);}
+    finally{state.actionBusy=false;}
+  }
 
   function crisisVoteHtml(){
     const snap=state.snapshot,vote=snap?.crisisVote;
@@ -671,6 +693,7 @@
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       ${leaderSanctuaryHtml()}
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
+      ${rescueToolChoicesHtml()}
       <div id="squadCrisisVote">${crisisVoteHtml()}</div>
       ${livingWorldMissionText() ? `<div class="squadConnection">🌍 <b>${esc(snapshot.mission?.livingWorld?.districtName || "District")} deployment briefing:</b> ${esc(livingWorldMissionText())}</div>` : ""}
       <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : selectedOperation().title} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Either player can rescue an available civilian or attack a tiger. A following civilian belongs to that rescuer, and only one player can complete each tiger capture.<br><b>4.</b> Bring your followers to the Rescue House and tap Take to House. ${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Then clear the final threat and extract together to complete the Shared Story campaign." : `Then clear the Story threats and extract together. After both rewards are claimed, the same squad can continue to Mission ${Number(state.storyMissionLevel || 1) + 1}.`) : `${esc(missionMeta().objective || selectedOperation().short)} Special Operation progress stays separate from Story.`}</div></details>
@@ -853,6 +876,7 @@
           <button type="button" class="squadActionBtn revive" id="squadReviveButton" data-squad-command="action" data-squad-action="revive">💚 Revive</button>
           <button type="button" class="squadActionBtn med" id="squadMedButton" data-squad-command="gear-use" data-squad-item="field_medkit">❤️ Med<br><small>${Number(profile.supplies?.medkits || 0)} left</small></button>
           <button type="button" class="squadActionBtn armor" id="squadArmorButton" data-squad-command="gear-use" data-squad-item="armor_plate">🛡️ Armor<br><small>${Number(profile.supplies?.armorPlates || 0)} left</small></button>
+          <button type="button" class="squadActionBtn rescue" id="squadRescueToolButton" data-squad-command="tool-use">Rescue Tool</button>
         </div>
       </div>
       <div class="squadSmall" style="margin-top:8px">Hold and drag the joystick to move your soldier. Rescue civilians, then use Take to House inside the Rescue House circle. Each player has one automatic field life. ${postCampaignActive() ? "Every currently connected crisis player must finish inside extraction; the operation scales safely between one and two players." : "Both players must finish inside extraction."}</div>
@@ -1150,6 +1174,8 @@
       continue:()=>continueTogether(),
       handoff:()=>handoffLeadership(),
       radio:()=>sendFieldRadio(button?.dataset?.radioKind),
+      'tool-select':()=>rescueToolCommand(button?.dataset?.toolId),
+      'tool-use':()=>rescueToolCommand(),
       'radio-locate':()=>{ radioLocateUntil=Date.now()+7000;updateFieldRadio(); },
       'radio-mute':()=>{ radioMuted=!radioMuted;try{localStorage.setItem('ts_field_radio_muted',radioMuted?'1':'0');}catch(e){}updateFieldRadio(); },
       action:()=>action(actionName),
@@ -2015,7 +2041,8 @@
     if(window.TigerStrikeBattlefieldRenderer?.drawCivilian){
       ctx.restore();
       const drawn=window.TigerStrikeBattlefieldRenderer.drawCivilian(ctx,civ,{walking,phase:prior.phase,rescued});
-      if(arrival){ctx.fillStyle='#bbf7d0';ctx.font='900 12px system-ui';ctx.textAlign='center';ctx.fillText('Thank you! • Entering safety',drawn.x,drawn.labelY);return;}
+      if(arrival){window.TigerCivilianRescue?.drawReaction(ctx,{...civ,secured:true},[],renderNow);ctx.fillStyle='#bbf7d0';ctx.font='900 12px system-ui';ctx.textAlign='center';ctx.fillText('Thank you! • Entering safety',drawn.x,drawn.labelY);return;}
+      window.TigerCivilianRescue?.drawReaction(ctx,civ,state.snapshot?.tigers||[],renderNow);
       ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(`${window.TigerFieldRadio?.civilianStatus(civ,viewerId())||'RESCUE'} • ${civ.name}`,drawn.x,drawn.labelY);
       return;
     }
@@ -2802,6 +2829,10 @@
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
     drawFieldRadio(ctx);
+    for(const player of (snap.players||[])){
+      const effect=player.rescueTool?.effect;
+      window.TigerRescueTools?.drawEffect(ctx,effect?.kind==='flare'?{...effect,target:window.TigerFieldRadio?.guide(snap,player.userId)}:effect,now);
+    }
     for(const tiger of (snap.tigers||[]))for(const warning of (tiger.attackWarnings||[]))window.TigerEncounters?.drawWarning(ctx,tiger,warning,now);
     drawSnowstormOverlay(ctx,snap,view,now);
     drawNightVisibilityOverlay(ctx,snap,view);

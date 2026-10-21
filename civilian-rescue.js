@@ -38,5 +38,26 @@
     if(c.following){const owner=c.escortOwner==='rescue'?'Rescue team':(!c.followingUserId||Number(c.followingUserId)===Number(viewerId)?'Following you':'Following teammate');return injured?`Injured • ${owner}`:owner;}
     return injured?'Injured • needs rescue':'Available to rescue';
   }
-  return Object.freeze({VERSION:'11.8',ARRIVAL_MS,start,advance,arrival,arrivalFrame,status});
+  function reaction(c={},tigers=[],now=Date.now()){
+    if(c.secured||c.evac){const f=arrivalFrame(c.rescueArrival,now);return f&&!f.done?'Entering safety':'Safely rescued';}
+    if(c.alive===false||c.dead)return '';
+    if(tigers.some(t=>t.alive!==false&&!t.defeated&&Number(t.hp||0)>0&&distance(c,t)<180))return 'Tiger nearby!';
+    if(c.following)return 'Stay together';
+    return 'Help here!';
+  }
+  function drawReaction(ctx,c,tigers=[],now=Date.now()){
+    const label=reaction(c,tigers,now);if(!label)return;
+    ctx.save();ctx.translate(c.x,c.y);ctx.textAlign='center';ctx.font='900 11px system-ui';
+    ctx.fillStyle=label==='Tiger nearby!'?'#fecaca':'#d1fae5';
+    ctx.fillText(label,0,-66);
+    if(label==='Entering safety'){
+      ctx.strokeStyle=c.skin||'#d7a47f';ctx.lineWidth=5;ctx.lineCap='round';
+      for(const side of [-1,1]){ctx.beginPath();ctx.moveTo(side*12,-3);ctx.lineTo(side*22,-27+Math.sin(now*.009)*4);ctx.stroke();}
+    }else if(!c.following&&!c.secured&&!c.evac){
+      const handY=-25+Math.sin(now*.009)*5;
+      ctx.strokeStyle=c.skin||'#d7a47f';ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(12,-3);ctx.lineTo(22,handY);ctx.stroke();
+    }
+    ctx.restore();
+  }
+  return Object.freeze({VERSION:'11.8',ARRIVAL_MS,start,advance,arrival,arrivalFrame,status,reaction,drawReaction});
 });
