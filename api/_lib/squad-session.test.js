@@ -199,11 +199,15 @@ async function run(){
   assert.equal(snapshot.civilians.filter((civilian)=>civilian.following).length, 2, "both players can rescue different civilians at the same time");
   await writePlayerPatch(code, host.id, { x:snapshot.rescueHouse.x, y:snapshot.rescueHouse.y, lastSeenAt:Date.now() });
   await writePlayerPatch(code, teammate.id, { x:snapshot.rescueHouse.x, y:snapshot.rescueHouse.y, lastSeenAt:Date.now() });
+  await assert.rejects(()=>applyAction(session, host, "deliver"), /Wait for your following civilians/, "walking alone into the house cannot teleport distant followers to safety");
+  for(const [user,civilian] of [[host,firstCivilian],[teammate,secondCivilian]]){
+    await writePlayerPatch(code,user.id,{civilianEscorts:{[civilian.id]:{x:snapshot.rescueHouse.x,y:snapshot.rescueHouse.y,path:[],updatedAt:Date.now()}}});
+  }
   await applyAction(await readSession(code), host, "deliver");
   session = await applyAction(await readSession(code), teammate, "deliver");
   snapshot = await buildSnapshot(session, host.id);
   assert.equal(snapshot.securedCivilianIds.length, 2, "each civilian owner can take their followers into the Rescue House");
-  assert.equal(snapshot.civilians.filter((civilian)=>civilian.secured).length, 2, "delivered civilians remain visibly safe at the Rescue House");
+  assert.equal(snapshot.civilians.filter((civilian)=>civilian.secured && civilian.rescueArrival).length, 2, "delivered civilians have confirmed arrival animations at the Rescue House");
 
   const rubberTiger = snapshot.tigers[0];
   await writePlayerPatch(code, host.id, { x:rubberTiger.x, y:rubberTiger.y, lastAttackAt:0, lastSeenAt:Date.now() });

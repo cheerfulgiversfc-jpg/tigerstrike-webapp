@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5229";
+const TS_BUILD = "5230";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -46279,6 +46279,9 @@ function lockEvacuatedCivilianInSafeZone(c, state=S){
   const ez = state?.evacZone;
   if(!c || !ez || !Number.isFinite(ez.x) || !Number.isFinite(ez.y)) return;
   const route = ensureEvacRouteState(state);
+  if(!c.evac && !route.active && window.TigerCivilianRescue){
+    c.rescueArrival=window.TigerCivilianRescue.arrival(c,{x:ez.x,y:ez.y+16},Date.now());
+  }
   if(route.active && normalizeModeName(state.mode) !== "Survival"){
     markCivilianBoarded(c, Date.now());
   }
@@ -46335,6 +46338,7 @@ function evacCheck(){
       const routeBonus = route.active ? 6 : 0;
       const xpGain = Math.max(30, Math.round((35 * rewardMul) + ((pDef.riskValue || 1) * 3) + (highRisk ? 10 : 0) + routeBonus));
       const cashGain = highRisk ? Math.round((c.aiState === "injured" ? 95 : 70) * rewardMul) : 0;
+      if(!route.active && window.TigerCivilianRescue)c.rescueArrival=window.TigerCivilianRescue.arrival(c,{x:ez.x,y:ez.y+16},Date.now());
       moveCivilianInsideEvac(c, evacCoreRadius);
       if(dist(c.x, c.y, ez.x, ez.y) > evacCoreRadius){
         continue;
@@ -59421,6 +59425,13 @@ function drawEscortLink(from, to, color="rgba(110,231,183,.72)"){
 
 function drawCivilian(c){
   const nowMs = Date.now();
+  const arrival=window.TigerCivilianRescue?.arrivalFrame(c.rescueArrival,nowMs);
+  if(c.evac && arrival){
+    if(arrival.done)return;
+    ctx.save();ctx.globalAlpha=arrival.alpha;
+    drawRealisticCivilianModel(c,arrival.x,arrival.y,{blend:1,topSpeed:2.1,face:-Math.PI/2,phase:nowMs*.008,scale:.96});
+    ctx.fillStyle='#bbf7d0';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText('Thank you! • Entering safety',arrival.x,arrival.y-48);ctx.restore();return;
+  }
   if(c?.evac){
     const route = ensureEvacRouteState(S);
     const boarded = !!c.boardedAt && nowMs >= Number(c.boardedAt || 0);
@@ -59658,7 +59669,7 @@ function drawCivilian(c){
       labelBg = "rgba(74,50,8,.92)";
       labelBorder = "rgba(251,191,36,.92)";
     }else if(c.aiState === "injured"){
-      label = "INJURED";
+      label = c.following ? "INJURED • FOLLOWING" : "INJURED";
       labelBg = "rgba(56,38,74,.90)";
       labelBorder = "rgba(216,180,254,.88)";
     }else if(c.helpWanted || nowMs < Number(c.helpUntil || 0)){
@@ -59666,7 +59677,7 @@ function drawCivilian(c){
       labelBg = "rgba(74,50,8,.90)";
       labelBorder = "rgba(251,191,36,.86)";
     }else if(c.following){
-      label = "FOLLOW";
+      label = c.escortOwner === "rescue" ? "RESCUE TEAM" : "FOLLOWING YOU";
       labelBg = "rgba(14,44,86,.82)";
       labelBorder = "rgba(96,165,250,.76)";
     }else{
@@ -59679,7 +59690,7 @@ function drawCivilian(c){
       const pulse = riskState === "critical" ? (0.84 + Math.sin(nowMs / 95) * 0.12) : 0.86;
       ctx.save();
       ctx.globalAlpha = pulse;
-      const w = label === "INJURED" ? 58 : (label.startsWith("CIV ") ? 54 : 48);
+      const w = Math.max(48,label.length*6+10);
       ctx.fillStyle = labelBg;
       roundedRectFill(bx - (w * 0.5), by - 58, w, 18, 8);
       ctx.strokeStyle = labelBorder;
@@ -59761,6 +59772,7 @@ function drawWithEmergencyFallback(label, primary, fallback){
 
 function shouldDrawActiveCivilian(c, nowMs=Date.now()){
   if(!c || c.alive === false || c.dead) return false;
+  if(c.evac && window.TigerCivilianRescue?.arrivalFrame(c.rescueArrival,nowMs)?.done)return false;
   if(c.evacuated || c.extracted || c.removedAfterEvac || c._hiddenAfterEvac) return false;
   if(c.boarded || (c.boardedAt && nowMs >= Number(c.boardedAt || 0))) return false;
   return true;

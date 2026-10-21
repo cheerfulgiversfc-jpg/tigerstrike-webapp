@@ -891,6 +891,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo event play uses Protect Civilians First as its safe default. A solo squad room may choose a different response, but inviting a teammate before deployment reopens the ballot so the second player always gets a vote.
 - Expired and completed events disappear from that player's command network. Event and response bonuses use the existing per-player reward receipt, so reconnecting or replaying cannot pay the same operation twice.
 
+### V11.8 Living Civilian Rescue — first phase
+
+- Co-op followers now walk a saved route behind their own rescuer instead of snapping to a fixed offset. Route corners, spacing, downed-player stops and slower injured escorts are handled on the server. Reconnecting restores ownership and route progress; respawning/checkpoint restarts regroup retained followers at the soldier's checkpoint.
+- Rescue House delivery checks that followers are nearby. A confirmed delivery triggers a two-second door-entry animation with a thank-you label; safe civilians remain counted after their sprites enter the house. The existing one-owner rescue reservation and reward rules remain in place.
+- Co-op labels distinguish your followers, your teammate's followers and injuries. Solo labels make player/rescue-team ownership clearer, while preserving the existing Solo obstacle-routing and emergency-flee logic.
+- Solo safe-house rescues also show an entry animation. Boat, helicopter and vehicle boarding/departure sequences are preserved, not replaced with house animations.
+- Build 5230. This phase does not add new secondary-equipment effects, voice acting, or additional civilian AI. Automated checks cover route corners, injury speed, downed stops, reconnect persistence, arrival timing, ownership, delivery distance, mission progression and reward deduplication. Physical two-phone playtesting is still needed.
+
 ### V11.7 Tiger Encounters
 
 - Co-op tiger melee attacks begin with a server-owned windup: one second for two players, 1.25 seconds for a solo crisis player. The marked impact spot is fixed when the attack starts. Moving more than 62 world units away dodges it, and damage also requires the tiger to remain in range.

@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.7 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.7 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.7 • Tiger Encounters");
+      ? `Tiger Strike V11.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V11.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.8 • Living Civilian Rescue");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -418,11 +418,13 @@
     if(state.snapshot && cleanCode(snapshot.code) === cleanCode(state.snapshot.code) && Number(snapshot.serverNow || 0) < Number(state.snapshot.serverNow || 0)) return;
     if(state.snapshot && cleanCode(snapshot.code) !== cleanCode(state.snapshot.code)) state.remoteDraw.clear();
     const receivedAt = performance.now();
+    if(state.snapshot?.startedAt !== snapshot.startedAt || state.snapshot?.code !== snapshot.code)state.civilianDraw=new Map();
     for(const player of (snapshot.players || [])){
       if(Number(player.userId) === viewerId()) continue;
       state.remoteDraw.set(player.userId, squadMotion.accept(state.remoteDraw.get(player.userId), player, receivedAt, snapshot.world));
     }
     state.snapshot = snapshot;
+    state.snapshotReceivedAt = receivedAt;
     if(snapshot.viewerProfile) state.profile = snapshot.viewerProfile;
     if(Array.isArray(snapshot.gearCatalog)) state.gearCatalog = snapshot.gearCatalog;
     state.launchType = normalizeLaunchType(snapshot.launchType);
@@ -587,6 +589,10 @@
       rescue.dataset.squadAction = civNear ? "rescue" : (following.length ? "deliver" : "rescue");
       rescue.innerHTML = unavailable ? unavailableLabel : (!searchReady ? "🏠 Search Homes<br><small>Both players required</small>" : (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : (following.length ? (houseNear ? `🏠 Take to House<br><small>${following.length} civilian${following.length===1?"":"s"}</small>` : `🏠 Rescue House<br><small>${Math.round(distance(state.local,rescueHouse))}m • ${following.length} following</small>`) : (civilian ? `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>` : noCivilianLabel))));
       rescue.disabled = unavailable || !searchReady || (!civNear && (!following.length || !houseNear));
+      if(!unavailable && !civNear && houseNear && following.some(c=>distance(c,rescueHouse)>Number(rescueHouse.r||105)+55)){
+        rescue.innerHTML='🏠 Waiting for followers<br><small>Stay near the house door</small>';
+        rescue.disabled=true;
+      }
     }
     if(revive){ revive.innerHTML = unavailable ? unavailableLabel : (teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"); revive.disabled = unavailable || !teammate?.downed; }
     if(med){ med.innerHTML = `❤️ Med<br><small>${Number(profile.supplies?.medkits || 0)} left</small>`; med.disabled = unavailable || Number(profile.supplies?.medkits || 0) < 1 || Number(state.local.hp || 0) >= Number(state.local.maxHp || 1); }
@@ -751,7 +757,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.7 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.8 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -1991,11 +1997,25 @@
   }
 
   function drawStoryCivilian(ctx,civ,rescued){
+    const renderNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
+    const arrival=window.TigerCivilianRescue?.arrivalFrame(civ.rescueArrival,renderNow);
+    if(civ.secured){
+      if(!arrival || arrival.done)return;
+      civ={...civ,x:arrival.x,y:arrival.y,secured:false};
+    }
+    if(!arrival && civ.following){
+      if(!state.civilianDraw)state.civilianDraw=new Map();
+      const key=`${state.snapshot?.code}:${state.snapshot?.startedAt}:${civ.id}`;
+      const prior=state.civilianDraw.get(key)||{x:civ.x,y:civ.y};
+      prior.x+=(civ.x-prior.x)*.18;prior.y+=(civ.y-prior.y)*.18;
+      state.civilianDraw.set(key,prior);civ={...civ,x:prior.x,y:prior.y};
+    }
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"],soldier:["#4d7c0f","#1f2937"]};
     const [shirt,pants]=colors[civ.look]||colors.field;const key=`civ:${civ.id}`;const prior=state.walkVisual.get(key)||{x:Number(civ.x),y:Number(civ.y),phase:0};const moved=Math.hypot(Number(civ.x)-prior.x,Number(civ.y)-prior.y);const walking=moved>.12&&!civ.secured;prior.phase=walking?prior.phase+Math.min(1,moved*.26):prior.phase*.9;prior.x=Number(civ.x);prior.y=Number(civ.y);state.walkVisual.set(key,prior);const stride=walking?Math.sin(prior.phase)*6:0;const bob=walking?Math.abs(Math.sin(prior.phase))*1.6:0;ctx.save();ctx.translate(civ.x,civ.y-bob);ctx.globalAlpha=civ.secured?.42:1;
     if(window.TigerStrikeBattlefieldRenderer?.drawCivilian){
       ctx.restore();
       const drawn=window.TigerStrikeBattlefieldRenderer.drawCivilian(ctx,civ,{walking,phase:prior.phase,rescued});
+      if(arrival){ctx.fillStyle='#bbf7d0';ctx.font='900 12px system-ui';ctx.textAlign='center';ctx.fillText('Thank you! • Entering safety',drawn.x,drawn.labelY);return;}
       ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(`${window.TigerFieldRadio?.civilianStatus(civ,viewerId())||'RESCUE'} • ${civ.name}`,drawn.x,drawn.labelY);
       return;
     }
@@ -2756,6 +2776,10 @@
     else{state.camera.x+=(targetX-state.camera.x)*.16;state.camera.y+=(targetY-state.camera.y)*.16;}
     const view={x:state.camera.x,y:state.camera.y,w,h};ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(-view.x,-view.y);
     drawExpandedDistrict(ctx,snap,view);
+    if(snap.rescueHouse && (snap.securedCivilianIds||[]).length){
+      ctx.fillStyle='#bbf7d0';ctx.font='900 13px system-ui';ctx.textAlign='center';
+      ctx.fillText(`${snap.securedCivilianIds.length} SAFE • INSIDE`,snap.rescueHouse.x,snap.rescueHouse.y-146);
+    }
     window.TigerStrikeBattlefieldRenderer?.drawBattlefieldFinish?.(ctx,view,{now,mission:snap.mission});
     drawSharedMissionTruth(ctx,snap);
     for(const civ of (snap.civilians||[])) drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id));

@@ -8,6 +8,7 @@ const postCampaign = require("../../post-campaign");
 const sanctuarySystem = require("../../sanctuary");
 const fieldRadio = require("../../field-radio");
 const tigerEncounters = require("../../tiger-encounters");
+const civilianRescue = require("../../civilian-rescue");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -2687,6 +2688,7 @@ function newPlayer(user, slot=0){
     capturedIds:[],
     rescuedIds:[],
     securedCivilianIds:[],
+    civilianEscorts:{},
     checkpointIds:[],
     revives:0,
     joinedAt:nowMs(),
@@ -2771,6 +2773,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     captureSites,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     securedCivilianIds:[...new Set((Array.isArray(src.securedCivilianIds) ? src.securedCivilianIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
+    civilianEscorts:src.civilianEscorts && typeof src.civilianEscorts === 'object' ? src.civilianEscorts : {},
     checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id)))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     revives:clamp(src.revives, 0, 999),
@@ -3121,10 +3124,12 @@ function civilianSnapshots(session, players, rescuedIds, securedCivilianIds){
     const row = Math.floor(index / 2);
     const side = index % 2 === 0 ? -1 : 1;
     const secured = securedCivilianIds.includes(civilian.id);
+    const escort = owner.civilianEscorts?.[civilian.id];
     return {
       ...civilian,
-      x:secured ? rescueHouse.x + side * (28 + row * 7) : clamp(Number(owner.x || 0) + side * (38 + row * 8), 24, mission.world.width - 24),
-      y:secured ? rescueHouse.y + 28 + row * 25 : clamp(Number(owner.y || 0) + 42 + row * 30, 24, mission.world.height - 24),
+      x:secured ? rescueHouse.x : (Number.isFinite(escort?.x) ? escort.x : clamp(Number(owner.x || 0) + side * (38 + row * 8), 24, mission.world.width - 24)),
+      y:secured ? rescueHouse.y + 42 : (Number.isFinite(escort?.y) ? escort.y : clamp(Number(owner.y || 0) + 42 + row * 30, 24, mission.world.height - 24)),
+      rescueArrival:secured ? escort?.arrival || null : null,
       following:!secured,
       followingUserId:owner.userId,
       secured,
@@ -3385,6 +3390,10 @@ async function updateOwnPresence(session, user, patch={}){
     player.face = 0;
     player.lastHazardAt = now;
     player.lastMoveAt = now;
+    for(const id of (player.rescuedIds || [])){
+      if((player.securedCivilianIds || []).includes(id))continue;
+      player.civilianEscorts[id]={x:spawn.x,y:spawn.y+36,path:[],updatedAt:now};
+    }
   }
   if(!player.downed && session.status === "active" && patch && Number.isFinite(Number(patch.x)) && Number.isFinite(Number(patch.y))){
     const proposed = { x:clamp(patch.x, 24, mission.world.width - 24), y:clamp(patch.y, 24, mission.world.height - 24) };
@@ -3420,6 +3429,14 @@ async function updateOwnPresence(session, user, patch={}){
     player.moving = false;
     player.moveX = 0;
     player.moveY = 0;
+  }
+  if(session.status === "active"){
+    for(const civilian of mission.civilians){
+      if(!(player.rescuedIds || []).includes(civilian.id) || (player.securedCivilianIds || []).includes(civilian.id)) continue;
+      const escort=player.civilianEscorts[civilian.id] || civilianRescue.start(civilian,player,now);
+      const order=(player.rescuedIds || []).filter(id=>!(player.securedCivilianIds || []).includes(id)).indexOf(civilian.id);
+      player.civilianEscorts[civilian.id]=civilianRescue.advance(escort,player,now,{injured:!!civilian.injured,paused:player.downed,gap:Math.min(108,36+Math.max(0,order)*14)});
+    }
   }
   if(session.status === "active" && !player.downed && (mission.checkpoints || []).length){
     const routePlayers = await memberPlayers(session);
@@ -3669,7 +3686,13 @@ async function applyAction(session, user, action, payload={}){
         p.capturedIds = [];
         p.rescuedIds = [];
         p.securedCivilianIds = [];
+        p.civilianEscorts = {};
         p.checkpointIds = [];
+      }else{
+        for(const id of (p.rescuedIds || [])){
+          if((p.securedCivilianIds || []).includes(id))continue;
+          p.civilianEscorts[id]={x:p.x,y:p.y+36,path:[],updatedAt:now};
+        }
       }
       p.rewardClaimed = false;
       p.lastSeenAt = now;
@@ -3785,6 +3808,7 @@ async function applyAction(session, user, action, payload={}){
     const reserved = currentOwner || await setStateIfAbsent(`live_squad_rescue_${session.code}_${session.startedAt}_${id}`, { userId:uid, rescuedAt:now });
     if(!reserved) throw new Error(`${civilian.name} is already following your teammate.`);
     if(!player.rescuedIds.includes(id)) player.rescuedIds.push(id);
+    if(!player.civilianEscorts[id]) player.civilianEscorts[id]=civilianRescue.start(civilian,player,now);
     if(!currentOwner){ await changeCoopStat(user, "rescues", 1); }
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
@@ -3794,6 +3818,14 @@ async function applyAction(session, user, action, payload={}){
     if(distance(player, rescueHouse) > rescueHouse.r) throw new Error("Bring your following civilians inside the Rescue House circle first.");
     const ownedFollowing = (player.rescuedIds || []).filter((id)=>!(player.securedCivilianIds || []).includes(id));
     if(!ownedFollowing.length) throw new Error("No civilians are following you right now.");
+    for(const id of ownedFollowing){
+      const escort=player.civilianEscorts[id];
+      if(escort && distance(escort,rescueHouse)>rescueHouse.r+55) throw new Error("Wait for your following civilians to reach the Rescue House, then tap Take to House.");
+    }
+    for(const id of ownedFollowing){
+      const escort=player.civilianEscorts[id] || {x:player.x,y:player.y};
+      player.civilianEscorts[id]={...escort,path:[],arrival:civilianRescue.arrival(escort,{x:rescueHouse.x,y:rescueHouse.y+42},now)};
+    }
     if(!Array.isArray(player.securedCivilianIds)) player.securedCivilianIds = [];
     player.securedCivilianIds.push(...ownedFollowing);
     player.securedCivilianIds = [...new Set(player.securedCivilianIds)];
@@ -4047,12 +4079,14 @@ async function closeSession(session, user){
       staying.securedCivilianIds = [...new Set([...(staying.securedCivilianIds || []), ...(leaving.securedCivilianIds || [])])];
       staying.killSites = { ...(leaving.killSites || {}), ...(staying.killSites || {}) };
       staying.captureSites = { ...(leaving.captureSites || {}), ...(staying.captureSites || {}) };
+      staying.civilianEscorts = { ...(leaving.civilianEscorts || {}), ...(staying.civilianEscorts || {}) };
       await writePlayer(session.code, staying);
       leaving.tigerDamage = {};
       leaving.lethalWoundedIds = [];
       leaving.capturedIds = [];
       leaving.rescuedIds = [];
       leaving.securedCivilianIds = [];
+      leaving.civilianEscorts = {};
       leaving.killSites = {};
       leaving.captureSites = {};
       await writePlayer(session.code, leaving);

@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V11.7 (Tiger Encounters)</title>
+  <title>Tiger Strike 🐅 — V11.8 (Living Civilian Rescue)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5229-tiger-encounters">
+  <link rel="stylesheet" href="./squad-coop.css?v=5230-civilian-rescue">
 
   <style>
     :root{
@@ -2576,9 +2576,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V11.7</span> <span class="tag">Tiger Encounters</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V11.8</span> <span class="tag">Living Civilian Rescue</span></div>
       <div class="sub">
-        V11.7 adds readable tiger attack warnings, co-op windups that can be dodged or interrupted with Rubber, crouching and hit reactions, and teamwork radio callouts.<br>
+        V11.8 adds saved co-op civilian escort routes, clearer follower ownership and injury labels, and visible Rescue House arrivals. Solo rescue rewards and transport boarding rules remain unchanged.<br>
         Settlement Siege, Escaped Alpha Transport, and Government Response Raid are real playable Solo crises with their own enemies, civilians, objectives, rewards, completion receipts, and safe return to the command network.<br>
         All 100 Story missions now share one authored map-truth system across Solo and Shared Story. Every future mission batch includes Mission Map Truth &amp; Parity in the same update—not as a later visual patch.<br>
         Mission 98 is the exact eighteen-tiger final swarm with no fake side objective. Mission 99 fields exactly fourteen temple guards and requires all four guardian seals activated in order. Mission 100 is the single 8,500-HP Ancient Tiger; defeating it or capturing it alive is valid before the final Story extraction.<br>
@@ -3546,7 +3546,7 @@
     <div class="modalTop"><div class="modalTitle">🎬 Story Finale</div><button class="ghost" type="button" onclick="closePostCampaignEnding()">Skip / Continue</button></div>
     <div class="modalBody">
       <div class="postCampaignEndingHero">
-        <div class="small">V11.7 • TIGER ENCOUNTERS</div>
+        <div class="small">V11.8 • LIVING CIVILIAN RESCUE</div>
         <div class="hudTitle" id="postCampaignEndingTitle">The World Changes</div>
         <div class="hudLine" id="postCampaignEndingRoute">Campaign ending</div>
       </div>
@@ -3561,7 +3561,7 @@
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V11.7 • Tiger Encounters</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V11.8 • Living Civilian Rescue</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3606,25 +3606,26 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5229-tiger-encounters"></script>
-  <script src="./ammo-modes.js?v=5229-tiger-encounters"></script>
-  <script src="./government-policy.js?v=5229-tiger-encounters"></script>
-  <script src="./tiger-intelligence.js?v=5229-tiger-encounters"></script>
-  <script src="./tiger-encounters.js?v=5229-tiger-encounters"></script>
-  <script src="./living-world.js?v=5229-tiger-encounters"></script>
-  <script src="./mission-map-truth.js?v=5229-tiger-encounters"></script>
-  <script src="./post-campaign.js?v=5229-tiger-encounters"></script>
-  <script src="./sanctuary.js?v=5229-tiger-encounters"></script>
-  <script src="./player-experience.js?v=5229-tiger-encounters"></script>
-  <script src="./field-radio.js?v=5229-tiger-encounters"></script>
-  <script src="./game.js?v=5229-tiger-encounters"></script>
-  <script src="./story-cinematics.js?v=5229-tiger-encounters"></script>
-  <script src="./field-systems.js?v=5229-tiger-encounters"></script>
-  <script src="./tutorial.js?v=5229-tiger-encounters"></script>
-  <script src="./squad-motion.js?v=5229-tiger-encounters"></script>
-  <script src="./shared-battlefield-renderer.js?v=5229-tiger-encounters"></script>
-  <script src="./squad-coop.js?v=5229-tiger-encounters"></script>
-  <script src="./extraction-qa.js?v=5229-tiger-encounters"></script>
+  <script src="./extraction-geometry.js?v=5230-civilian-rescue"></script>
+  <script src="./ammo-modes.js?v=5230-civilian-rescue"></script>
+  <script src="./government-policy.js?v=5230-civilian-rescue"></script>
+  <script src="./tiger-intelligence.js?v=5230-civilian-rescue"></script>
+  <script src="./tiger-encounters.js?v=5230-civilian-rescue"></script>
+  <script src="./living-world.js?v=5230-civilian-rescue"></script>
+  <script src="./mission-map-truth.js?v=5230-civilian-rescue"></script>
+  <script src="./post-campaign.js?v=5230-civilian-rescue"></script>
+  <script src="./sanctuary.js?v=5230-civilian-rescue"></script>
+  <script src="./player-experience.js?v=5230-civilian-rescue"></script>
+  <script src="./field-radio.js?v=5230-civilian-rescue"></script>
+  <script src="./civilian-rescue.js?v=5230-civilian-rescue"></script>
+  <script src="./game.js?v=5230-civilian-rescue"></script>
+  <script src="./story-cinematics.js?v=5230-civilian-rescue"></script>
+  <script src="./field-systems.js?v=5230-civilian-rescue"></script>
+  <script src="./tutorial.js?v=5230-civilian-rescue"></script>
+  <script src="./squad-motion.js?v=5230-civilian-rescue"></script>
+  <script src="./shared-battlefield-renderer.js?v=5230-civilian-rescue"></script>
+  <script src="./squad-coop.js?v=5230-civilian-rescue"></script>
+  <script src="./extraction-qa.js?v=5230-civilian-rescue"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

@@ -42,6 +42,8 @@
     return point(snap.extraction,'Reach extraction');
   }
   function civilianStatus(civilian={},viewerId=0){
+    const rescue=typeof globalThis!=='undefined'?globalThis.TigerCivilianRescue:null;
+    if(rescue)return rescue.status(civilian,viewerId);
     if(civilian.secured||civilian.evac)return 'Safely rescued';
     if(civilian.following)return Number(civilian.followingUserId)===Number(viewerId)?'Following you':'Following teammate';
     return 'Available to rescue';

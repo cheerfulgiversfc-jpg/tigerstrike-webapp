@@ -1,0 +1,50 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const rescue=require('./civilian-rescue');
+test('escorts traverse the actual travelled corners instead of cutting diagonally',()=>{
+  let state=rescue.start({x:0,y:0},{x:100,y:0},1000);
+  state=rescue.advance(state,{x:100,y:100},1100);
+  assert.equal(state.y,0);assert.equal(state.x,50);
+  state=rescue.advance(state,{x:100,y:100},1300);
+  assert.equal(state.x,100);assert.equal(state.y,50);
+  state=rescue.advance(state,{x:100,y:100},1500);
+  assert.equal(state.x,100);assert.equal(state.y,64);
+});
+test('injury, a downed escort and long offline gaps have bounded movement',()=>{
+  const state=rescue.start({x:0,y:0},{x:1000,y:0},1000);
+  assert.equal(rescue.advance(state,{x:1000,y:0},1200,{injured:true}).x,72);
+  assert.equal(rescue.advance(state,{x:1000,y:0},1200,{paused:true}).x,0);
+  assert.equal(rescue.advance(state,{x:1000,y:0},999999).x,500);
+  assert.equal(state.x,0,'updates do not mutate the previous snapshot');
+});
+test('arrival walks into a real door, finishes once, and status respects ownership and injury',()=>{
+  const event=rescue.arrival({x:100,y:200},{x:200,y:100},1000);
+  assert.deepEqual(rescue.arrivalFrame(event,2000),{x:150,y:150,alpha:1,done:false,progress:.5});
+  assert.equal(rescue.arrivalFrame(event,3000).done,true);
+  assert.equal(rescue.arrivalFrame(null),null);
+  assert.equal(rescue.status({following:true,followingUserId:1},1),'Following you');
+  assert.equal(rescue.status({following:true,followingUserId:2},1),'Following teammate');
+  assert.equal(rescue.status({following:true,injured:true},1),'Injured • Following you');
+  assert.equal(rescue.status({secured:true,injured:true},1),'Safely rescued');
+});
+test('co-op persists an escort route through reconnect and does not expose it as client input',async()=>{
+  for(const key of ['KV_REST_API_URL','KV_REST_API_TOKEN','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN'])process.env[key]='';
+  const squad=require('./api/_lib/squad-session'),store=require('./api/_lib/metrics-store');
+  const host={id:9811801,first_name:'Rescuer'},mate={id:9811802,first_name:'Partner'};
+  let room=await squad.createSession(host,{launchType:'shared-story',storyMissionLevel:1});
+  room=await squad.joinSession(room.code,mate);room=await squad.applyAction(room,host,'start');
+  const snap=await squad.buildSnapshot(room,host.id),civilian=snap.civilians[0],key=`live_squad_player_${room.code}_${host.id}`;
+  let player=await store.getState(key);
+  await store.setState(key,{...player,x:civilian.x,y:civilian.y});
+  await squad.applyAction(room,host,'rescue',{civilianId:civilian.id});
+  player=await store.getState(key);
+  const route=rescue.start(civilian,{x:civilian.x+100,y:civilian.y},Date.now()-200);
+  await store.setState(key,{...player,x:civilian.x+100,y:civilian.y+100,civilianEscorts:{[civilian.id]:route}});
+  await squad.updateOwnPresence(room,host,{civilianEscorts:{}});
+  player=await store.getState(key);
+  assert(player.civilianEscorts[civilian.id].x>civilian.x);
+  room=await squad.joinSession(room.code,host);
+  const restored=await squad.buildSnapshot(room,mate.id),follower=restored.civilians.find(c=>c.id===civilian.id);
+  assert.equal(follower.followingUserId,host.id);
+  assert.equal(follower.x,player.civilianEscorts[civilian.id].x);
+  assert.equal(rescue.status(follower,mate.id),'Following teammate');
+});
