@@ -891,6 +891,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo event play uses Protect Civilians First as its safe default. A solo squad room may choose a different response, but inviting a teammate before deployment reopens the ballot so the second player always gets a vote.
 - Expired and completed events disappear from that player's command network. Event and response bonuses use the existing per-player reward receipt, so reconnecting or replaying cannot pay the same operation twice.
 
+### V11.6 Field Radio & Squad Commands
+
+- Live Squad has four server-validated signals: Help Me, Follow Me, Rescue Here and Capture Alive. The server picks real available targets, rejects capture signals in Survival, applies a three-second cooldown and expires markers after twelve seconds. Signals survive reconnects within the same mission and do not carry into a new mission.
+- Both phones see the sender, message, world marker and direction line. Shared objective location follows checkpoint order, rescue ownership, the Rescue House, required named capture targets, tiger threats and extraction.
+- Civilian labels distinguish Following You, Following Teammate and Safely Rescued.
+- Brief text radio alerts cover downed teammates, civilians near threats, capture-ready tigers and open extraction. Alerts have a six-second change cooldown and a saved mute option. No Telegram messages or voice recordings are sent.
+- Solo Field Radio orders use the existing hired-soldier systems for rescue, regroup/follow, hold/defend and focus locked target. These commands preserve the existing combat and ammunition rules. Solo alerts and rescue counts can be muted independently.
+- Build 5228 includes executable two-player session tests for shared signal delivery, membership validation, target validation and cooldown enforcement.
+
 ### V11.5 Player Experience — first release
 
 - Solo Story and Arcade receive a Next Objective button tied to real pending map locations, civilians, required live captures, threats and extraction. Tapping highlights the destination and draws a seven-second direction line; it does not move the soldier or complete an objective.

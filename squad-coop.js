@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.5 • Living Sanctuary");
+      ? `Tiger Strike V11.6 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V11.6 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.6 • Field Radio");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -508,6 +508,7 @@
     const connection = $("squadConnection");
     if(connection) connection.textContent = playerConnectionText();
     set("squadObjective", objectiveText());
+    updateFieldRadio();
     const pauseNotice = $("squadPauseNotice");
     if(pauseNotice){
       pauseNotice.hidden = !snap.paused;
@@ -750,7 +751,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.5 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.6 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -819,6 +820,7 @@
       ${postCampaignActive() && snap.memberCount < 2 && snap.status === "active" ? `<div class="squadRow"><button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate During Crisis</button><button type="button" class="squadBtn" data-squad-command="copy-code">Copy Drop-in Code</button></div>` : ""}
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
+      ${fieldRadioHtml()}
       ${livingWorldMissionText() ? `<div class="squadConnection" id="squadLivingWorldNotice">🌍 ${esc(livingWorldMissionText())}</div>` : ""}
       <div class="squadConnection" id="squadAwarenessNotice">${esc(awarenessText())}</div>
       ${snap.mission?.dangerNote ? `<div class="squadConnection bad" id="squadDangerNotice">${esc(dangerText())}</div>` : ""}
@@ -894,6 +896,38 @@
       return "You are out of lives—your teammate must revive you. If both soldiers are down, the leader can restart.";
     }
     return connectionText();
+  }
+  let radioLocateUntil=0,radioMuted=false,radioCallout='',radioCalloutAt=0;
+  try{radioMuted=localStorage.getItem('ts_field_radio_muted')==='1';}catch(e){}
+  function fieldRadioHtml(){
+    return `<div id="radioMessages" class="squadConnection" role="status"></div><details class="squadRadio"><summary>📻 Field Radio & Shared Objective</summary><div class="squadRow"><button type="button" class="squadBtn" data-squad-command="radio-locate">🎯 Locate Objective</button>${Object.entries(window.TigerFieldRadio?.SIGNALS||{}).map(([kind,label])=>`<button type="button" class="squadBtn" data-squad-command="radio" data-radio-kind="${kind}" ${kind==='capture'&&state.snapshot?.mission?.survival?'disabled':''}>${esc(label)}</button>`).join('')}<button type="button" class="squadBtn" id="radioMuteButton" data-squad-command="radio-mute">Mute radio alerts</button></div><div id="radioGuide" class="squadSmall"></div><div id="radioFollowers" class="squadSmall"></div></details>`;
+  }
+  function radioSignals(){
+    const snap=state.snapshot;
+    return window.TigerFieldRadio?.activeSignals(snap?.players||[],Number(snap?.serverNow||Date.now()),`${snap?.code}:${snap?.startedAt}`)||[];
+  }
+  async function sendFieldRadio(kind){
+    if(state.snapshot?.status!=='active')return;
+    try{await sync(true);await api('radio',{kind});updateFieldRadio();}
+    catch(e){setMessage(e.message||'Radio unavailable.',true);}
+  }
+  function updateFieldRadio(){
+    const api=window.TigerFieldRadio,snap=state.snapshot;if(!api||!snap)return;
+    const guide=api.guide(snap,viewerId());
+    const node=$('radioGuide');if(node)node.textContent=guide?`🎯 ${guide.action} • ${guide.label||guide.name||guide.id||'Destination'} • ${guide.distance}m`:'Follow the mission objective above.';
+    const followers=$('radioFollowers');if(followers)followers.textContent=(snap.civilians||[]).map(c=>`${c.name||c.id}: ${api.civilianStatus({...c,secured:(snap.securedCivilianIds||[]).includes(c.id)},viewerId())}`).join(' • ');
+    const mute=$('radioMuteButton');if(mute)mute.textContent=radioMuted?'Unmute radio alerts':'Mute radio alerts';
+    const next=api.callout(snap,viewerId()),now=Date.now();
+    if(next!==radioCallout&&now-radioCalloutAt>=6000){radioCallout=next;radioCalloutAt=now;}
+    const messages=$('radioMessages');if(messages)messages.textContent=radioMuted?'Radio alerts muted. Objective guidance remains available.':[...radioSignals().map(s=>`${s.name}: ${s.label}`),...(now-radioCalloutAt<6000&&radioCallout?[radioCallout]:[])].join(' • ')||'Radio ready • signals last 12 seconds.';
+  }
+  function drawFieldRadio(ctx){
+    const api=window.TigerFieldRadio;if(!api)return;
+    const targets=radioMuted?[]:radioSignals();
+    if(Date.now()<radioLocateUntil){const guide=api.guide(state.snapshot,viewerId());if(guide)targets.push({...guide,label:guide.action});}
+    ctx.save();ctx.lineWidth=3;ctx.font='900 12px system-ui';ctx.textAlign='center';
+    for(const target of targets){ctx.strokeStyle='#fde047';ctx.fillStyle='#fef9c3';ctx.beginPath();ctx.arc(target.x,target.y,35,0,Math.PI*2);ctx.stroke();ctx.fillText(target.label,target.x,target.y-45);const mine=state.local||localSnapshotPlayer();if(mine){ctx.setLineDash([9,7]);ctx.beginPath();ctx.moveTo(mine.x,mine.y);ctx.lineTo(target.x,target.y);ctx.stroke();ctx.setLineDash([]);}}
+    ctx.restore();
   }
   function objectiveText(){
     const snap = state.snapshot;
@@ -1109,6 +1143,9 @@
       restart:()=>restart(),
       continue:()=>continueTogether(),
       handoff:()=>handoffLeadership(),
+      radio:()=>sendFieldRadio(button?.dataset?.radioKind),
+      'radio-locate':()=>{ radioLocateUntil=Date.now()+7000;updateFieldRadio(); },
+      'radio-mute':()=>{ radioMuted=!radioMuted;try{localStorage.setItem('ts_field_radio_muted',radioMuted?'1':'0');}catch(e){}updateFieldRadio(); },
       action:()=>action(actionName),
       shop:()=>openEquipment("shop"),
       inventory:()=>openEquipment("inventory"),
@@ -1959,7 +1996,7 @@
     if(window.TigerStrikeBattlefieldRenderer?.drawCivilian){
       ctx.restore();
       const drawn=window.TigerStrikeBattlefieldRenderer.drawCivilian(ctx,civ,{walking,phase:prior.phase,rescued});
-      ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(civ.secured?"SAFE • RESCUE HOUSE":(civ.following?`FOLLOWING • ${civ.name}`:`RESCUE • ${civ.name}`),drawn.x,drawn.labelY);
+      ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(`${window.TigerFieldRadio?.civilianStatus(civ,viewerId())||'RESCUE'} • ${civ.name}`,drawn.x,drawn.labelY);
       return;
     }
     ctx.fillStyle="rgba(2,6,23,.32)";ctx.beginPath();ctx.ellipse(3,18,17,7,0,0,Math.PI*2);ctx.fill();
@@ -1967,7 +2004,7 @@
     ctx.strokeStyle=shirt;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(0,11);ctx.moveTo(-2,0);ctx.lineTo(-13,9);ctx.moveTo(2,0);ctx.lineTo(13,8);ctx.stroke();
     ctx.fillStyle="#d7a47f";ctx.beginPath();ctx.arc(0,-14,8,0,Math.PI*2);ctx.fill();ctx.fillStyle="#3f2d22";ctx.beginPath();ctx.arc(0,-17,8,Math.PI,Math.PI*2);ctx.fill();
     ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-2.7,-14.5,1,0,Math.PI*2);ctx.arc(2.7,-14.5,1,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.arc(0,-11.5,2.5,.12*Math.PI,.88*Math.PI);ctx.stroke();
-    ctx.globalAlpha=1;ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(civ.secured?"SAFE • RESCUE HOUSE":(civ.following?`FOLLOWING • ${civ.name}`:`RESCUE • ${civ.name}`),0,-32);ctx.restore();
+    ctx.globalAlpha=1;ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(`${window.TigerFieldRadio?.civilianStatus(civ,viewerId())||'RESCUE'} • ${civ.name}`,0,-32);ctx.restore();
   }
 
   function drawStoryTiger(ctx,tiger,now){
@@ -2738,6 +2775,7 @@
       }
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
+    drawFieldRadio(ctx);
     drawSnowstormOverlay(ctx,snap,view,now);
     drawNightVisibilityOverlay(ctx,snap,view);
     ctx.restore();

@@ -1,0 +1,40 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const radio=require('./field-radio');
+test('signals validate fresh targets, authoritative coordinates, cooldown and Survival rules',()=>{
+  const player={userId:1,name:'Host',x:100,y:100};
+  const tigers=[{id:'wounded',x:110,y:100,hp:10,lethalWounded:true},{id:'fresh',x:200,y:100,hp:80}];
+  const signal=radio.makeSignal({kind:'capture',player,tigers,now:10000,runId:'room'});
+  assert.equal(signal.targetId,'fresh');assert.equal(signal.x,200);
+  assert.throws(()=>radio.makeSignal({kind:'help',player,previous:signal,now:11000}),/cooling/);
+  assert.throws(()=>radio.makeSignal({kind:'capture',player,tigers,survival:true}),/Survival/);
+  assert.throws(()=>radio.makeSignal({kind:'rescue',player,civilians:[{x:10,y:10,following:true}]}),/No available/);
+  assert.equal(radio.activeSignals([{radioSignal:signal}],11000,'room').length,1);
+  assert.equal(radio.activeSignals([{radioSignal:signal}],23000,'room').length,0);
+  assert.equal(radio.activeSignals([{radioSignal:signal}],11000,'new-room').length,0);
+});
+test('shared guide respects checkpoint ordering, ownership, deliveries and required capture targets',()=>{
+  const snap={players:[{userId:1,x:100,y:100}],mission:{checkpointsBeforeRescue:true,captureRequired:1,captureTargetIds:['research']},checkpoints:[{id:'gate',x:120,y:100}],civilians:[{id:'civilian',x:110,y:100}],rescueHouse:{x:10,y:10},tigers:[{id:'other',x:110,y:100,hp:40},{id:'research',x:200,y:100,hp:30}],extraction:{x:500,y:500}};
+  assert.equal(radio.guide(snap,1).id,'gate');
+  snap.checkpointCompletedIds=['gate'];assert.equal(radio.guide(snap,1).id,'civilian');
+  snap.civilians[0].following=true;snap.civilians[0].followingUserId=1;
+  assert.equal(radio.guide(snap,1).action,'Take followers to Rescue House');
+  snap.civilians[0].secured=true;assert.equal(radio.guide(snap,1).id,'research');
+  assert.equal(radio.civilianStatus({following:true,followingUserId:1},1),'Following you');
+  assert.equal(radio.civilianStatus({following:true,followingUserId:2},1),'Following teammate');
+  assert.equal(radio.civilianStatus({secured:true},1),'Safely rescued');
+});
+test('a real squad stores and delivers radio signals to both phones and blocks spam',async()=>{
+  for(const key of ['KV_REST_API_URL','KV_REST_API_TOKEN','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN'])process.env[key]='';
+  const squad=require('./api/_lib/squad-session');
+  const host={id:9811601,first_name:'Radio Host'},mate={id:9811602,first_name:'Radio Mate'};
+  let session=await squad.createSession(host,{launchType:'shared-story',storyMissionLevel:1});
+  await assert.rejects(()=>squad.applyAction(session,host,'radio',{kind:'help'}),/during a mission/);
+  session=await squad.joinSession(session.code,mate);session=await squad.applyAction(session,host,'start',{});
+  await squad.applyAction(session,host,'radio',{kind:'capture',x:-999,y:-999});
+  const a=await squad.buildSnapshot(session,host.id),b=await squad.buildSnapshot(session,mate.id);
+  const signal=a.players.find(p=>p.userId===host.id).radioSignal;
+  assert(signal);assert(signal.x>0);assert.equal(signal.kind,'capture');
+  assert.deepEqual(b.players.find(p=>p.userId===host.id).radioSignal,signal);
+  await assert.rejects(()=>squad.applyAction(session,host,'radio',{kind:'help'}),/cooling/);
+  await assert.rejects(()=>squad.applyAction(session,{id:9811699},'radio',{kind:'help'}),/not a member/);
+});

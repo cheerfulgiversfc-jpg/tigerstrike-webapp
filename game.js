@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5227";
+const TS_BUILD = "5228";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -49645,6 +49645,18 @@ function renderBattleStatus(){
 }
 
 let __objectiveHighlight = null;
+let __soloRadioMuted=false,__soloRadioText='',__soloRadioAt=0;
+try{__soloRadioMuted=localStorage.getItem('ts_solo_radio_muted')==='1';}catch(e){}
+function soloFieldRadio(command){
+  if(command==='mute'){
+    __soloRadioMuted=!__soloRadioMuted;
+    try{localStorage.setItem('ts_solo_radio_muted',__soloRadioMuted?'1':'0');}catch(e){}
+    renderPlayerExperience();return;
+  }
+  if(!['RESCUE','REGROUP','HOLD','ATTACK_TARGET'].includes(command))return;
+  if(command==='ATTACK_TARGET'&&!lockedTiger())return toast('Lock a tiger first, then order Focus Target.');
+  setSquadCommand(command,{individual:false,toast:true,save:true});
+}
 function fieldCaptureStatus(t){
   return window.TigerPlayerExperience?.captureStatus(t,{
     survival:S.mode==='Survival',threshold:storyCaptureWindowPct(),
@@ -49673,7 +49685,7 @@ function renderPlayerExperience(){
     const canvas=document.getElementById('cv');
     if(!canvas)return;
     root=document.createElement('div');root.id='missionExperience';root.className='missionExperience';
-    root.innerHTML='<button type="button" id="nextObjectiveButton" onclick="highlightNextObjective()"></button><div id="fieldCaptureHint" role="status"></div>';
+    root.innerHTML='<button type="button" id="nextObjectiveButton" onclick="highlightNextObjective()"></button><div id="fieldCaptureHint" role="status"></div><details class="soloFieldRadio"><summary>📻 Field Radio & Soldier Commands</summary><div class="radioCommands"><button type="button" onclick="soloFieldRadio(\'REGROUP\')">Follow / Regroup</button><button type="button" onclick="soloFieldRadio(\'RESCUE\')">Rescue civilians</button><button type="button" onclick="soloFieldRadio(\'HOLD\')">Hold / Defend</button><button type="button" onclick="soloFieldRadio(\'ATTACK_TARGET\')">Focus locked target</button><button type="button" id="soloRadioMute" onclick="soloFieldRadio(\'mute\')">Mute radio alerts</button></div><div id="soloRadioStatus" role="status"></div><div id="soloRadioEscort"></div></details>';
     canvas.parentNode.insertBefore(root,canvas);
   }
   const hidden=baseHqActive()||S.missionEnded||S.gameOver||window.TigerTutorial?.isRunning;
@@ -49691,6 +49703,14 @@ function renderPlayerExperience(){
   const status=tiger?fieldCaptureStatus(tiger):null;
   hint.hidden=!status;
   if(status){hint.textContent=status.text;hint.dataset.stage=status.stage;}
+  const now=Date.now();
+  const alert=S.dangerCivId?'🆘 Civilian under attack — reach them now.':(status?.stage==='ready'?status.text:(target?.action==='Extract'?'🚁 Extraction open — reach the exit.':''));
+  if(alert!==__soloRadioText&&now-__soloRadioAt>=6000){__soloRadioText=alert;__soloRadioAt=now;}
+  document.getElementById('soloRadioMute').textContent=__soloRadioMuted?'Unmute radio alerts':'Mute radio alerts';
+  document.getElementById('soloRadioStatus').textContent=__soloRadioMuted?'Radio alerts muted.':(now-__soloRadioAt<6000?__soloRadioText:'Radio ready. Commands apply to your hired soldiers.');
+  const followers=(S.civilians||[]).filter(c=>c.alive&&!c.evac&&c.following).length;
+  const safe=(S.civilians||[]).filter(c=>c.evac).length;
+  document.getElementById('soloRadioEscort').textContent=`Following rescue team: ${followers} • Safely rescued: ${safe}`;
 }
 function drawObjectiveHighlight(now=Date.now()){
   const target=__objectiveHighlight;

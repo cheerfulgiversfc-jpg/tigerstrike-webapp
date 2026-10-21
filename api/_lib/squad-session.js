@@ -6,6 +6,7 @@ const livingWorld = require("../../living-world");
 const missionMapTruth = require("../../mission-map-truth");
 const postCampaign = require("../../post-campaign");
 const sanctuarySystem = require("../../sanctuary");
+const fieldRadio = require("../../field-radio");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -2780,6 +2781,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     moveY:clamp(src.moveY, -1, 1),
     motionAt:Math.max(0, Number(src.motionAt || 0)),
     lastAttackAt:Math.max(0, Number(src.lastAttackAt || 0)),
+    radioSignal:src.radioSignal && fieldRadio.SIGNALS[src.radioSignal.kind] ? src.radioSignal : null,
     lastNoiseAt:Math.max(0, Number(src.lastNoiseAt || 0)),
     lastNoiseX:clamp(src.lastNoiseX ?? base.lastNoiseX, 24, MAX_COOP_WORLD.width - 24),
     lastNoiseY:clamp(src.lastNoiseY ?? base.lastNoiseY, 24, MAX_COOP_WORLD.height - 24),
@@ -3509,6 +3511,14 @@ async function applyAction(session, user, action, payload={}){
     resolveCrisisVote(session);
     player.lastSeenAt=now;await writePlayer(session.code,player);
     return writeSession(session);
+  }
+  if(action === "radio"){
+    if(session.status !== 'active')throw new Error('Radio is available during a mission.');
+    const players=await memberPlayers(session),derived=sessionDerived(session,players,now);
+    const civilians=civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds);
+    player.radioSignal=fieldRadio.makeSignal({kind:payload.kind,player,tigers:derived.tigers,civilians,survival:session.launchType==='endless-survival',previous:player.radioSignal,now,runId:`${session.code}:${session.startedAt}`});
+    await writePlayer(session.code,player);
+    return session;
   }
   if(action === "handoff"){
     if(session.hostId !== uid) throw new Error("Only the squad leader can hand off leadership.");
