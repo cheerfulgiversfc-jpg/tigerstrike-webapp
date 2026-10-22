@@ -3281,6 +3281,7 @@ function buildMissionDebrief(session,players,derived,viewerId,reward=null,reward
   const mission=missionDefinition(session);
   return missionDebrief.summary({
     id:`${session.code}:${session.startedAt}:${userIdOf(viewerId)}`,scope:'coop',
+    campaignLevel:session.launchType==='shared-story'?session.storyMissionLevel:0,
     missionKey:`${session.launchType}:${session.storyMissionLevel||0}:${session.postCampaignOperation?.responseId||''}:${mission.survival?session.survivalWavesCleared:''}`,
     title:mission.title||session.title,mode:mission.survival?'Survival':session.launchType==='shared-story'?'Story':'Special Operation',completed:session.status==='complete',
     durationMs:session.debriefVersion&&session.completedAt>session.startedAt?Number(session.missionElapsedMs||0)+session.completedAt-session.startedAt:null,

@@ -69,9 +69,11 @@ test('both players retain separate bests; repeated claims and practice replay ne
   assert.equal(restored.debrief.rewardState,'awarded');assert.equal(restored.debrief.id,first.profile.missionDebriefs.last.id);
   const key=first.profile.missionDebriefs.last.key,best=first.profile.missionDebriefs.records[key];
   assert(best.fastestMs>=60000);assert.equal(best.clears,1);
+  assert.equal(best.campaignLevel,1);assert(best.medals.includes('Everyone Home'));
   assert.equal(first.profile.missionDebriefs.last.contributions.reduce((n,p)=>n+p.recruited,0),pending.civilians.length,'following ownership is not mistaken for fresh recruitment');
   const again=await squad.claimReward(s,host);assert.equal(again.profile.funds,first.profile.funds);assert.equal(again.profile.missionDebriefs.records[key].clears,1);
   const mateProfile=await squad.readCoopProfile(mate);assert.equal(mateProfile.missionDebriefs.records[key].clears,1);
+  assert.equal(mateProfile.missionDebriefs.records[key].campaignLevel,1);assert.deepEqual(mateProfile.missionDebriefs.records[key].medals,best.medals);
   s=await squad.applyAction(await squad.readSession(s.code),host,'replay');assert.equal(s.storyMissionLevel,1);assert.equal(s.memberIds.length,2);
   s=await finishRoom(s,host,mate,45000);
   const replay=await squad.claimReward(s,host);await squad.claimReward(s,mate);

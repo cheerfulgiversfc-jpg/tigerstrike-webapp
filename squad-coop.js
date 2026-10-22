@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.9 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.9 • Mission Debrief & Personal Bests");
+      ? `Tiger Strike V12.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V12.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.0 • Mission Mastery & Chapter Journey");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -784,7 +784,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.9 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.0 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -793,8 +793,7 @@
     return `<div class="squadPanel">
       <button type="button" class="squadBackLink" data-squad-command="hub-home">← Co-op Home</button>
       <div class="squadSectionHead"><div><div class="squadKicker">Same campaign • choose every mission</div><div class="squadMissionName">📖 Story Campaign</div><div class="squadDesc">Your normal Story missions and unlocks. Choose Solo when you are alone or Two Players when a teammate is ready.</div></div><span class="squadProgressPill">Story ${maxUnlockedStoryLevel()}/100</span></div>
-      ${sharedLivingWorldHtml()}
-      ${storyLevelButtonsHtml()}
+      ${window.TigerMissionDebrief?.journeyHtml?.({scope:'coop',state:state.profile?.missionDebriefs,maxLevel:maxUnlockedStoryLevel(),selectedLevel:level,missions:SHARED_STORY_LEVELS}) || storyLevelButtonsHtml()}
       <div class="squadSelectedMission"><div><div class="squadKicker">Selected mission</div><div class="squadSectionTitle">Story Mission ${level}</div><div class="squadDesc">${esc(selectedStoryDescription())}</div></div><span class="squadReadyPill ${coopReady ? "ready" : "pending"}">${coopReady ? "Two Player ready" : "Solo only for now"}</span></div>
       <div class="squadPartyChoice">
         <button type="button" class="squadPathCard solo" data-squad-command="play-solo"><span class="squadPathIcon">👤</span><span class="squadPathTitle">Play Solo</span><small>Continue to the normal Story map and pre-deploy setup for Mission ${level}.</small><b>Prepare Solo Mission →</b></button>
@@ -804,6 +803,7 @@
       ${joinSquadHtml()}
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadSmall">Story progression belongs to each player. Special Operation badges and rewards are kept separate.</div>
+      ${sharedLivingWorldHtml()}
     </div>`;
   }
 

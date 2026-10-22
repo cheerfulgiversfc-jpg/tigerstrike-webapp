@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5233";
+const TS_BUILD = "5234";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4875,6 +4875,7 @@ function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
   const api=window.TigerMissionDebrief;if(!api)return;
   const duration=S._debriefClock?api.clock(S._debriefClock,Date.now(),false).elapsedMs:null;
   const report={id:S._missionRunId||`legacy:${S.mode}:${meta.number}:${Date.now()}`,scope:'solo',missionKey:`${S.mode}:${meta.storyVariant||''}:${meta.number}:${meta.runIndex||0}:${S.mode==='Arcade'&&S.arcadeWeeklySeedEnabled?S.arcadeWeeklySeedKey||'':''}`,title:currentMissionLabel(),mode:S.mode,completed:true,durationMs:duration,civilianTotal:civTotal,civilianLost:civDead,rescued:stats.evac,captures:stats.captures,kills:stats.kills,reward:{cash:stats.cashEarned},rewardState:'awarded'};
+  report.campaignLevel=S.mode==='Story'&&meta.storyVariant===STORY_VARIANTS.CAMPAIGN?meta.number:0;
   S.missionDebriefs=api.record(S.missionDebriefs,report).state;
 }
 
@@ -12529,7 +12530,7 @@ function worldMapStoryLevelPickerHtml(state=S){
         <button class="ghost" type="button" onclick="setWorldMapPrep('selectedLevel',${Math.max(1, maxLevel - 1)})">Previous</button>
         <button class="good" type="button" onclick="setWorldMapPrep('selectedLevel',${maxLevel})">Current ${maxLevel}</button>
       </div>
-      <div class="row" style="margin-top:8px">${buttons.join("")}</div>
+      ${window.TigerMissionDebrief?.journeyHtml?.({scope:'solo',state:state.missionDebriefs,maxLevel,selectedLevel,missions:STORY_CAMPAIGN_OBJECTIVES.map(objective=>({objective}))}) || `<div class="row" style="margin-top:8px">${buttons.join("")}</div>`}
     </div>
   `;
 }
