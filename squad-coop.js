@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V11.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V11.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.8 • Living Civilian Rescue");
+      ? `Tiger Strike V11.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V11.9 • ${selectedOperation().mapLabel}` : "Tiger Strike V11.9 • Mission Debrief & Personal Bests");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -415,6 +415,7 @@
 
   function applySnapshot(snapshot, roles){
     if(!snapshot || typeof snapshot !== "object") return;
+    const previousStatus=state.snapshot?.status;
     if(state.snapshot && cleanCode(snapshot.code) === cleanCode(state.snapshot.code) && Number(snapshot.serverNow || 0) < Number(state.snapshot.serverNow || 0)) return;
     if(state.snapshot && cleanCode(snapshot.code) !== cleanCode(state.snapshot.code)) state.remoteDraw.clear();
     const receivedAt = performance.now();
@@ -468,6 +469,7 @@
       render();
     }
     maybeApplyReward();
+    if(['complete','failed'].includes(snapshot.status)&&previousStatus!==snapshot.status)window.requestAnimationFrame(()=>$('squadDebrief')?.scrollIntoView({block:'start'}));
   }
 
   function updateWaitingLobby(){
@@ -520,6 +522,7 @@
     const joystick = $("squadJoystick");
     if(joystick) joystick.classList.toggle("disabled", !!snap.paused);
     const resultActions = $("squadResultActions");
+    const debrief=$('squadDebrief');if(debrief)debrief.innerHTML=snap.debrief?window.TigerMissionDebrief?.html(snap.debrief,state.profile?.missionDebriefs)||'':'';
     if(resultActions){
       resultActions.innerHTML = completionActionsHtml();
       bindCommandButtons();
@@ -781,7 +784,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.8 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V11.9 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -859,6 +862,7 @@
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>${captureRequired() > 0 ? "🔬 Capture target" : "👤 Civilian"}</span><span>🐅 Tiger</span></div>
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded cooperative battlefield with a player-following camera"></canvas>
+      <div id="squadDebrief">${snap.debrief?window.TigerMissionDebrief?.html(snap.debrief,state.profile?.missionDebriefs)||'':''}</div>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : (snap.failureReason === "teammate_left" ? "🔄 Teammate Left" : "⏱️ Operation Failed"))}</div>
         <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `${snap.memberCount > 1 ? "Both players cleared" : "You cleared"} ${esc(selectedOperation().title)}. Every participating player can claim one personal reward.`}` : (snap.failureReason === "squad_wipe" ? `${snap.memberCount > 1 ? "Both soldiers used their field life" : "Your soldier used the field life"} and went down. The squad leader can restart this mission.` : (snap.failureReason === "teammate_left" ? "Your teammate left during the mission. The squad code is still yours. Invite them back or add another player, then restart together." : `Time expired. The squad leader can restart ${esc(missionName())}.`))}</div>
@@ -899,8 +903,11 @@
       if(snap.isHost) parts.push(`<button type="button" class="squadBtn primary" data-squad-command="continue" ${snap.allRewardsClaimed ? "" : "disabled"}>${snap.allRewardsClaimed ? `Continue to Mission ${nextLevel}` : "Waiting for Both Rewards"}</button>`);
       else parts.push(`<button type="button" class="squadBtn primary" disabled>${snap.allRewardsClaimed ? `Waiting for Leader • Mission ${nextLevel}` : "Waiting for Both Rewards"}</button>`);
     }else if(sharedStoryActive()) parts.push(`<button type="button" class="squadBtn good" disabled>✅ Shared Story Campaign Complete</button>`);
+    if(snap.isHost)parts.push(`<button type="button" class="squadBtn" data-squad-command="replay" ${snap.allRewardsClaimed||snap.memberCount===1&&mine?.rewardClaimed?'':'disabled'}>Replay • Personal Best Attempt</button>`);
+    parts.push('<div class="squadSmall">Replaying keeps this squad and mission. Previously claimed mission payouts are not granted again.</div>');
     if(snap.isHost && snap.memberCount === 2) parts.push(`<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>`);
     parts.push(`<button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>`);
+    parts.push('<button type="button" class="squadBtn" data-squad-command="debrief-hq">Return to HQ • Leave Squad</button>');
     parts.push(`<div class="squadSmall">The squad stays together under code ${esc(snap.code)} until a player chooses Leave Squad.</div>`);
     return parts.join("");
   }
@@ -1198,6 +1205,8 @@
       invite:()=>invite(),
       start:()=>start(),
       restart:()=>restart(),
+      replay:()=>replayTogether(),
+      'debrief-hq':async()=>{await leave();close();window.openBaseHQ?.({home:true});},
       continue:()=>continueTogether(),
       handoff:()=>handoffLeadership(),
       radio:()=>sendFieldRadio(button?.dataset?.radioKind),
@@ -1625,6 +1634,10 @@
       setMessage("Mission restarted. Both soldiers are back at Base Camp.");
       ensureFrame();
     }catch(error){ setMessage(error.message, true); }
+  }
+  async function replayTogether(){
+    try{await api('replay');setMessage('Same squad, fresh attempt. Beat your personal best; no repeat mission payout.');ensureFrame();}
+    catch(error){setMessage(error.message,true);}
   }
 
   async function continueTogether(){

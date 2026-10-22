@@ -11,6 +11,7 @@ const tigerEncounters = require("../../tiger-encounters");
 const civilianRescue = require("../../civilian-rescue");
 const rescueTools = require("../../rescue-tools");
 const escortTeamwork = require("../../escort-teamwork");
+const missionDebrief = require("../../mission-debrief");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -1984,6 +1985,7 @@ function defaultCoopProfile(user){
     sanctuary:sanctuarySystem.defaultState(),
     livingWorld:livingWorld.defaultState(),
     rewardReceipts:{},
+    missionDebriefs:missionDebrief.normalize(),
     updatedAt:nowMs(),
   };
 }
@@ -2031,6 +2033,7 @@ function normalizeCoopProfile(raw, user){
     livingWorld:livingWorld.normalizeState(src.livingWorld),
     sanctuary:sanctuarySystem.syncLegacyCaptures(sanctuarySystem.normalizeState(src.sanctuary),stats.captures),
     rewardReceipts:cleanMap(src.rewardReceipts),
+    missionDebriefs:missionDebrief.normalize(src.missionDebriefs),
     updatedAt:Math.max(0, Number(src.updatedAt || base.updatedAt)),
   };
 }
@@ -2648,6 +2651,11 @@ function normalizeSession(raw){
     escortOwners:raw.escortOwners && typeof raw.escortOwners==='object' ? raw.escortOwners : {},
     escortOffer:raw.escortOffer || null,
     escortRevision:Math.max(0,Number(raw.escortRevision||0)),
+    debriefVersion:Number(raw.debriefVersion||0),
+    missionElapsedMs:Math.max(0,Number(raw.missionElapsedMs||0)),
+    missionWipes:Math.max(0,Number(raw.missionWipes||0)),
+    missionRestarts:Math.max(0,Number(raw.missionRestarts||0)),
+    debriefSurvivalKills:Math.max(0,Number(raw.debriefSurvivalKills||0)),
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -2692,6 +2700,7 @@ function newPlayer(user, slot=0){
     captureSites:{},
     capturedIds:[],
     rescuedIds:[],
+    debriefRecruitIds:[],
     securedCivilianIds:[],
     civilianEscorts:{},
     civilianHealing:{},
@@ -2779,6 +2788,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     killSites,
     captureSites,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
+    debriefRecruitIds:Array.isArray(src.debriefRecruitIds)?[...new Set(src.debriefRecruitIds.map(id=>cleanText(id,24)).filter(id=>ALL_COOP_CIVILIANS.some(c=>c.id===id)))]:null,
     securedCivilianIds:[...new Set((Array.isArray(src.securedCivilianIds) ? src.securedCivilianIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     civilianEscorts:src.civilianEscorts && typeof src.civilianEscorts === 'object' ? src.civilianEscorts : {},
     civilianHealing:src.civilianHealing && typeof src.civilianHealing === 'object' ? src.civilianHealing : {},
@@ -3197,6 +3207,7 @@ async function maybeFinishSession(session, players){
   }
   const derived = sessionDerived(session, players, now);
   if(derived.squadWiped){
+    session.missionWipes=Number(session.missionWipes||0)+1;
     session.status = "failed";
     session.failureReason = "squad_wipe";
     session.completedAt = now;
@@ -3219,6 +3230,7 @@ async function maybeFinishSession(session, players){
         return writeSession(session);
       }
       if(now >= Number(session.survivalIntermissionUntil || 0)){
+        session.debriefSurvivalKills=Number(session.debriefSurvivalKills||0)+derived.tigerKills;
         session.survivalWave = clamp(wave + 1, 1, 50);
         session.survivalIntermissionUntil = 0;
         for(const player of players){
@@ -3265,6 +3277,18 @@ async function maybeTransferDisconnectedLeader(session, players, at=nowMs()){
   return writeSession(session);
 }
 
+function buildMissionDebrief(session,players,derived,viewerId,reward=null,rewardState='pending'){
+  const mission=missionDefinition(session);
+  return missionDebrief.summary({
+    id:`${session.code}:${session.startedAt}:${userIdOf(viewerId)}`,scope:'coop',
+    missionKey:`${session.launchType}:${session.storyMissionLevel||0}:${session.postCampaignOperation?.responseId||''}:${mission.survival?session.survivalWavesCleared:''}`,
+    title:mission.title||session.title,mode:mission.survival?'Survival':session.launchType==='shared-story'?'Story':'Special Operation',completed:session.status==='complete',
+    durationMs:session.debriefVersion&&session.completedAt>session.startedAt?Number(session.missionElapsedMs||0)+session.completedAt-session.startedAt:null,
+    rescued:derived.securedCivilianIds.length,civilianTotal:mission.civilians.length,civilianLost:0,captures:derived.capturedIds.length,
+    kills:derived.tigerKills+(mission.survival?Number(session.debriefSurvivalKills||0):0),wipes:session.debriefVersion?session.missionWipes:null,restarts:session.missionRestarts,reward,rewardState,
+    contributions:players.map(p=>({name:p.name,recruited:p.debriefRecruitIds?.length??null,captures:p.capturedIds.length,kills:Object.keys(p.killSites||{}).length,damage:Object.values(p.tigerDamage||{}).reduce((a,b)=>a+Number(b||0),0),revives:p.revives}))
+  });
+}
 async function buildSnapshot(session, viewerId){
   const players = await memberPlayers(session);
   session = await maybeTransferDisconnectedLeader(session, players);
@@ -3277,6 +3301,8 @@ async function buildSnapshot(session, viewerId){
   const leaderSanctuaryState = sanctuarySystem.syncLegacyCaptures(leaderProfile.sanctuary, leaderProfile.stats.captures);
   const leaderSanctuarySummary = sanctuarySystem.collectionSummary(leaderSanctuaryState);
   const livingWorldEffect = activeLivingWorldMission(session);
+  const report=['complete','failed'].includes(session.status)?buildMissionDebrief(session,players,derived,viewerId):null;
+  const savedReport=viewerProfile.missionDebriefs.last;
   return {
     code:session.code,
     title:session.title,
@@ -3357,6 +3383,7 @@ async function buildSnapshot(session, viewerId){
     rescuedIds:derived.rescuedIds,
     securedCivilianIds:derived.securedCivilianIds,
     escortOffer:escortTeamwork.activeOffer(session.escortOffer,session,at),
+    debrief:report&&savedReport?.id===report.id?savedReport:report,
     capturedIds:derived.capturedIds,
     checkpointCompletedIds:derived.checkpointCompletedIds,
     objectivesReady:derived.objectivesReady,
@@ -3636,11 +3663,18 @@ async function applyAction(session, user, action, payload={}){
     }
     return writeSession(session);
   }
-  if(action === "start" || action === "restart" || action === "continue"){
+  if(action === "start" || action === "restart" || action === "continue" || action === "replay"){
     if(session.hostId !== uid) throw new Error("Only the squad leader can start the mission.");
     if(session.memberIds.length < 2 && !postCampaignSession(session)) throw new Error("Invite one teammate before starting.");
     if(action === "start" && session.status !== "waiting") return session;
     if(action === "restart" && session.status !== "failed") throw new Error("Restart is available after the mission ends.");
+    if(action==='replay'){
+      if(session.status!=='complete')throw new Error('Replay is available after completing the mission.');
+      if(!(await memberPlayers(session)).every(p=>p.rewardClaimed))throw new Error('Every player must claim the result before replaying.');
+    }
+    if(action==='restart'){session.missionElapsedMs=Number(session.missionElapsedMs||0)+Math.max(0,Number(session.completedAt||now)-session.startedAt);session.missionRestarts=Number(session.missionRestarts||0)+1;}
+    else{session.missionElapsedMs=0;session.missionWipes=0;session.missionRestarts=0;session.debriefSurvivalKills=0;}
+    if(action!=='restart')session.debriefVersion=1;
     if(action === "continue"){
       if(session.launchType !== "shared-story") throw new Error("Continue Together is available for Shared Story missions.");
       if(session.status !== "complete") throw new Error("Finish this mission before continuing.");
@@ -3730,6 +3764,7 @@ async function applyAction(session, user, action, payload={}){
         p.captureSites = {};
         p.capturedIds = [];
         p.rescuedIds = [];
+        p.debriefRecruitIds=[];
         p.securedCivilianIds = [];
         p.civilianEscorts = {};
         p.checkpointIds = [];
@@ -3927,7 +3962,11 @@ async function applyAction(session, user, action, payload={}){
     if(!reserved) throw new Error(`${civilian.name} is already following your teammate.`);
     if(!player.rescuedIds.includes(id)) player.rescuedIds.push(id);
     if(!player.civilianEscorts[id]) player.civilianEscorts[id]=civilianRescue.start(civilian,player,now);
-    if(!currentOwner){ await changeCoopStat(user, "rescues", 1); }
+    if(!currentOwner){
+      if(!Array.isArray(player.debriefRecruitIds))player.debriefRecruitIds=[];
+      if(!player.debriefRecruitIds.includes(id))player.debriefRecruitIds.push(id);
+      await changeCoopStat(user, "rescues", 1);
+    }
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
   }else if(action === "deliver"){
@@ -4162,8 +4201,11 @@ async function claimReward(session, user){
     }
     sanctuaryCare = sanctuarySystem.advanceCare(profile.sanctuary, `coop-care:${receipt}`, {captures:governmentAudit.captures});
     profile.sanctuary = sanctuaryCare.state;
-    profile = await writeCoopProfile(profile, user);
   }
+  const report=buildMissionDebrief(session,auditPlayers,auditDerived,uid,awardedReward,rewardApplied?'awarded':'already-claimed');
+  const recorded=missionDebrief.record(profile.missionDebriefs,report);
+  profile.missionDebriefs=recorded.state;
+  if(rewardApplied||recorded.applied)profile=await writeCoopProfile(profile,user);
   return {
     firstClaim:rewardApplied,
     receipt,

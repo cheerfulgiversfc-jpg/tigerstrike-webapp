@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5232";
+const TS_BUILD = "5233";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4698,6 +4698,7 @@ function applyGovernmentMissionAudit(input={}, opts={}){
   return report;
 }
 function beginMissionStatRun(reason="deploy"){
+  S._debriefClock=window.TigerMissionDebrief?.clock(null,Date.now(),!S.paused&&!document.hidden)||null;
   S._missionStatsStart = missionStatSnapshot(S.stats);
   S._missionStatsFinal = null;
   S._missionResultLocked = null;
@@ -4862,6 +4863,19 @@ function renderCompleteRecapCard(payload=null){
   renderMissionRewards2Card();
   renderSocialRescueCard();
   renderGovernmentProgramCard();
+  renderMissionDebrief();
+}
+function renderMissionDebrief(){
+  const node=document.getElementById('missionDebriefCard'),api=window.TigerMissionDebrief;
+  if(!node||!api)return;
+  const state=api.normalize(S.missionDebriefs);
+  node.innerHTML=state.last?api.html(state.last,state):'';
+}
+function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
+  const api=window.TigerMissionDebrief;if(!api)return;
+  const duration=S._debriefClock?api.clock(S._debriefClock,Date.now(),false).elapsedMs:null;
+  const report={id:S._missionRunId||`legacy:${S.mode}:${meta.number}:${Date.now()}`,scope:'solo',missionKey:`${S.mode}:${meta.storyVariant||''}:${meta.number}:${meta.runIndex||0}:${S.mode==='Arcade'&&S.arcadeWeeklySeedEnabled?S.arcadeWeeklySeedKey||'':''}`,title:currentMissionLabel(),mode:S.mode,completed:true,durationMs:duration,civilianTotal:civTotal,civilianLost:civDead,rescued:stats.evac,captures:stats.captures,kills:stats.kills,reward:{cash:stats.cashEarned},rewardState:'awarded'};
+  S.missionDebriefs=api.record(S.missionDebriefs,report).state;
 }
 
 function renderMissionVictoryHero(summary=null){
@@ -15352,6 +15366,8 @@ const DEFAULT = {
   telegramEventDrop:null,
   socialRescue: defaultSocialRescueState(),
   lastMissionRecap:null,
+  missionDebriefs:{records:{},receipts:[],last:null,lastChanges:{}},
+  _debriefClock:null,
   lastMissionRewardBreakdown:null,
   missionRewardStreak:0,
 
@@ -17490,6 +17506,8 @@ function load(){
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
     m.socialRescue = normalizeSocialRescueState(saved.socialRescue ?? DEFAULT.socialRescue);
     m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
+    m.missionDebriefs=window.TigerMissionDebrief?.normalize(saved.missionDebriefs)||DEFAULT.missionDebriefs;
+    m._debriefClock=saved._debriefClock?{elapsedMs:Math.max(0,Number(saved._debriefClock.elapsedMs||0)),lastAt:Date.now(),running:false}:null;
     m.lastMissionRewardBreakdown = (saved.lastMissionRewardBreakdown && typeof saved.lastMissionRewardBreakdown === "object") ? saved.lastMissionRewardBreakdown : null;
     m.missionRewardStreak = Math.max(0, Math.floor(Number(saved.missionRewardStreak || 0)));
     m.seasonPass = mergeSeasonPassSnapshots(DEFAULT.seasonPass, saved.seasonPass);
@@ -17889,6 +17907,7 @@ function stabilizeStateForPersistence(state, reason="save"){
 function buildPersistedState(){
   captureActiveModeProfile(S);
   const out = { ...S };
+  if(S._debriefClock && window.TigerMissionDebrief)out._debriefClock=window.TigerMissionDebrief.clock(S._debriefClock,Date.now(),false);
   delete out._tutorialSnapshot;
   delete out._tutorialPrev;
   out.carcasses = capTail(S.carcasses, MAX_PERSIST_CARCASSES);
@@ -28377,6 +28396,7 @@ function openAbout(){
 function closeAbout(){ document.getElementById("aboutOverlay").style.display="none"; setPaused(false,null); }
 
 function setPaused(on, reason=null){
+  if(S._debriefClock && window.TigerMissionDebrief)S._debriefClock=window.TigerMissionDebrief.clock(S._debriefClock,Date.now(),!on&&!S.missionEnded&&!S.gameOver&&!document.hidden);
   S.paused=on; S.pauseReason=reason;
   if(on) closeSquadCommandWheel();
   document.getElementById("pauseLbl").innerText = on?"Resume":"Pause";
@@ -52465,6 +52485,7 @@ function checkMissionComplete(){
       };
       const recap = buildMissionRecapPayload(recapMeta);
       S.lastMissionRecap = recap;
+      recordSoloMissionDebrief(recapMeta,missionStats,civTotal,civDead);
       renderCompleteRecapCard(recap);
       const premiumSummary = {
         mode:S.mode,
@@ -52749,6 +52770,7 @@ function renderHUD(){
   if(cacheBtn){
     cacheBtn.disabled = S.paused || S.inBattle || S.missionEnded || S.gameOver || missionTwistBlackoutActive(Date.now()) || !nearestCacheInteractable(132);
   }
+  if(S._debriefClock && window.TigerMissionDebrief)S._debriefClock=window.TigerMissionDebrief.clock(S._debriefClock,Date.now(),!S.paused&&!S.gameOver&&!S.missionEnded&&!baseHqActive()&&!document.hidden);
   window.TigerFieldSystems?.renderSecondaryHud?.(S);
 
   document.getElementById("mapTxt").innerText = currentMap().name;
@@ -65664,10 +65686,12 @@ function refreshSceneAfterForeground(){
   try{ stabilityMasterTick("foreground"); }catch(e){}
 }
 window.addEventListener("pagehide", ()=>{
+  if(S._debriefClock&&window.TigerMissionDebrief)S._debriefClock=window.TigerMissionDebrief.clock(S._debriefClock,Date.now(),false);
   try{ save(true); }catch(e){}
 }, { capture:true });
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "hidden"){
+    if(S._debriefClock&&window.TigerMissionDebrief)S._debriefClock=window.TigerMissionDebrief.clock(S._debriefClock,Date.now(),false);
     try{ save(true); }catch(e){}
     return;
   }
