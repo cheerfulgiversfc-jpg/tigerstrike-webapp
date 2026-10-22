@@ -10,6 +10,7 @@ const fieldRadio = require("../../field-radio");
 const tigerEncounters = require("../../tiger-encounters");
 const civilianRescue = require("../../civilian-rescue");
 const rescueTools = require("../../rescue-tools");
+const escortTeamwork = require("../../escort-teamwork");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -2644,6 +2645,9 @@ function normalizeSession(raw){
     livingWorldMission:normalizeLivingWorldMission(raw.livingWorldMission),
     postCampaignOperation,
     crisisVote:normalizeCrisisVote(raw.crisisVote,sessionLike),
+    escortOwners:raw.escortOwners && typeof raw.escortOwners==='object' ? raw.escortOwners : {},
+    escortOffer:raw.escortOffer || null,
+    escortRevision:Math.max(0,Number(raw.escortRevision||0)),
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -3120,13 +3124,25 @@ function rescueHouseFor(mission){
   };
 }
 
+function escortOwnerId(session,id){const owner=session.escortOwners?.[id];return Number(owner?.userId||owner||0);}
+function syncEscortOwnership(session,player){
+  for(const [id,entry] of Object.entries(session.escortOwners||{})){
+    if(escortOwnerId(session,id)!==player.userId)continue;
+    if(!player.rescuedIds.includes(id))player.rescuedIds.push(id);
+    if(!player.civilianEscorts[id] && Number.isFinite(entry.x))player.civilianEscorts[id]=civilianRescue.start(entry,player,nowMs());
+  }
+}
+function civilianOwner(session,players,id){
+  const assigned=escortOwnerId(session,id);
+  return players.find(p=>assigned ? p.userId===assigned : (p.rescuedIds||[]).includes(id));
+}
 function civilianSnapshots(session, players, rescuedIds, securedCivilianIds){
   const mission = missionDefinition(session);
   const rescueHouse = rescueHouseFor(mission);
   return mission.civilians.map((civilian, index)=>{
     const hpMax=100,hp=Math.min(hpMax,(civilian.injured?55:100)+players.reduce((sum,p)=>sum+Math.max(0,Number(p.civilianHealing?.[civilian.id]||0)),0));
     civilian={...civilian,hp,hpMax,injured:hp<hpMax};
-    const owner = players.find((player)=>(player.rescuedIds || []).includes(civilian.id));
+    const owner = civilianOwner(session,players,civilian.id);
     if(!owner) return { ...civilian, following:false, followingUserId:0, secured:false };
     const row = Math.floor(index / 2);
     const side = index % 2 === 0 ? -1 : 1;
@@ -3139,6 +3155,7 @@ function civilianSnapshots(session, players, rescuedIds, securedCivilianIds){
       rescueArrival:secured ? escort?.arrival || null : null,
       following:!secured,
       followingUserId:owner.userId,
+      escortOwnerDown:owner.downed,
       secured,
       rescued:rescuedIds.includes(civilian.id),
     };
@@ -3339,6 +3356,7 @@ async function buildSnapshot(session, viewerId){
     boss:derived.boss,
     rescuedIds:derived.rescuedIds,
     securedCivilianIds:derived.securedCivilianIds,
+    escortOffer:escortTeamwork.activeOffer(session.escortOffer,session,at),
     capturedIds:derived.capturedIds,
     checkpointCompletedIds:derived.checkpointCompletedIds,
     objectivesReady:derived.objectivesReady,
@@ -3365,6 +3383,7 @@ async function updateOwnPresence(session, user, patch={}){
   const slot = session.memberIds.indexOf(uid);
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
+  syncEscortOwnership(session,player);
   const now = nowMs();
   const mission = missionDefinition(session);
   const fieldSlot = player.slot === 0 ? 0 : 1;
@@ -3440,9 +3459,9 @@ async function updateOwnPresence(session, user, patch={}){
   if(session.status === "active"){
     const healingPlayers=mission.civilians.some(c=>c.injured) && (player.rescuedIds||[]).length ? await memberPlayers(session) : [player];
     for(const civilian of mission.civilians){
-      if(!(player.rescuedIds || []).includes(civilian.id) || (player.securedCivilianIds || []).includes(civilian.id)) continue;
+      if(!(player.rescuedIds || []).includes(civilian.id) || (player.securedCivilianIds || []).includes(civilian.id) || (escortOwnerId(session,civilian.id) && escortOwnerId(session,civilian.id)!==uid)) continue;
       const escort=player.civilianEscorts[civilian.id] || civilianRescue.start(civilian,player,now);
-      const order=(player.rescuedIds || []).filter(id=>!(player.securedCivilianIds || []).includes(id)).indexOf(civilian.id);
+      const order=(player.rescuedIds || []).filter(id=>!(player.securedCivilianIds || []).includes(id)&&(!escortOwnerId(session,id)||escortOwnerId(session,id)===uid)).indexOf(civilian.id);
       const healed=healingPlayers.reduce((sum,p)=>sum+Number(p.civilianHealing?.[civilian.id]||0),0)>=45;
       player.civilianEscorts[civilian.id]=civilianRescue.advance(escort,player,now,{injured:!!civilian.injured&&!healed,paused:player.downed,gap:Math.min(108,36+Math.max(0,order)*14)});
     }
@@ -3547,10 +3566,12 @@ async function updateOwnPresence(session, user, patch={}){
 }
 
 async function applyAction(session, user, action, payload={}){
+  if(action==='rescue'||action==='deliver')session=await readSession(session.code);
   const uid = userIdOf(user);
   const slot = session.memberIds.indexOf(uid);
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
+  syncEscortOwnership(session,player);
   const now = nowMs();
   if(action === 'tool-select'){
     if(session.status!=='waiting')throw new Error('Choose your rescue tool before deployment.');
@@ -3673,7 +3694,11 @@ async function applyAction(session, user, action, payload={}){
       ? (mission.checkpoints || []).reduce((last, checkpoint, index)=>players.every((row)=>(row.checkpointIds || []).includes(checkpoint.id)) ? index : last, -1)
       : -1;
     const restartCheckpoint = completedCheckpointIndex >= 0 ? mission.checkpoints[completedCheckpointIndex] : null;
+    session.escortOffer=null;
+    if(!restartCheckpoint){session.escortOwners={};session.escortRevision=0;}
+    await writeSession(session);
     for(const p of players){
+      syncEscortOwnership(session,p);
       const def = ROLE_DEFS[p.role];
       const defaultSpawn = mission.spawns[p.slot === 0 ? 0 : 1];
       const spawn = restartCheckpoint
@@ -3726,7 +3751,52 @@ async function applyAction(session, user, action, payload={}){
     if(player.respawnAt > now) throw new Error("Your field life is bringing you back at Base Camp.");
     throw new Error("You are out of lives. Your teammate must revive you or the leader can restart after a squad wipe.");
   }
-  if(action === 'tool-use'){
+  if(['escort-offer','escort-accept','escort-decline','escort-recover'].includes(action)){
+    session=await readSession(session.code);
+    if(session.status!=='active'||sessionPaused(session))throw new Error('Escort transfers require an active, unpaused mission.');
+    const players=await memberPlayers(session),mine=players.find(p=>p.userId===uid),other=players.find(p=>p.userId!==uid);
+    if(mine?.downed)throw new Error('A downed soldier cannot take over an escort.');
+    if(!other)throw new Error('A teammate must be in this mission.');
+    const derived=sessionDerived(session,players,now),civilians=civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds);
+    const offer=escortTeamwork.activeOffer(session.escortOffer,session,now);
+    if(action==='escort-decline'){
+      if(!offer||![offer.from,offer.to].includes(uid)||payload.offerId!==offer.id)throw new Error('That escort request has expired.');
+      session.escortOffer=null;return writeSession(session);
+    }
+    if(action==='escort-offer'){
+      if(offer)throw new Error('Accept, decline or cancel the existing escort request first.');
+      if(other.downed||now-other.lastSeenAt>15000||distance(mine,other)>160)throw new Error('Meet your connected, standing teammate within 160m to offer a handoff.');
+      const followers=escortTeamwork.followers(civilians,uid);
+      if(!followers.length)throw new Error('No civilians are following you.');
+      if(followers.some(c=>distance(c,other)>escortTeamwork.RANGE))throw new Error('Wait for all your followers to reach your teammate before offering a handoff.');
+      session.escortOffer={id:`${uid}:${now}`,from:uid,to:other.userId,civilianIds:followers.map(c=>c.id),expiresAt:now+escortTeamwork.OFFER_MS,runId:`${session.code}:${session.startedAt}`};
+      return writeSession(session);
+    }
+    let source,selected;
+    if(action==='escort-accept'){
+      if(!offer||offer.to!==uid||offer.from!==other.userId||payload.offerId!==offer.id)throw new Error('That escort request has expired or is not addressed to you.');
+      source=other;
+      if(source.downed||now-source.lastSeenAt>15000||distance(mine,source)>160)throw new Error('Both rescuers must remain nearby and connected. Use Recover Escort if the rescuer is down.');
+      selected=escortTeamwork.followers(civilians,source.userId).filter(c=>offer.civilianIds.includes(c.id));
+      if(selected.length!==offer.civilianIds.length||selected.some(c=>distance(c,mine)>escortTeamwork.RANGE))throw new Error('The followers moved or reached safety. Request a fresh handoff nearby.');
+    }else{
+      source=other;
+      if(!source.downed)throw new Error('Escort recovery is only available when the other rescuer is down.');
+      selected=escortTeamwork.transferable(civilians,source.userId,mine);
+      if(!selected.length)throw new Error('Move within 200m of your downed teammate’s following civilians.');
+    }
+    const revision=Number(session.escortRevision||0);
+    const reserved=await setStateIfAbsent(`live_squad_escort_${session.code}_${session.startedAt}_${revision}`,{at:now});
+    if(!reserved)throw new Error('An escort transfer is already being processed. Refresh the squad and try again.');
+    for(const c of selected){
+      if(!mine.rescuedIds.includes(c.id))mine.rescuedIds.push(c.id);
+      mine.civilianEscorts[c.id]=civilianRescue.start(c,mine,now);
+      session.escortOwners[c.id]={userId:uid,x:c.x,y:c.y};
+    }
+    session.escortOffer=null;session.escortRevision=revision+1;
+    await writePlayer(session.code,mine);
+    return writeSession(session);
+  }else if(action === 'tool-use'){
     const tool=player.rescueTool;
     rescueTools.ready(tool,now);
     const players=await memberPlayers(session);
@@ -3735,8 +3805,7 @@ async function applyAction(session, user, action, payload={}){
     if(tool.id==='smoke'){
       message='Smoke cover deployed for 8 seconds. Tiger pounces cannot hit soldiers inside the smoke.';
     }else if(tool.id==='med-drone'){
-      const candidates=[...players.filter(p=>!p.downed&&p.hp<p.maxHp).map(p=>({target:p,kind:'soldier',ratio:p.hp/p.maxHp})),...civilians.filter(c=>!c.secured&&c.hp<c.hpMax).map(c=>({target:c,kind:'civilian',ratio:c.hp/c.hpMax}))].filter(row=>distance(row.target,player)<=360).sort((a,b)=>a.ratio-b.ratio);
-      healTarget=candidates[0];
+      healTarget=rescueTools.healingTarget(players,civilians,player);
       if(!healTarget)throw new Error('Nobody injured is within 360m. No Med Drone charge was used.');
       const target=healTarget.target,healed=Math.min(healTarget.kind==='soldier'?38:48,(target.maxHp||target.hpMax)-target.hp);
       effect={x:target.x,y:target.y,name:target.name||'Soldier',healed,targetId:target.userId||target.id};
@@ -3852,7 +3921,7 @@ async function applyAction(session, user, action, payload={}){
     }
     if(distance(player, civilian) > 82) throw new Error("Move closer to the civilian.");
     const routePlayers = await memberPlayers(session);
-    const currentOwner = routePlayers.find((row)=>(row.rescuedIds || []).includes(id));
+    const currentOwner = civilianOwner(session,routePlayers,id);
     if(currentOwner && currentOwner.userId !== uid) throw new Error(`${civilian.name} is already following your teammate.`);
     const reserved = currentOwner || await setStateIfAbsent(`live_squad_rescue_${session.code}_${session.startedAt}_${id}`, { userId:uid, rescuedAt:now });
     if(!reserved) throw new Error(`${civilian.name} is already following your teammate.`);
@@ -3865,7 +3934,8 @@ async function applyAction(session, user, action, payload={}){
     const rescueMission = missionDefinition(session);
     const rescueHouse = rescueHouseFor(rescueMission);
     if(distance(player, rescueHouse) > rescueHouse.r) throw new Error("Bring your following civilians inside the Rescue House circle first.");
-    const ownedFollowing = (player.rescuedIds || []).filter((id)=>!(player.securedCivilianIds || []).includes(id));
+    const alreadySafe=new Set((await memberPlayers(session)).flatMap(p=>p.securedCivilianIds||[]));
+    const ownedFollowing = (player.rescuedIds || []).filter((id)=>!alreadySafe.has(id) && (!escortOwnerId(session,id) || escortOwnerId(session,id)===uid));
     if(!ownedFollowing.length) throw new Error("No civilians are following you right now.");
     for(const id of ownedFollowing){
       const escort=player.civilianEscorts[id];
@@ -4129,6 +4199,7 @@ async function closeSession(session, user){
       staying.killSites = { ...(leaving.killSites || {}), ...(staying.killSites || {}) };
       staying.captureSites = { ...(leaving.captureSites || {}), ...(staying.captureSites || {}) };
       staying.civilianEscorts = { ...(leaving.civilianEscorts || {}), ...(staying.civilianEscorts || {}) };
+      for(const [id,entry] of Object.entries(session.escortOwners||{})){if(escortOwnerId(session,id)===uid)session.escortOwners[id]={...entry,userId:staying.userId};}
       for(const [id,healed] of Object.entries(leaving.civilianHealing||{}))staying.civilianHealing[id]=Number(staying.civilianHealing[id]||0)+Number(healed||0);
       await writePlayer(session.code, staying);
       leaving.tigerDamage = {};

@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V11.8 (Living Civilian Rescue • Phase 2)</title>
+  <title>Tiger Strike 🐅 — V11.8 (Living Civilian Rescue • Phase 3)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5231-rescue-tools">
+  <link rel="stylesheet" href="./squad-coop.css?v=5232-rescue-teamwork">
 
   <style>
     :root{
@@ -2576,9 +2576,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V11.8</span> <span class="tag">Living Civilian Rescue • Phase 2</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V11.8</span> <span class="tag">Living Civilian Rescue • Phase 3</span></div>
       <div class="sub">
-        V11.8 Phase 2 adds waving civilians, nearby-tiger reactions, rescue celebrations, and selectable co-op Smoke, Med Drone and Signal Flare tools with limited uses. Solo smoke coverage and healing feedback are clearer; rescue rewards and transport boarding rules remain unchanged.<br>
+        V11.8 Phase 3 adds accepted civilian handoffs, nearby escort recovery when a rescuer is down, clearer rescue counts, and no-charge tool previews. Transfers preserve one escort owner and award no duplicate rescue credit. Mission rewards, capture rules and solo difficulty remain unchanged.<br>
         Settlement Siege, Escaped Alpha Transport, and Government Response Raid are real playable Solo crises with their own enemies, civilians, objectives, rewards, completion receipts, and safe return to the command network.<br>
         All 100 Story missions now share one authored map-truth system across Solo and Shared Story. Every future mission batch includes Mission Map Truth &amp; Parity in the same update—not as a later visual patch.<br>
         Mission 98 is the exact eighteen-tiger final swarm with no fake side objective. Mission 99 fields exactly fourteen temple guards and requires all four guardian seals activated in order. Mission 100 is the single 8,500-HP Ancient Tiger; defeating it or capturing it alive is valid before the final Story extraction.<br>
@@ -2791,6 +2791,7 @@
         <button class="ghost" onclick="placeTrap()">🪤 Trap</button>
         <button class="ghost" id="fieldRollBtn" onclick="rollDodge()">↯ Roll</button>
         <button class="ghost" id="secondaryActionBtn" onclick="useSelectedMissionSecondary()">🎒 Secondary</button>
+        <button class="ghost" id="secondaryPreviewBtn" onclick="TigerFieldSystems.previewMissionSecondary()">Preview Tool • No Charge</button><span class="small" id="secondaryPreviewText" role="status"></span>
       </div>
       <div class="row combatButtons" id="combatButtons">
         <button class="warn" id="combatAttackBtn" data-attack-btn>🔫 Attack</button>
@@ -3606,27 +3607,28 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5231-rescue-tools"></script>
-  <script src="./ammo-modes.js?v=5231-rescue-tools"></script>
-  <script src="./government-policy.js?v=5231-rescue-tools"></script>
-  <script src="./tiger-intelligence.js?v=5231-rescue-tools"></script>
-  <script src="./tiger-encounters.js?v=5231-rescue-tools"></script>
-  <script src="./living-world.js?v=5231-rescue-tools"></script>
-  <script src="./mission-map-truth.js?v=5231-rescue-tools"></script>
-  <script src="./post-campaign.js?v=5231-rescue-tools"></script>
-  <script src="./sanctuary.js?v=5231-rescue-tools"></script>
-  <script src="./player-experience.js?v=5231-rescue-tools"></script>
-  <script src="./field-radio.js?v=5231-rescue-tools"></script>
-  <script src="./civilian-rescue.js?v=5231-rescue-tools"></script>
-  <script src="./rescue-tools.js?v=5231-rescue-tools"></script>
-  <script src="./game.js?v=5231-rescue-tools"></script>
-  <script src="./story-cinematics.js?v=5231-rescue-tools"></script>
-  <script src="./field-systems.js?v=5231-rescue-tools"></script>
-  <script src="./tutorial.js?v=5231-rescue-tools"></script>
-  <script src="./squad-motion.js?v=5231-rescue-tools"></script>
-  <script src="./shared-battlefield-renderer.js?v=5231-rescue-tools"></script>
-  <script src="./squad-coop.js?v=5231-rescue-tools"></script>
-  <script src="./extraction-qa.js?v=5231-rescue-tools"></script>
+  <script src="./extraction-geometry.js?v=5232-rescue-teamwork"></script>
+  <script src="./ammo-modes.js?v=5232-rescue-teamwork"></script>
+  <script src="./government-policy.js?v=5232-rescue-teamwork"></script>
+  <script src="./tiger-intelligence.js?v=5232-rescue-teamwork"></script>
+  <script src="./tiger-encounters.js?v=5232-rescue-teamwork"></script>
+  <script src="./living-world.js?v=5232-rescue-teamwork"></script>
+  <script src="./mission-map-truth.js?v=5232-rescue-teamwork"></script>
+  <script src="./post-campaign.js?v=5232-rescue-teamwork"></script>
+  <script src="./sanctuary.js?v=5232-rescue-teamwork"></script>
+  <script src="./player-experience.js?v=5232-rescue-teamwork"></script>
+  <script src="./field-radio.js?v=5232-rescue-teamwork"></script>
+  <script src="./civilian-rescue.js?v=5232-rescue-teamwork"></script>
+  <script src="./rescue-tools.js?v=5232-rescue-teamwork"></script>
+  <script src="./escort-teamwork.js?v=5232-rescue-teamwork"></script>
+  <script src="./game.js?v=5232-rescue-teamwork"></script>
+  <script src="./story-cinematics.js?v=5232-rescue-teamwork"></script>
+  <script src="./field-systems.js?v=5232-rescue-teamwork"></script>
+  <script src="./tutorial.js?v=5232-rescue-teamwork"></script>
+  <script src="./squad-motion.js?v=5232-rescue-teamwork"></script>
+  <script src="./shared-battlefield-renderer.js?v=5232-rescue-teamwork"></script>
+  <script src="./squad-coop.js?v=5232-rescue-teamwork"></script>
+  <script src="./extraction-qa.js?v=5232-rescue-teamwork"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

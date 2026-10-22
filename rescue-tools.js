@@ -19,6 +19,24 @@
   function smokeAt(players,point,now=Date.now()){
     return players.some(p=>{const e=p.rescueTool?.effect;return e?.kind==='smoke'&&e.until>now&&Math.hypot(e.x-point.x,e.y-point.y)<=300;});
   }
+  function healingTarget(players=[],civilians=[],player={}){
+    return [...players.filter(p=>!p.downed&&p.hp>0&&p.hp<p.maxHp).map(p=>({target:p,kind:'soldier',ratio:p.hp/p.maxHp})),...civilians.filter(c=>!c.secured&&!c.evac&&c.alive!==false&&c.hp>0&&c.hp<c.hpMax).map(c=>({target:c,kind:'civilian',ratio:c.hp/c.hpMax}))].filter(row=>Math.hypot(row.target.x-player.x,row.target.y-player.y)<=360).sort((a,b)=>a.ratio-b.ratio||String(a.target.userId||a.target.id).localeCompare(String(b.target.userId||b.target.id)))[0]||null;
+  }
+  function preview(tool,players,civilians,player){
+    if(tool?.id==='smoke')return {x:player.x,y:player.y,r:300,label:'Smoke here • 300m cover • 8 seconds'};
+    if(tool?.id==='med-drone'){
+      const pick=healingTarget(players,civilians,player);
+      if(!pick)return {label:'No injured target within 360m • no charge will be used'};
+      const t=pick.target,healed=Math.min(pick.kind==='soldier'?38:48,(t.maxHp||t.hpMax)-t.hp);
+      return {x:t.x,y:t.y,r:28,label:`${t.name||'You'} +${healed} HP`,targetId:t.userId||t.id};
+    }
+    if(tool?.id==='flare')return {label:'Flare reveals the current objective and extraction • 14 seconds'};
+    return {label:tool?.id==='tranq-kit'?'Tranq Kit prepares a nearby live tiger without lethal damage':tool?.id==='shock'?'Shock Baton staggers a nearby tiger without lethal damage':'Select a rescue tool before deployment'};
+  }
+  function drawPreview(ctx,p){
+    if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y))return;
+    ctx.save();ctx.strokeStyle='#67e8f9';ctx.lineWidth=2;ctx.setLineDash([9,7]);ctx.beginPath();ctx.arc(p.x,p.y,p.r||28,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+  }
   function drawEffect(ctx,e,now=Date.now()){
     if(!ctx||!e||now>=e.until)return;
     ctx.save();ctx.textAlign='center';ctx.font='900 12px system-ui';
@@ -37,5 +55,5 @@
     }
     ctx.restore();
   }
-  return Object.freeze({VERSION:'11.8',DEFS,create,ready,used,smokeAt,drawEffect});
+  return Object.freeze({VERSION:'11.8',DEFS,create,ready,used,smokeAt,healingTarget,preview,drawPreview,drawEffect});
 });

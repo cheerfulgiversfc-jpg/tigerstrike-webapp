@@ -891,6 +891,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo event play uses Protect Civilians First as its safe default. A solo squad room may choose a different response, but inviting a teammate before deployment reopens the ballot so the second player always gets a vote.
 - Expired and completed events disappear from that player's command network. Event and response bonuses use the existing per-player reward receipt, so reconnecting or replaying cannot pay the same operation twice.
 
+### V11.8 Living Civilian Rescue — Phase 3 (build 5232)
+
+- Nearby standing rescuers can offer their current followers to a teammate. The receiver must accept within twenty seconds while both players remain connected and within 160 world units, with the civilians within 200 of the receiver. Decline, cancellation, expiry and invalid-distance requests leave ownership unchanged.
+- A standing teammate can recover nearby followers of a downed rescuer without waiting for acceptance. Only civilians within 200 world units move to the new escort. This does not auto-revive the soldier or grant extra rescue credit.
+- The server records one authoritative escort owner per transferred civilian, retains the live position at transfer, validates delivery ownership and deduplicates concurrent transfers. Reconnect restores that assignment; full restarts clear it and checkpoint restarts retain it. Rescue claims, mission rewards and solo progression are not granted again on a handoff.
+- A compact in-flow panel shows followers for each player, civilians entering safety, safe residents, and civilians still awaiting rescue. Offer/accept/decline/recovery controls sit above the battlefield, away from the joystick. Calm-following reaction captions are suppressed to reduce overlapping map labels.
+- Live Med Drone previews use the same patient-selection and healing-cap logic as the server. Smoke previews show the real 300-unit coverage. Pressing Preview consumes no supplies and shows a six-second outline. Moving patients or new damage can change the preview before activation. Solo receives equivalent limited-time tool previews and clearer entry/safety counts.
+- The owner confirmed the Phase 2 physical two-phone Telegram test worked. Phase 3 automated tests cover acceptance, rejection/expiry/distance/pauses, concurrent replay, downed recovery, ownership recovery after a stale presence write, reconnect, delivery deduplication, full restart clearing, rescue-credit preservation and tool preview selection. Phase 3 still needs its own physical two-phone acceptance test.
+
 ### V11.8 Living Civilian Rescue — Phase 2 (build 5231)
 
 - Civilians wave for help, show a nearby-tiger warning based on live enemy positions, and raise their arms while entering safety. These are visual reactions, not new panic penalties or extra enemy damage. Existing Solo AI and mission completion rules are preserved.

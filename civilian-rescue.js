@@ -47,6 +47,7 @@
   }
   function drawReaction(ctx,c,tigers=[],now=Date.now()){
     const label=reaction(c,tigers,now);if(!label)return;
+    if(label==='Stay together')return;
     ctx.save();ctx.translate(c.x,c.y);ctx.textAlign='center';ctx.font='900 11px system-ui';
     ctx.fillStyle=label==='Tiger nearby!'?'#fecaca':'#d1fae5';
     ctx.fillText(label,0,-66);

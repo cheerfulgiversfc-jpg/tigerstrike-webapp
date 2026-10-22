@@ -100,7 +100,7 @@
         if(Number(civ.hp||0)<max) candidates.push({kind:"civilian",target:civ,ratio:Number(civ.hp||0)/max});
       }
     }
-    candidates.sort((a,b)=>a.ratio-b.ratio);
+    candidates.sort((a,b)=>a.ratio-b.ratio||String(a.kind==='soldier'?'solo':a.target.id).localeCompare(String(b.kind==='soldier'?'solo':b.target.id)));
     const pick=candidates[0];
     if(!pick) return {ok:false,message:"The Med Drone found nobody injured nearby, so no charge was used."};
     let healed=0;
@@ -160,11 +160,24 @@
     renderSecondaryHud(state);
     return notify(effect.message,{success:true,battle:!!state.inBattle,seconds:3});
   }
+  function missionToolPreview(state=root.S){
+    if(!state?.me)return null;
+    const runtime=ensureMissionSecondary(state);
+    if(state.mode==='Survival' && ['tranq-kit','shock'].includes(runtime.id))return {label:'This capture tool is unavailable in Survival'};
+    return root.TigerRescueTools?.preview(runtime,[{...state.me,userId:'solo',name:'You',hp:state.hp,maxHp:100}],(state.civilians||[]).filter(c=>c.alive&&!c.evac),state.me);
+  }
+  function previewMissionSecondary(){
+    const state=root.S;if(!state||state.gameOver||state.missionEnded)return;
+    state.secondaryPreviewUntil=Date.now()+6000;
+    renderSecondaryHud(state);
+  }
   function renderSecondaryHud(state=root.S){
     if(!state) return;
     const runtime=ensureMissionSecondary(state);
     const def=SECONDARY_DEFS[runtime.id];
     const now=Date.now();
+    const previewText=document.getElementById('secondaryPreviewText');
+    if(previewText)previewText.textContent=now<Number(state.secondaryPreviewUntil||0)?`Live preview: ${missionToolPreview(state)?.label||def.description}`:'';
     const cooldown=Math.max(0,Math.ceil((Number(runtime.cooldownUntil||0)-now)/1000));
     const unavailable=state.mode==="Survival"&&(runtime.id==="tranq-kit"||runtime.id==="shock");
     const disabled=!!(state.paused||state.missionEnded||state.gameOver||runtime.charges<=0||cooldown>0||unavailable);
@@ -183,6 +196,7 @@
   function drawMissionSecondaryEffects(context,state=root.S,now=Date.now()){
     if(!context||!state?.me) return;
     context.save();
+    if(now<Number(state.secondaryPreviewUntil||0))root.TigerRescueTools?.drawPreview(context,missionToolPreview(state));
     if(now<Number(state.secondarySmokeUntil||0)){
       root.TigerRescueTools?.drawEffect(context,{...state.secondarySmokeAt,kind:'smoke',until:state.secondarySmokeUntil},now);
     }
@@ -473,7 +487,7 @@
     actions.innerHTML=`<button class="good" onclick="beginGovernmentQuestioning()">Enter Interrogation Room</button><button class="ghost" onclick="closeGovernmentConsequence()">Decide Later</button>`;
   }
 
-  const api={SECONDARY_DEFS,QUESTIONS,REHAB_MISSIONS,selectedSecondaryId,ensureMissionSecondary,resetMissionSecondaryForMission,useSelectedMissionSecondary,renderSecondaryHud,drawMissionSecondaryEffects,moveCell,answerOutcome};
+  const api={SECONDARY_DEFS,QUESTIONS,REHAB_MISSIONS,selectedSecondaryId,ensureMissionSecondary,resetMissionSecondaryForMission,useSelectedMissionSecondary,missionToolPreview,previewMissionSecondary,renderSecondaryHud,drawMissionSecondaryEffects,moveCell,answerOutcome};
   root.TigerFieldSystems=api;
   root.useSelectedMissionSecondary=useSelectedMissionSecondary;
   root.renderGovernmentConsequence=renderGovernmentConsequence;

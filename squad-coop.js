@@ -511,6 +511,7 @@
     if(connection) connection.textContent = playerConnectionText();
     set("squadObjective", objectiveText());
     updateFieldRadio();
+    updateRescueTeamwork();
     const pauseNotice = $("squadPauseNotice");
     if(pauseNotice){
       pauseNotice.hidden = !snap.paused;
@@ -624,7 +625,7 @@
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
         <div class="squadMemberName">${Number(player.userId) === Number(state.snapshot?.hostId) ? "👑 " : ""}${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
-        <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Rescues ${(player.rescuedIds || []).length} • Revives ${Math.round(player.revives || 0)}</div>
+        <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Escorting ${(state.snapshot?.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(player.userId)).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
     });
     return cards.join("");
@@ -850,6 +851,7 @@
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       ${fieldRadioHtml()}
+      <section class="squadRescueTeamwork" aria-label="Civilian teamwork"><div id="squadRescueCounts" class="squadSmall" role="status"></div><div id="squadEscortActions" class="squadRow"></div><div class="squadRow"><button type="button" class="squadBtn" data-squad-command="tool-preview">Preview Tool • No Charge</button><span id="squadToolPreview" class="squadSmall"></span></div></section>
       ${livingWorldMissionText() ? `<div class="squadConnection" id="squadLivingWorldNotice">🌍 ${esc(livingWorldMissionText())}</div>` : ""}
       <div class="squadConnection" id="squadAwarenessNotice">${esc(awarenessText())}</div>
       ${snap.mission?.dangerNote ? `<div class="squadConnection bad" id="squadDangerNotice">${esc(dangerText())}</div>` : ""}
@@ -928,6 +930,31 @@
     return connectionText();
   }
   let radioLocateUntil=0,radioMuted=false,radioCallout='',radioCalloutAt=0;
+  let rescueToolPreviewUntil=0;
+  function updateRescueTeamwork(){
+    const snap=state.snapshot,api=window.TigerEscortTeamwork;if(!snap||!api)return;
+    const mine=localSnapshotPlayer(),other=remoteSnapshotPlayer();if(!mine)return;
+    const now=Number(snap.serverNow||Date.now()),civilians=snap.civilians||[],counts=api.counts(civilians,viewerId(),now);
+    const countNode=$('squadRescueCounts');if(countNode)countNode.textContent=`You: ${counts.you} following • Teammate: ${counts.teammate} • Entering: ${counts.entering} • Safe inside: ${counts.safe} • Awaiting rescue: ${counts.available}`;
+    const disabled=mine.downed||snap.paused||snap.status!=='active',offer=api.activeOffer(snap.escortOffer,snap,now),actions=$('squadEscortActions');
+    let html='';
+    if(offer){
+      const seconds=Math.max(0,Math.ceil((offer.expiresAt-now)/1000));
+      html=offer.to===viewerId()?`<span class="squadSmall">Teammate offers ${offer.civilianIds.length} followers • ${seconds}s</span><button type="button" class="squadBtn good" data-squad-command="escort-accept" data-offer-id="${esc(offer.id)}" ${disabled?'disabled':''}>Accept Escort</button><button type="button" class="squadBtn" data-squad-command="escort-decline" data-offer-id="${esc(offer.id)}" ${disabled?'disabled':''}>Decline</button>`:`<span class="squadSmall">Waiting for teammate to accept • ${seconds}s</span><button type="button" class="squadBtn" data-squad-command="escort-decline" data-offer-id="${esc(offer.id)}" ${disabled?'disabled':''}>Cancel Handoff</button>`;
+    }else if(other){
+      const followers=api.followers(civilians,viewerId()),near=api.distance(state.local||mine,other)<=160&&followers.every(c=>api.distance(c,other)<=api.RANGE);
+      if(followers.length)html+=`<button type="button" class="squadBtn" data-squad-command="escort-offer" ${disabled||other.downed||!near||other.online===false?'disabled':''}>Offer ${followers.length} Followers</button><span class="squadSmall">Meet within 160m; teammate must accept.</span>`;
+    }
+    if(other?.downed){const recover=api.transferable(civilians,other.userId,state.local||mine);html+=`<button type="button" class="squadBtn good" data-squad-command="escort-recover" ${disabled||!recover.length?'disabled':''}>Recover Escort (${recover.length} Nearby)</button><span class="squadSmall">Reach the downed rescuer’s civilians within 200m.</span>`;}
+    if(actions&&actions.innerHTML!==html){actions.innerHTML=html;bindCommandButtons();}
+    const preview=window.TigerRescueTools?.preview(mine.rescueTool,snap.players||[],civilians,state.local||mine),node=$('squadToolPreview');
+    if(node)node.textContent=preview?`Live preview: ${preview.label}`:'';
+  }
+  async function escortCommand(kind,offerId){
+    if(state.actionBusy)return;state.actionBusy=true;
+    try{await sync(true);await api(kind,{offerId});setMessage(kind==='escort-offer'?'Handoff offered. Your teammate must accept.':kind==='escort-decline'?'Escort request closed.':'Escort ownership transferred. No extra rescue credit awarded.');updateRescueTeamwork();}
+    catch(error){setMessage(error.message,true);}finally{state.actionBusy=false;}
+  }
   try{radioMuted=localStorage.getItem('ts_field_radio_muted')==='1';}catch(e){}
   function fieldRadioHtml(){
     return `<div id="radioMessages" class="squadConnection" role="status"></div><details class="squadRadio"><summary>📻 Field Radio & Shared Objective</summary><div class="squadRow"><button type="button" class="squadBtn" data-squad-command="radio-locate">🎯 Locate Objective</button>${Object.entries(window.TigerFieldRadio?.SIGNALS||{}).map(([kind,label])=>`<button type="button" class="squadBtn" data-squad-command="radio" data-radio-kind="${kind}" ${kind==='capture'&&state.snapshot?.mission?.survival?'disabled':''}>${esc(label)}</button>`).join('')}<button type="button" class="squadBtn" id="radioMuteButton" data-squad-command="radio-mute">Mute radio alerts</button></div><div id="radioGuide" class="squadSmall"></div><div id="radioFollowers" class="squadSmall"></div></details>`;
@@ -1176,6 +1203,11 @@
       radio:()=>sendFieldRadio(button?.dataset?.radioKind),
       'tool-select':()=>rescueToolCommand(button?.dataset?.toolId),
       'tool-use':()=>rescueToolCommand(),
+      'tool-preview':()=>{rescueToolPreviewUntil=Date.now()+6000;updateRescueTeamwork();},
+      'escort-offer':()=>escortCommand('escort-offer'),
+      'escort-accept':()=>escortCommand('escort-accept',button?.dataset?.offerId),
+      'escort-decline':()=>escortCommand('escort-decline',button?.dataset?.offerId),
+      'escort-recover':()=>escortCommand('escort-recover'),
       'radio-locate':()=>{ radioLocateUntil=Date.now()+7000;updateFieldRadio(); },
       'radio-mute':()=>{ radioMuted=!radioMuted;try{localStorage.setItem('ts_field_radio_muted',radioMuted?'1':'0');}catch(e){}updateFieldRadio(); },
       action:()=>action(actionName),
@@ -2829,6 +2861,7 @@
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
     drawFieldRadio(ctx);
+    if(Date.now()<rescueToolPreviewUntil){const mine=localSnapshotPlayer();window.TigerRescueTools?.drawPreview(ctx,window.TigerRescueTools?.preview(mine?.rescueTool,snap.players||[],snap.civilians||[],state.local||mine));}
     for(const player of (snap.players||[])){
       const effect=player.rescueTool?.effect;
       window.TigerRescueTools?.drawEffect(ctx,effect?.kind==='flare'?{...effect,target:window.TigerFieldRadio?.guide(snap,player.userId)}:effect,now);

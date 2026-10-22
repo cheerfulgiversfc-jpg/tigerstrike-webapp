@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5231";
+const TS_BUILD = "5232";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -49716,7 +49716,8 @@ function renderPlayerExperience(){
   document.getElementById('soloRadioStatus').textContent=__soloRadioMuted?'Radio alerts muted.':(now-__soloRadioAt<6000?__soloRadioText:'Radio ready. Commands apply to your hired soldiers.');
   const followers=(S.civilians||[]).filter(c=>c.alive&&!c.evac&&c.following).length;
   const safe=(S.civilians||[]).filter(c=>c.evac).length;
-  document.getElementById('soloRadioEscort').textContent=`Following rescue team: ${followers} • Safely rescued: ${safe}`;
+  const rescueCounts=window.TigerEscortTeamwork?.counts(S.civilians||[],0,now);
+  document.getElementById('soloRadioEscort').textContent=rescueCounts?`Following rescue team: ${followers} • Entering safety: ${rescueCounts.entering} • Safely rescued: ${rescueCounts.safe}`:`Following rescue team: ${followers} • Safely rescued: ${safe}`;
 }
 function drawObjectiveHighlight(now=Date.now()){
   for(const tiger of (S.tigers||[])){

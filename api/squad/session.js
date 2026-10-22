@@ -203,7 +203,7 @@ module.exports = async function handler(req, res){
     let reward = null;
     if(action === "sync" || action === "status" || action === "role"){
       await updateOwnPresence(session, user, body?.player || (action === "role" ? { role:body?.role } : {}));
-    }else if(["start","restart","continue","handoff","vote","radio","tool-select","tool-use","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
+    }else if(["start","restart","continue","handoff","vote","radio","tool-select","tool-use","escort-offer","escort-accept","escort-decline","escort-recover","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
       session = await applyAction(session, user, action, body || {});
     }else if(["gear-buy","gear-equip","gear-use"].includes(action)){
       await applyCoopEquipmentAction(session, user, action, body || {});
