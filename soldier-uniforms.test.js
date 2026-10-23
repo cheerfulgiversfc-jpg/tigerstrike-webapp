@@ -8,7 +8,7 @@ function context(){
   return {ctx,geometry,colors};
 }
 function soloRenderer(){
-  const sandbox={clamp:(n,a,b)=>Math.max(a,Math.min(b,n)),premiumGaitBlend:()=>0,animLean:()=>0};
+  const sandbox={TigerStrikeBattlefieldRenderer:renderer,clamp:(n,a,b)=>Math.max(a,Math.min(b,n)),premiumGaitBlend:()=>0,animLean:()=>0};
   vm.runInNewContext(game.slice(game.indexOf('function drawMissionUniformPreview('),game.indexOf('function drawAnimatedTigerLegCycle(')),sandbox);
   return sandbox;
 }
@@ -35,34 +35,42 @@ test('all ten cosmetic unlocks survive normalization rather than truncating the 
   assert.equal(state.masteryEarned.solo.length,10);
   assert(wardrobe.rewards({...state,records:{}},'solo').find(r=>r.id==='midnight-tracker').unlocked);
 });
-test('shared renderer changes only color, retaining geometry, player markers and movement poses',()=>{
+test('ten uniforms have distinct tailoring but identical leg motion, anchors and player markers',()=>{
   const entity={x:120,y:90,face:2,role:'medic'},before=JSON.stringify(entity);
+  const shapes=new Set();
   for(const mine of [true,false]){
     const standard=context(),baseline=renderer.drawSoldier(standard.ctx,entity,{mine,walking:true,phase:1.2});
     for(const id of wardrobe.CATALOG.filter(r=>r.slot==='uniform'&&r.target>0).map(r=>r.id)){
       const alternate=context(),palette=wardrobe.uniformPalette(id),drawn=renderer.drawSoldier(alternate.ctx,entity,{mine,walking:true,phase:1.2,uniformPalette:palette});
-      assert.deepEqual(alternate.geometry,standard.geometry);assert.deepEqual(drawn,baseline);assert(alternate.colors.includes(palette.body));assert(alternate.colors.includes(palette.helmet));assert(alternate.colors.includes(palette.vest));
+      assert.deepEqual(alternate.geometry.slice(0,70),standard.geometry.slice(0,70));assert.deepEqual(drawn,baseline);assert(alternate.colors.includes(palette.body));assert(alternate.colors.includes(palette.helmet));assert(alternate.colors.includes(palette.vest));
+      shapes.add(JSON.stringify(alternate.geometry));
     }
   }
+  assert.equal(shapes.size,10,'all ten outfits need a visible detail beyond recoloring');
   assert.equal(JSON.stringify(entity),before);
 });
-test('actual Solo model retains geometry and animation while using the selected body, vest and helmet colors',()=>{
-  const solo=soloRenderer(),entity={id:17,face:2,step:.4},standard=context();
-  solo.drawSoldierModelOnContext(standard.ctx,entity,20,30,{blend:.6});
+test('Solo delegates to exactly the same Co-op artwork, gait and aiming for every earned outfit',()=>{
+  const solo=soloRenderer(),entity={id:17,face:2,step:.4},before=JSON.stringify(entity);
   for(const id of wardrobe.CATALOG.filter(r=>r.slot==='uniform'&&r.target>0).map(r=>r.id)){
-    const alternate=context(),palette=wardrobe.uniformPalette(id);
+    const alternate=context(),shared=context(),palette=wardrobe.uniformPalette(id);
     solo.drawSoldierModelOnContext(alternate.ctx,entity,20,30,{blend:.6,uniformPalette:palette});
-    assert.deepEqual(alternate.geometry,standard.geometry);assert(alternate.colors.includes(palette.body));assert(alternate.colors.includes(palette.vest));assert(alternate.colors.includes(palette.helmet));
+    renderer.drawSoldier(shared.ctx,{...entity,x:20,y:30},{blend:.6,phase:.4*3.25,mine:true,showMarker:false,uniformPalette:palette});
+    assert.deepEqual(alternate.geometry,shared.geometry);assert.deepEqual(alternate.colors.filter(c=>typeof c==='string'),shared.colors.filter(c=>typeof c==='string'));
   }
+  assert.equal(JSON.stringify(entity),before);
 });
 test('preview canvases use the actual mode renderer, and paint once without a background animation loop',()=>{
   const previousSolo=globalThis.drawMissionUniformPreview,previousShared=globalThis.TigerStrikeBattlefieldRenderer,solo=soloRenderer();
   try{
     globalThis.drawMissionUniformPreview=solo.drawMissionUniformPreview;globalThis.TigerStrikeBattlefieldRenderer=renderer;
+    const previews=[];
     for(const scope of ['solo','coop']){
       const drawing=context(),canvas={width:240,height:170,dataset:{uniformPreview:scope,uniformId:'rescue-guardian'},getContext:()=>drawing.ctx};
       wardrobe.paintPreviews({querySelectorAll:()=>[canvas]});assert.equal(canvas.dataset.painted,'true');assert(drawing.colors.includes(wardrobe.uniformPalette('rescue-guardian').body));
+      previews.push(drawing.geometry);
     }
+    // Both previews frame the same shared model; Solo adds one wrapper save/restore.
+    assert.deepEqual(previews[0],previews[1]);
   }finally{globalThis.drawMissionUniformPreview=previousSolo;globalThis.TigerStrikeBattlefieldRenderer=previousShared;}
   assert(!fs.readFileSync('mastery-rewards.js','utf8').includes('requestAnimationFrame'));
 });
@@ -85,4 +93,21 @@ test('mission and fallback render paths use cosmetics without touching simulatio
   assert(game.includes('uniformPalette:palette.masteryUniform'));assert(game.includes('return drawSoldierModelOnContext(ctx,entity,x,y,opts)'));
   assert(coop.includes('uniformPalette:cloth'));assert(coop.includes('const body=cloth?.body||"#64734b"'));
   assert(fs.readFileSync('shared-battlefield-renderer.js','utf8').includes('mine?"#67e8f9":"#c4b5fd"'));
+  const html=fs.readFileSync('index.html','utf8');
+  assert(html.indexOf('shared-battlefield-renderer.js')<html.indexOf('./game.js'));
+});
+test('idle, walking, downed and all aim quadrants stay finite, upright and leave simulation untouched',()=>{
+  for(const face of [0,Math.PI/2,Math.PI,-Math.PI/2,-2.5])for(const downed of [false,true]){
+    const entity={x:25,y:40,face,downed,hp:80,ammo:7},before=JSON.stringify(entity);
+    for(const walking of [false,true]){
+      const drawing=context();renderer.drawSoldier(drawing.ctx,entity,{walking,phase:2,mine:true,shotKick:.8});
+      for(const [, ...args] of drawing.geometry)for(const arg of args)if(typeof arg==='number')assert(Number.isFinite(arg));
+      const angles=drawing.geometry.filter(row=>row[0]==='rotate').map(row=>row[1]);
+      assert.equal(angles.length,1,'only the arm/weapon rig rotates');assert(Math.abs(angles[0])<=Math.PI/2);
+      assert.equal(drawing.geometry.filter(r=>r[0]==='save').length,drawing.geometry.filter(r=>r[0]==='restore').length);
+    }
+    const a=context(),b=context();renderer.drawSoldier(a.ctx,entity,{phase:0});renderer.drawSoldier(b.ctx,entity,{phase:3});
+    assert.deepEqual(a.geometry,b.geometry,'idle legs must not continue stepping');
+    assert.equal(JSON.stringify(entity),before);
+  }
 });

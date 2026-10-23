@@ -92,7 +92,7 @@
         globalThis.drawMissionUniformPreview(ctx,palette);
       }else{
         const renderer=globalThis.TigerStrikeBattlefieldRenderer;if(!renderer?.drawSoldier)return;
-        ctx.save();ctx.translate(120,88);ctx.scale(2,2);renderer.drawSoldier(ctx,{x:0,y:0,face:0,role:'tracker'},{mine:true,uniformPalette:palette});ctx.restore();
+        ctx.save();ctx.translate(120,88);renderer.drawSoldier(ctx,{x:0,y:0,face:0,role:'player'},{scale:2.1,mine:true,showMarker:false,uniformPalette:palette});ctx.restore();
       }
       canvas.dataset.painted='true';
     });
@@ -105,7 +105,7 @@
     schedulePreviews();
     const command=item?(scope==='coop'?`data-squad-command="mastery-equip" data-squad-item="${item.id}"`:`onclick="missionMasteryRewardCommand('equip','${item.id}',this)"`):'';
     const equipButton=item?`<div class="masteryRewardActions"><button type="button" ${command} ${equipped||!item.unlocked?'disabled':''}>${equipped?'Equipped':item.unlocked?'Equip preview':'Locked'}</button></div>`:'';
-    return `<div class="masteryIdentityPreview"><b>${esc(name)}</b><canvas width="240" height="170" data-uniform-preview="${scopeKey(scope)}" data-uniform-id="${esc(current.uniform?.id||'')}" role="img" aria-label="${esc(current.uniform?.name||'Default uniform')} soldier preview"></canvas><p>${esc(identityText(current)||'Your existing soldier identity')}</p><p>${esc(current.uniform?.name||'Previous / default uniform')}</p><small>${item?`${item.unlocked?'Unlocked preview':'Locked preview — not equipped'} • ${esc(requirementText(item))}`:'Equipped identity • uniform colors only; movement and combat are unchanged.'}</small>${equipButton}</div>`;
+    return `<div class="masteryIdentityPreview"><b>${esc(name)}</b><canvas width="240" height="170" data-uniform-preview="${scopeKey(scope)}" data-uniform-id="${esc(current.uniform?.id||'')}" role="img" aria-label="${esc(current.uniform?.name||'Default uniform')} soldier preview"></canvas><p>${esc(identityText(current)||'Your existing soldier identity')}</p><p>${esc(current.uniform?.name||'Previous / default uniform')}</p><small>${item?`${item.unlocked?'Unlocked preview':'Locked preview — not equipped'} • ${esc(requirementText(item))}`:'Equipped identity • cosmetic tailoring and equipment; movement and combat are unchanged.'}</small>${equipButton}</div>`;
   }
   function lockerHtml(state={},scope='solo',name='Your Soldier'){
     scope=scopeKey(scope);

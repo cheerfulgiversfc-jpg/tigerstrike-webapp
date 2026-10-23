@@ -22,43 +22,116 @@
     ctx.fillStyle="rgba(4,12,23,.91)";rounded(ctx,x-width/2,y-19,width,26,9);ctx.fill();ctx.strokeStyle=border;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=color;ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(text,x,y-6);
   }
 
+  // Visual tailoring only: these profiles never enter combat, unlocks or inventory.
+  const SOLDIER_TAILORING=Object.freeze({
+    '#356e39':'ranger','#c97026':'rescue','#30416e':'night','#687d8f':'sentinel',
+    '#218d92':'river','#b8c8d1':'mountain','#9e3745':'warden','#b28b27':'royal',
+    '#75518e':'scout','#d4be86':'ancient'
+  });
   function drawSoldier(ctx,entity={},options={}){
     const x=Number(entity.x)||0,y=Number(entity.y)||0,face=Number(entity.face)||0;
-    const phase=Number(options.phase)||0,walking=!!options.walking,downed=!!entity.downed;
-    const stride=walking?Math.sin(phase)*8:0,bob=walking?Math.abs(Math.sin(phase))*2:0;
-    const facing=Math.cos(face)<0?-1:1;
+    const blend=clamp(options.blend??(options.walking?1:0),0,1),phase=Number(options.phase)||0;
+    const downed=!!entity.downed,facing=Math.cos(face)<0?-1:1;
     const mine=!!options.mine,accent=downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");
-    const role=String(entity.role||"support");
-    const cloth=options.uniformPalette;
-    ctx.save();ctx.translate(x,y-bob);ctx.scale(facing,1);
-    ellipse(ctx,2,27+bob,25,8,"rgba(2,6,23,.43)");
-    if(downed){ctx.rotate(facing*.08);ctx.translate(0,9);}
-
+    const role=String(entity.role||"support"),cloth=options.uniformPalette||{};
+    const body=cloth.body||"#456b48",light=cloth.light||"#83a66b",dark=cloth.dark||"#263d32";
+    const vest=cloth.vest||"#293e3a",helmet=cloth.helmet||"#567b49",trim=cloth.trim||"#c6d49b";
+    const tailoring=SOLDIER_TAILORING[body]||"ranger";
+    const stride=Math.sin(phase)*5.4*blend,lift=Math.max(0,Math.cos(phase))*2.5*blend;
+    const bob=Math.abs(Math.cos(phase))*1.1*blend,scale=clamp(options.scale??1,.25,4);
+    const box=(x,y,w,h,color,r=2)=>{ctx.fillStyle=color;rounded(ctx,x,y,w,h,r);ctx.fill();};
+    ctx.save();ctx.translate(x,y);ctx.scale(facing*scale,scale);
+    ellipse(ctx,0,27,20,5,"rgba(2,6,23,.38)");
+    ctx.translate(0,-bob+(downed?8:0));
     // Independent articulated legs keep the character upright while walking.
-    line(ctx,"#202a24",8,[[-7,10],[-10-stride*.55,26]]);line(ctx,"#202a24",8,[[7,10],[10+stride*.55,26]]);
-    line(ctx,cloth?.body||"#536548",5,[[-7,11],[-10-stride*.55,24]]);line(ctx,cloth?.body||"#536548",5,[[7,11],[10+stride*.55,24]]);
-    ellipse(ctx,-11-stride*.55,27,8,3,"#090e12",-.1);ellipse(ctx,11+stride*.55,27,8,3,"#090e12",.1);
-
+    for(const side of [-1,1]){
+      const swing=side*stride,hip=side*5.5,knee=hip+swing*.4,foot=hip+swing;
+      const footY=25-(side===1?lift:Math.max(0,-Math.cos(phase))*2.5*blend);
+      line(ctx,dark,7,[[hip,8],[knee,17],[foot,footY]]);
+      line(ctx,body,5,[[hip,8],[knee,17],[foot,footY-2]]);
+      box(knee-2.5,15,5,4,vest,1.5);
+      box(foot-4,footY-1,10,4,"#111a20");
+      line(ctx,"#67716c",.8,[[foot-2,footY+2],[foot+4,footY+2]]);
+    }
     // Uniform, vest, belt, shoulder plates and backpack.
-    const uniform=ctx.createLinearGradient(-14,-10,14,20);uniform.addColorStop(0,cloth?.light||"#718159");uniform.addColorStop(.55,cloth?.body||"#4f6246");uniform.addColorStop(1,cloth?.dark||"#314235");ctx.fillStyle=uniform;rounded(ctx,-14,-9,28,29,7);ctx.fill();ctx.strokeStyle=accent;ctx.lineWidth=2.2;ctx.stroke();
-    ctx.fillStyle=cloth?.vest||"#233044";rounded(ctx,-16,-3,32,18,5);ctx.fill();ctx.strokeStyle="#65758a";ctx.lineWidth=1.5;ctx.stroke();
-    ctx.fillStyle="#111827";ctx.fillRect(-15,12,30,4);ctx.fillStyle="#8b6f47";rounded(ctx,-3,11,7,7,2);ctx.fill();
-    ctx.fillStyle="#172033";rounded(ctx,-20,-5,7,20,3);ctx.fill();
-    for(const px of [-9,2]){ctx.fillStyle="#3e4f42";rounded(ctx,px,2,8,9,2);ctx.fill();ctx.strokeStyle="#91a47f";ctx.lineWidth=1;ctx.stroke();}
-
-    // Arms and weapon point toward the aim direction without rotating the body.
-    const aimY=clamp(Math.sin(face)*7,-6,6);
-    line(ctx,cloth?.body||"#455842",7,[[-11,-2],[-20,7+aimY*.2],[-5,5]]);line(ctx,cloth?.body||"#455842",7,[[10,-2],[19,5+aimY*.2],[7,5]]);
-    ellipse(ctx,-4,4,4,4,"#c98f6c");ellipse(ctx,8,4,4,4,"#c98f6c");
-    ctx.save();ctx.translate(3,2);ctx.rotate(facing===1?Math.atan2(Math.sin(face),Math.abs(Math.cos(face))):Math.atan2(Math.sin(face),Math.abs(Math.cos(face))));
-    ctx.fillStyle="#101822";rounded(ctx,-7,-4,39,8,2);ctx.fill();ctx.fillStyle="#8da0ae";ctx.fillRect(27,-2,17,4);ctx.fillStyle="#27384b";rounded(ctx,4,-7,17,6,2);ctx.fill();ctx.fillStyle="#121923";ctx.beginPath();ctx.moveTo(10,4);ctx.lineTo(19,14);ctx.lineTo(24,13);ctx.lineTo(20,4);ctx.fill();ctx.fillStyle="#7dd3fc";ctx.fillRect(18,-6,5,2);ctx.restore();
+    box(-15,-12,7,22,dark,3);box(-16,-9,5,9,vest);
+    line(ctx,"#15252b",1.3,[[-14,-10],[-16,-27]]);ellipse(ctx,-16,-27,1,1,trim);
+    const fabric=ctx.createLinearGradient(-12,-14,12,15);
+    fabric.addColorStop(0,light);fabric.addColorStop(.45,body);fabric.addColorStop(1,dark);
+    box(-11,-14,22,28,fabric,5);
+    for(const [cx,cy] of [[-8,-10],[4,-7],[-6,8],[6,11]]){
+      box(cx,cy,4,2,light,1);box(cx+2,cy+2,3,2,dark,1);
+    }
+    box(-9,-12,18,23,vest,3);
+    line(ctx,trim,1,[[-8,-10],[-8,8],[8,8],[8,-10]]);
+    box(-7,-10,3,6,dark,1);box(4,-10,3,6,dark,1);
+    for(const px of [-6,1]){
+      box(px,-1,5,7,body,1);line(ctx,light,.7,[[px,1],[px+5,1]]);
+    }
+    box(-12,10,24,4,"#17232a");box(-2,10,4,4,trim,1);
+    box(10,8,4,10,dark);box(-14,5,4,8,vest);
+    // Each earned outfit keeps its identity with a distinct cut or field attachment.
+    if(tailoring==="rescue"||tailoring==="river"){
+      for(const px of [-9,6])box(px,-11,3,21,trim,1);
+      if(tailoring==="river"){box(-12,-4,6,11,light);box(6,-4,6,11,light);}
+    }else if(tailoring==="night"){
+      box(-7,-8,14,3,dark);box(-15,-13,4,6,trim);
+    }else if(tailoring==="sentinel"){
+      box(-15,-16,8,6,vest);box(7,-16,8,6,vest);box(-5,-8,10,5,light);
+    }else if(tailoring==="mountain"){
+      box(-13,-17,26,5,light);line(ctx,trim,1.4,[[-12,0],[12,7]]);
+      ellipse(ctx,-11,2,2.5,4,trim);
+    }else if(tailoring==="warden"){
+      line(ctx,trim,3,[[-9,-11],[7,8]]);box(9,3,5,8,light);
+    }else if(tailoring==="royal"){
+      box(-15,-16,8,4,trim);box(7,-16,8,4,trim);
+      line(ctx,trim,1.5,[[-6,-8],[0,-4],[6,-8]]);
+    }else if(tailoring==="scout"){
+      box(-14,-15,5,23,dark);line(ctx,trim,1,[[-14,-13],[-17,8],[-10,6]]);
+    }else if(tailoring==="ancient"){
+      box(-8,-12,16,4,trim);line(ctx,trim,1.5,[[-6,-4],[0,1],[6,-4]]);
+    }else{
+      for(const px of [-12,9])box(px,-14,3,5,light,1);
+    }
 
     // Face has features, hair/helmet, chin and headset.
-    ellipse(ctx,0,-16,10,11,"#c98f6c");ellipse(ctx,0,-12,8,6,"#d9a27f");
-    ctx.fillStyle=cloth?.helmet||"#55664c";ctx.beginPath();ctx.arc(0,-21,13,Math.PI,TAU);ctx.fill();ctx.fillRect(-13,-22,26,5);ctx.fillStyle="#29352e";ctx.fillRect(-9,-25,18,4);
-    ctx.fillStyle="#0b1119";ctx.beginPath();ctx.arc(-3.4,-17.2,1.35,0,TAU);ctx.arc(3.4,-17.2,1.35,0,TAU);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1.1;ctx.beginPath();ctx.moveTo(-2,-11.8);ctx.quadraticCurveTo(0,-10.5,2,-11.8);ctx.stroke();
-    ctx.strokeStyle="#111827";ctx.lineWidth=2;ctx.beginPath();ctx.arc(-9,-17,4,Math.PI*.6,Math.PI*1.45);ctx.stroke();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-10,-14,2,0,TAU);ctx.fill();
-    if(role==="medic"){ctx.fillStyle="#f8fafc";rounded(ctx,-5,-2,10,10,2);ctx.fill();ctx.fillStyle="#ef4444";ctx.fillRect(-1,-1,2,8);ctx.fillRect(-4,2,8,2);}
+    ellipse(ctx,-7.5,-23,2.5,3.5,"#bd825e");ellipse(ctx,7.5,-23,2.5,3.5,"#bd825e");
+    ellipse(ctx,0,-23,8,9,"#d8a47d");ellipse(ctx,1,-21,6,6,"#e8b98f");
+    box(-7,-28,14,2,"#614735",1);
+    const look=Math.cos(face)*1.1*facing;
+    line(ctx,"#493a2c",.9,[[-5,-25],[-2,-25.5]]);line(ctx,"#493a2c",.9,[[2,-25.5],[5,-25]]);
+    ellipse(ctx,-3.2+look,-24,1.1,1.3,"#182b32");ellipse(ctx,3.2+look,-24,1.1,1.3,"#182b32");
+    ellipse(ctx,-3+look,-24.5,.35,.4,"#fff3df");ellipse(ctx,3.4+look,-24.5,.35,.4,"#fff3df");
+    line(ctx,"#b77c58",.8,[[.5,-23],[1,-20.5],[-.5,-20]]);
+    line(ctx,"#754b37",.9,[[-2,-18],[2,-18]]);
+    ctx.fillStyle=helmet;ctx.beginPath();ctx.ellipse(0,-29,10,7,0,Math.PI,TAU);ctx.fill();
+    box(-10,-30,20,4,helmet);box(-8,-33,16,2,light,1);
+    box(-3,-35,6,3,dark,1);box(-1,-34,2,1,trim,0.5);
+    if(tailoring==="night"){box(-6,-31,5,4,dark,1);box(1,-31,5,4,dark,1);box(-5,-30,3,1,"#a3dfcd",.5);}
+    if(tailoring==="scout")line(ctx,dark,2,[[-9,-32],[-11,-26]]);
+    if(tailoring==="royal"||tailoring==="ancient")box(-2,-29,4,2,trim,1);
+    line(ctx,"#1b2a31",2,[[-9,-26],[-10,-20],[-5,-19]]);
+    ellipse(ctx,-10,-23,2.2,3,"#263a3e");ellipse(ctx,-5,-19,1,1,"#111c22");
+
+    // Arms and weapon point toward the aim direction without rotating the body.
+    // Mirroring handles left-facing aim; only the two-arm weapon rig pitches.
+    const aim=Math.atan2(Math.sin(face),Math.abs(Math.cos(face)));
+    const recoil=clamp(options.shotKick,0,1)*2;
+    ctx.save();ctx.translate(0,-5);ctx.rotate(aim);ctx.translate(-recoil,0);
+    line(ctx,dark,6,[[-9,-4],[-11,3],[3,3]]);
+    line(ctx,body,4,[[-9,-4],[-11,3],[3,3]]);
+    line(ctx,dark,6,[[9,-4],[14,2],[18,-1]]);
+    line(ctx,body,4,[[9,-4],[14,2],[18,-1]]);
+    box(-5,0,8,4,"#26353c");box(15,-3,5,4,"#26353c");
+    box(-3,-5,25,6,"#19272f");box(1,-5,17,2,"#63767d",1);
+    box(22,-4,9,3,"#8b999a",1);box(29,-5,3,5,"#1c2a31",1);
+    box(5,1,5,7,"#273640",1);box(11,-8,8,3,"#1d2c32",1);box(16,-7,2,1,"#90cbd2",.5);
+    box(-9,-4,7,4,dark,1);line(ctx,trim,.7,[[-7,-3],[-3,-3]]);
+    ctx.restore();
+    if(role==="medic"||role==="rescue"){
+      box(-5,-11,10,7,"#edf3df",1);box(-1,-10,2,5,"#c9584b",.5);box(-3,-8,6,1.5,"#c9584b",.5);
+    }
+    if(options.showMarker!==false){line(ctx,accent,2.2,[[-13,15],[-7,17],[7,17],[13,15]]);}
     ctx.restore();
     return {x,y,labelY:y-43,barY:y+34,accent};
   }

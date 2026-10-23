@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5238";
+const TS_BUILD = "5239";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -59092,149 +59092,16 @@ function drawMissionUniformPreview(previewContext,uniformPalette){
   previewContext.restore();
 }
 function drawSoldierModelOnContext(ctx,entity,x,y,opts={}){
-  const roundedRectFill=(x,y,w,h,r)=>{ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();ctx.fill();};
   if(!ctx || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
-  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.8)), 0, 1);
-  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
-  const dir = Math.cos(face) >= 0 ? 1 : -1;
-  const step = Number(entity.step || 0) + Number(opts.phase || 0);
-  const scale = Number(opts.scale || 1);
-  const role = String(opts.role || "player");
-  const attacker = role === "attacker";
-  const rescue = role === "rescue";
-  const stride = Math.sin(step * 3.25) * (4.0 + blend * 6.2);
-  const lift = Math.abs(Math.sin(step * 3.25)) * (1.3 + blend * 2.6);
-  const uniform=opts.uniformPalette;
-  const camoA = uniform?.body || (attacker ? "rgba(101,69,38,.98)" : "rgba(82,86,59,.98)");
-  const camoB = uniform?.light || (attacker ? "rgba(150,104,58,.96)" : "rgba(132,121,78,.96)");
-  const camoC = uniform?.dark || "rgba(45,54,40,.96)";
-  const vest = uniform?.vest || (rescue ? "rgba(22,78,99,.98)" : "rgba(58,45,32,.98)");
-  const trim = uniform?.trim || opts.accent || (rescue ? "rgba(125,211,252,.96)" : "rgba(251,191,36,.92)");
-  const camoSeed = Math.abs(Math.floor(Number(entity.id || 17))) % 5;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(dir * scale, scale);
-  ctx.rotate(animLean(entity, 0.015) * dir);
-
-  ctx.globalAlpha = 0.42;
-  ctx.fillStyle = "rgba(0,0,0,.88)";
-  ctx.beginPath();
-  ctx.ellipse(0, 27, 22, 5.4, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  ctx.fillStyle = camoA;
-  roundedRectFill(-8.8 + stride * 0.13, 8.2, 7.3, 16.5 - lift * 0.12, 3);
-  roundedRectFill(1.5 - stride * 0.13, 8.2, 7.3, 16.5 - lift * 0.12, 3);
-  ctx.fillStyle = camoC;
-  roundedRectFill(-9.8 + stride * 0.46, 22.6 - lift, 9.2, 4.4, 2);
-  roundedRectFill(0.6 - stride * 0.46, 22.6 - lift, 9.2, 4.4, 2);
-  ctx.fillStyle = camoB;
-  roundedRectFill(-7.8, 12, 4.0, 5.5, 1.8);
-  roundedRectFill(4.0, 10.5, 3.7, 6.5, 1.8);
-  ctx.fillStyle = "rgba(17,24,39,.42)";
-  roundedRectFill(-9.2 + stride * 0.13, 15.4, 7.0, 3.8, 1.4);
-  roundedRectFill(2.2 - stride * 0.13, 15.2, 6.7, 3.8, 1.4);
-
-  ctx.fillStyle = camoA;
-  roundedRectFill(-10.5, -15.5, 21, 25.5, 6.5);
-  ctx.fillStyle = camoB;
-  roundedRectFill(-8.8, -12.8, 17.6, 20.2, 5.5);
-  ctx.fillStyle = vest;
-  roundedRectFill(-8, -13.6, 16, 22.5, 4.5);
-  ctx.strokeStyle = "rgba(6,10,16,.66)";
-  ctx.lineWidth = 1.3;
-  ctx.strokeRect(-8, -13.6, 16, 22.5);
-  ctx.fillStyle = "rgba(12,18,28,.55)";
-  roundedRectFill(-6.6, -9.8, 5.1, 6.2, 1.5);
-  roundedRectFill(1.5, -9.8, 5.1, 6.2, 1.5);
-  roundedRectFill(-6.0, -1.8, 4.5, 5.5, 1.4);
-  roundedRectFill(1.5, -1.8, 4.5, 5.5, 1.4);
-  ctx.fillStyle = trim;
-  roundedRectFill(-6.2, -15.3, 12.4, 2.3, 1.2);
-  ctx.fillStyle = "rgba(226,232,240,.78)";
-  roundedRectFill(-2.1, -14.2, 4.2, 3.4, 1);
-  ctx.fillStyle = "rgba(20,83,45,.42)";
-  for(let i=0; i<5; i++){
-    const px = -9.3 + ((i * 4.5 + camoSeed * 1.7) % 18);
-    const py = -11.6 + ((i * 6.1 + camoSeed) % 18);
-    roundedRectFill(px, py, 5.1, 2.4, 1.2);
-  }
-  ctx.fillStyle = "rgba(15,23,42,.48)";
-  roundedRectFill(-13.0, -7.5, 3.2, 13.5, 1.4);
-  roundedRectFill(9.8, -7.5, 3.2, 13.5, 1.4);
-
-  ctx.fillStyle = camoA;
-  roundedRectFill(-14.4, -12 + stride * 0.08, 5.3, 15.5, 2.5);
-  roundedRectFill(9.1, -12 - stride * 0.08, 5.3, 15.5, 2.5);
-  ctx.fillStyle = "rgba(24,28,34,.98)";
-  ctx.beginPath(); ctx.arc(-12, 3.7 + stride * 0.08, 2.8, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(12, 3.7 - stride * 0.08, 2.8, 0, Math.PI * 2); ctx.fill();
-
-  ctx.fillStyle = uniform?.helmet || "rgba(86,80,58,.98)";
-  ctx.beginPath();
-  ctx.ellipse(0, -25, 10.5, 7.8, 0, Math.PI, Math.PI * 2);
-  ctx.fill();
-  roundedRectFill(-10.2, -25, 20.4, 5.6, 2.8);
-  ctx.fillStyle = uniform?.light || "rgba(101,92,64,.96)";
-  roundedRectFill(-8.2, -29.2, 16.4, 5.2, 2.2);
-  ctx.strokeStyle = "rgba(232,213,167,.55)";
-  ctx.lineWidth = 0.9;
-  ctx.beginPath();
-  ctx.moveTo(-7.2, -26.8);
-  ctx.lineTo(7.2, -26.8);
-  ctx.moveTo(0, -29.0);
-  ctx.lineTo(0, -24.6);
-  ctx.stroke();
-  ctx.fillStyle = "rgba(42,49,42,.96)";
-  roundedRectFill(-7.2, -30.2, 14.4, 3.8, 1.5);
-  ctx.fillStyle = "rgba(10,14,18,.88)";
-  roundedRectFill(-6.8, -22.7, 13.6, 3.0, 1.5);
-  ctx.fillStyle = "rgba(220,220,210,.88)";
-  ctx.beginPath(); ctx.ellipse(0, -19.5, 6.2, 5.8, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "rgba(4,8,12,.92)";
-  roundedRectFill(-6.6, -21.6, 13.2, 2.8, 1.4);
-  ctx.strokeStyle = "rgba(14,18,22,.82)";
-  ctx.lineWidth = 1.1;
-  ctx.beginPath(); ctx.moveTo(8.5, -24.5); ctx.quadraticCurveTo(14, -21, 13, -14.5); ctx.stroke();
-  ctx.fillStyle = "rgba(15,23,42,.88)";
-  roundedRectFill(-15.5, -2.5, 4.2, 12.8, 1.4);
-  ctx.fillStyle = "rgba(75,85,99,.88)";
-  roundedRectFill(-16.2, 1.0, 5.6, 2.4, 1);
-
-  const gunY = -1.2;
-  const gunReach = 19 + Number(opts.shotKick || 0) * 2.8;
-  ctx.strokeStyle = "rgba(8,10,14,.98)";
-  ctx.lineWidth = 4.0;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(-4, 1.5);
-  ctx.lineTo(gunReach, gunY);
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(78,87,94,.92)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(-1, 0.8);
-  ctx.lineTo(gunReach + 3, gunY - 0.2);
-  ctx.stroke();
-  ctx.fillStyle = "rgba(20,24,30,.98)";
-  roundedRectFill(4, 1.5, 6, 7, 1.5);
-  ctx.fillStyle = "rgba(120,113,92,.96)";
-  roundedRectFill(-7.5, 0.4, 5.6, 8.6, 1.5);
-
-  if(blend > 0.12){
-    ctx.globalAlpha = clamp(0.22 + blend * 0.18, 0.22, 0.40);
-    ctx.strokeStyle = trim;
-    ctx.lineWidth = 1.25;
-    ctx.beginPath();
-    ctx.moveTo(-8 + stride * 0.35, 25);
-    ctx.lineTo(-25 - stride * 0.72, 31);
-    ctx.moveTo(8 - stride * 0.35, 25);
-    ctx.lineTo(25 + stride * 0.72, 31);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-  ctx.restore();
+  const renderer=globalThis.TigerStrikeBattlefieldRenderer;
+  if(!renderer?.drawSoldier) return;
+  const blend=clamp(Number(opts.blend??premiumGaitBlend(entity,opts.topSpeed||2.8)),0,1);
+  // Adapt only presentation: never write position, velocity, equipment or aim state.
+  return renderer.drawSoldier(ctx,{...entity,x,y,face:opts.face??entity.face,role:opts.role||entity.role},{
+    blend,phase:(Number(entity.step)||0)*3.25+Number(opts.phase||0),
+    scale:opts.scale||1,mine:true,showMarker:opts.role==="player",
+    uniformPalette:opts.uniformPalette,shotKick:opts.shotKick
+  });
 }
 
 function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitState="walk"){
@@ -60145,6 +60012,8 @@ function drawSoldier(){
     ctx.restore();
   }
 
+  // The old underpainting is fallback-only: no doubled faces, legs or weapons.
+  if(!globalThis.TigerStrikeBattlefieldRenderer?.drawSoldier){
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(dir, 1);
@@ -60214,6 +60083,7 @@ function drawSoldier(){
   ctx.beginPath(); ctx.arc(-2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.restore();
+  }
   if(LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED){
     drawPremiumBipedArtShell(S.me, x, y, {
       blend:rolling ? 1 : moveBlend,
@@ -60285,7 +60155,7 @@ function drawSoldier(){
     });
   }
   safeCanvasLayer("drawRealisticSoldierModel.player", ()=>drawRealisticSoldierModel(S.me, x, y, {
-    uniformPalette:palette.masteryUniform,
+    uniformPalette:palette.masteryUniform || {body:palette.armorOuter,light:palette.arm,dark:palette.shoulder,vest:palette.armorInner,helmet:palette.helmet,trim:palette.trim},
     blend:rolling ? 1 : moveBlend,
     topSpeed:3.0,
     face:ang,
@@ -60301,6 +60171,7 @@ function drawSoldier(){
     const wy = y + Math.sin(ang) * 13 + (shoulderShift * 0.25) - (shotKick * 1.2);
     const gripX = x + Math.cos(ang) * 5;
     const gripY = y + Math.sin(ang) * 2 + (shoulderShift * 0.35);
+    if(!globalThis.TigerStrikeBattlefieldRenderer?.drawSoldier){
     ctx.strokeStyle="rgba(18,22,28,.96)";
     ctx.lineWidth=4.3;
     ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
@@ -60310,6 +60181,7 @@ function drawSoldier(){
 
     ctx.fillStyle="rgba(245,158,11,.90)";
     ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
+    }
     if(shotKick > 0 && animationPassQuality() !== "lite"){
       ctx.save();
       ctx.globalAlpha = clamp(shotKick * 0.62, 0, 0.62);
