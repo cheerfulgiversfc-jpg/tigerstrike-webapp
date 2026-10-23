@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5237";
+const TS_BUILD = "5238";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4876,6 +4876,7 @@ function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
   const duration=S._debriefClock?api.clock(S._debriefClock,Date.now(),false).elapsedMs:null;
   const report={id:S._missionRunId||`legacy:${S.mode}:${meta.number}:${Date.now()}`,scope:'solo',missionKey:`${S.mode}:${meta.storyVariant||''}:${meta.number}:${meta.runIndex||0}:${S.mode==='Arcade'&&S.arcadeWeeklySeedEnabled?S.arcadeWeeklySeedKey||'':''}`,title:currentMissionLabel(),mode:S.mode,completed:true,durationMs:duration,civilianTotal:civTotal,civilianLost:civDead,rescued:stats.evac,captures:stats.captures,kills:stats.kills,reward:{cash:stats.cashEarned},rewardState:'awarded'};
   report.campaignLevel=S.mode==='Story'&&meta.storyVariant===STORY_VARIANTS.CAMPAIGN?meta.number:0;
+  report.bossCaptures=(S.captureCages||[]).filter(cage=>(S.tigers||[]).some(tiger=>tiger.id===cage.tigerId&&isBossTiger(tiger))).length;
   S.missionDebriefs=api.record(S.missionDebriefs,report).state;
   S.missionDebriefs=window.TigerMasteryRewards?.remember(S.missionDebriefs,'solo')||S.missionDebriefs;
 }
@@ -7966,7 +7967,7 @@ function baseHqSanctuaryHtml(){
     return `<div class="baseHqUpgrade"><div><b>${def.icon} ${baseHqEsc(def.name)} Lv ${level}/${def.maxLevel}</b><small>${baseHqEsc(def.desc)}</small></div><button ${level>=def.maxLevel?"disabled":""} onclick="buySanctuaryFacility('${def.id}')">${level>=def.maxLevel?"Maxed":`$${cost.toLocaleString()}`}</button></div>`;
   }).join("");
   const airdrop = postCampaignAvailableEvents().find((event)=>event.typeId === "sanctuary_airdrop");
-  return `<section class="baseHqSanctuary">
+  return `${window.TigerChapterMilestones?.hubHtml(window.TigerMissionDebrief?.normalize(S.missionDebriefs),'solo',worldMapMaxUnlockedStoryLevel(S),window.TigerMasteryRewards)||''}<section class="baseHqSanctuary">
     <div class="baseHqWorldNpc"><b>${identity.icon} ${baseHqEsc(identity.name)}</b><br>${baseHqEsc(identity.desc)}</div>
     <div class="baseHqWorldNpc">Residents ${summary.active}/${summary.capacity} • Holding ${summary.holding} • Release ready ${summary.ready} • Released ${summary.released} • Legacy records ${summary.legacy}</div>
     <div class="baseHqWorldNpc">Sanctuary staff from rescued civilians: 🩺 ${staff.doctors} doctors • 🛡️ ${staff.rangers} rangers • 🔧 ${staff.mechanics} mechanics • 🔬 ${staff.researchers} researchers • 🚁 ${staff.pilots} pilots.</div>
@@ -8346,7 +8347,7 @@ function renderAchievementPrestigeShowcase(){
     playerProfileStatCard("Boss Hunt Season", profile.season?.title || "No active season", profile.season ? `${profile.season.points}/${profile.season.target} pts • ${profile.season.theme?.bonus || "Boss hunt records will appear here."}` : "Cinematic boss hunt records will appear here."),
     playerProfileStatCard("Social Rescue Rank", `${socialRank.icon} ${socialRank.name}`, `Week ${social.weekKey} • Best ${Math.max(0, Number(social.weekly.bestScore || 0)).toLocaleString()} pts • ${Math.max(0, Number(social.weekly.evac || 0))} saved`),
   ].join("");
-  root.innerHTML = `${window.TigerMasteryRewards?.lockerHtml?.(window.TigerMissionDebrief?.normalize(S.missionDebriefs),'solo',profile.name)||''}${publicShowcaseCardHtml(S)}
+  root.innerHTML = `${window.TigerChapterMilestones?.hubHtml(window.TigerMissionDebrief?.normalize(S.missionDebriefs),'solo',worldMapMaxUnlockedStoryLevel(S),window.TigerMasteryRewards)||''}${window.TigerMasteryRewards?.lockerHtml?.(window.TigerMissionDebrief?.normalize(S.missionDebriefs),'solo',profile.name)||''}${publicShowcaseCardHtml(S)}
   <div class="item">
     <div>
       <div class="itemName">${prestige.current.icon} Player Profile • ${baseHqEsc(effectiveDisplayTitle(S))}</div>
@@ -14382,6 +14383,7 @@ function renderWorldMapCampaign(){
     : `<span class="tag">Locked until Story Mission ${Math.floor(Number(selected.unlockAt || 1))} or neighboring defense</span>`;
   root.innerHTML = `
     <div class="hudLine"><b>World Map Campaign:</b> Pick prep, choose replay/current story level, then deploy.</div>
+    ${window.TigerChapterMilestones?.hubHtml(window.TigerMissionDebrief?.normalize(S.missionDebriefs),'solo',worldMapMaxUnlockedStoryLevel(S),window.TigerMasteryRewards)||''}
     ${worldMapPrepPanelHtml(S)}
     ${worldMapStoryLevelPickerHtml(S)}
     ${worldMapDebugInfoPanelHtml(selected, stats, wm)}

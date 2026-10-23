@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V12.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V12.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.3 • Complete Chapter Uniform Collection");
+      ? `Tiger Strike V12.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V12.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.4 • Chapter Milestones & Mission Highlights");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -522,7 +522,7 @@
     const joystick = $("squadJoystick");
     if(joystick) joystick.classList.toggle("disabled", !!snap.paused);
     const resultActions = $("squadResultActions");
-    const debrief=$('squadDebrief');if(debrief)debrief.innerHTML=snap.debrief?window.TigerMissionDebrief?.html(snap.debrief,state.profile?.missionDebriefs)||'':'';
+    const debrief=$('squadDebrief');if(debrief){const html=snap.debrief?window.TigerMissionDebrief?.html(snap.debrief,state.profile?.missionDebriefs)||'':'';if(debrief.__renderedHtml!==html){debrief.innerHTML=html;debrief.__renderedHtml=html;}}
     if(resultActions){
       resultActions.innerHTML = completionActionsHtml();
       bindCommandButtons();
@@ -697,6 +697,7 @@
         <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</span></button>
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
+      ${chapterShelfHtml()}
       ${masteryLockerHtml()}
       ${leaderSanctuaryHtml()}
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
@@ -728,6 +729,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
+      ${chapterShelfHtml()}
       ${masteryLockerHtml()}
       <div class="squadHomeHero"><div class="squadKicker">V11.4 Tiger Strike • Living Sanctuary</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for any of the 100 Shared Story missions or a Special Operation. Personal sanctuary progress remains safely separated from co-op inventory while squads continue to share real mission outcomes.</div></div>
       <div class="squadPathGrid">
@@ -788,7 +790,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.3 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.4 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -797,6 +799,7 @@
     return `<div class="squadPanel">
       <button type="button" class="squadBackLink" data-squad-command="hub-home">← Co-op Home</button>
       <div class="squadSectionHead"><div><div class="squadKicker">Same campaign • choose every mission</div><div class="squadMissionName">📖 Story Campaign</div><div class="squadDesc">Your normal Story missions and unlocks. Choose Solo when you are alone or Two Players when a teammate is ready.</div></div><span class="squadProgressPill">Story ${maxUnlockedStoryLevel()}/100</span></div>
+      ${chapterShelfHtml()}
       ${masteryLockerHtml()}
       ${window.TigerMissionDebrief?.journeyHtml?.({scope:'coop',state:state.profile?.missionDebriefs,maxLevel:maxUnlockedStoryLevel(),selectedLevel:level,missions:SHARED_STORY_LEVELS}) || storyLevelButtonsHtml()}
       <div class="squadSelectedMission"><div><div class="squadKicker">Selected mission</div><div class="squadSectionTitle">Story Mission ${level}</div><div class="squadDesc">${esc(selectedStoryDescription())}</div></div><span class="squadReadyPill ${coopReady ? "ready" : "pending"}">${coopReady ? "Two Player ready" : "Solo only for now"}</span></div>
@@ -1090,6 +1093,7 @@
       body.dataset.squadMode = state.snapshot ? "waiting" : "landing";
       body.innerHTML = lobbyHtml();
     }
+    const debrief=$('squadDebrief');if(debrief&&state.snapshot?.debrief)debrief.__renderedHtml=window.TigerMissionDebrief?.html(state.snapshot.debrief,state.profile?.missionDebriefs)||'';
     bindCommandButtons();
     bindMoveButtons();
     bindLobbyInput();
@@ -1379,6 +1383,9 @@
     }
   }
 
+  function chapterShelfHtml(){
+    return state.profile?window.TigerChapterMilestones?.hubHtml(state.profile.missionDebriefs,'coop',maxUnlockedStoryLevel(),window.TigerMasteryRewards)||'':'';
+  }
   function masteryLockerHtml(){
     if(!state.profile)return '<div class="squadSmall">Connect through Telegram to load your Co-op mastery locker.</div>';
     return window.TigerMasteryRewards?.lockerHtml(state.profile.missionDebriefs,'coop',state.profile.name)||'';

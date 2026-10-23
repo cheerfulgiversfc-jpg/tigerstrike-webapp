@@ -1,4 +1,4 @@
-(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.TigerMissionDebrief=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
+(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./chapter-milestones'):root.TigerChapterMilestones);if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.TigerMissionDebrief=api;})(typeof globalThis!=='undefined'?globalThis:this,function(milestoneApi){
   'use strict';
   const number=n=>Math.min(999999999,Math.max(0,Math.floor(Number(n)||0)));
   const clean=s=>String(s||'').slice(0,150);
@@ -13,7 +13,7 @@
   function summary(raw={}){
     const scope=raw.scope==='coop'?'coop':'solo';
     return {id:clean(raw.id),key:`${scope}:${clean(raw.missionKey||String(raw.key||'').replace(/^(solo|coop):/,''))}`,scope,title:clean(raw.title||'Mission'),completed:!!raw.completed,mode:clean(raw.mode),durationMs:raw.durationMs>0?number(raw.durationMs):null,
-      campaignLevel:raw.mode==='Story'&&number(raw.campaignLevel)>=1&&number(raw.campaignLevel)<=100?number(raw.campaignLevel):0,
+      bossCaptures:number(raw.bossCaptures),campaignLevel:raw.mode==='Story'&&number(raw.campaignLevel)>=1&&number(raw.campaignLevel)<=100?number(raw.campaignLevel):0,
       rescued:number(raw.rescued),civilianTotal:number(raw.civilianTotal),civilianLost:number(raw.civilianLost),captures:number(raw.captures),kills:number(raw.kills),wipes:raw.wipes==null?null:number(raw.wipes),restarts:number(raw.restarts),
       reward:raw.reward?{cash:number(raw.reward.cash),xp:number(raw.reward.xp),perkPoints:number(raw.reward.perkPoints),seasonPoints:number(raw.reward.seasonPoints)}:null,
       rewardState:['awarded','pending','already-claimed'].includes(raw.rewardState)?raw.rewardState:'pending',
@@ -22,7 +22,7 @@
   function normalize(raw={}){
     const masteryEarned=Object.fromEntries(['solo','coop'].map(scope=>[scope,(Array.isArray(raw?.masteryEarned?.[scope])?raw.masteryEarned[scope]:[]).map(clean).slice(0,32)]));
     const records=Object.fromEntries(Object.entries(raw?.records||{}).filter(([key])=>/^(solo|coop):/.test(key)).slice(-400).map(([key,r])=>[clean(key),{title:clean(r?.title||key),campaignLevel:campaignLevelForRecord(key,r),medals:medalList(r?.medals),fastestMs:r?.fastestMs>0?number(r.fastestMs):null,bestRescued:number(r?.bestRescued),civilianTotal:number(r?.civilianTotal),clears:number(r?.clears)}]));
-    return {records,masteryEarned,receipts:(Array.isArray(raw?.receipts)?raw.receipts:[]).map(clean).slice(-600),last:raw?.last?summary({...raw.last,missionKey:String(raw.last.key||'').replace(/^(solo|coop):/,'')}):null,lastChanges:raw?.lastChanges||{},locker:Object.fromEntries(['solo','coop'].map(scope=>[scope,{title:clean(raw?.locker?.[scope]?.title),badge:clean(raw?.locker?.[scope]?.badge),uniform:clean(raw?.locker?.[scope]?.uniform)}]))};
+    return {records,masteryEarned,milestones:milestoneApi?.normalize(raw?.milestones,records)||{},receipts:(Array.isArray(raw?.receipts)?raw.receipts:[]).map(clean).slice(-600),last:raw?.last?summary({...raw.last,missionKey:String(raw.last.key||'').replace(/^(solo|coop):/,'')}):null,lastChanges:raw?.lastChanges||{},locker:Object.fromEntries(['solo','coop'].map(scope=>[scope,{title:clean(raw?.locker?.[scope]?.title),badge:clean(raw?.locker?.[scope]?.badge),uniform:clean(raw?.locker?.[scope]?.uniform)}]))};
   }
   function medals(run){
     if(!run.completed)return [];
@@ -40,7 +40,8 @@
     const betterRescue=run.civilianTotal>0&&(!previous||run.rescued>previous.bestRescued);
     state.records[run.key]={title:run.title,campaignLevel:run.campaignLevel,medals:medalList([...(previous?.medals||[]),...medals(run)]),fastestMs:faster?run.durationMs:(previous?.fastestMs||null),bestRescued:Math.max(previous?.bestRescued||0,run.rescued),civilianTotal:run.civilianTotal,clears:(previous?.clears||0)+1};
     state.receipts=[...state.receipts,run.id].slice(-600);state.last=run;
-    state.lastChanges={first,faster,betterRescue};
+    state.lastChanges={first,faster,betterRescue,personalBest:!!previous?.fastestMs&&faster};
+    if(milestoneApi)state.milestones=milestoneApi.capture(state,run,state.lastChanges);
     return {state,run,applied:true,changes:state.lastChanges};
   }
   function clock(raw,now=Date.now(),running=false){
@@ -57,7 +58,7 @@
     const run=summary(raw),state=normalize(stateRaw),best=state.records[run.key],same=state.last?.id===run.id,changes=same?state.lastChanges:{};
     const reward=run.reward,medalNames=medals(run);
     const payout=!run.completed?'Attempt failed • no completion reward.':run.rewardState==='pending'?'Reward pending claim.':run.rewardState==='already-claimed'?'No additional payout • this mission reward was already claimed.':`Mission payout: $${(reward?.cash||0).toLocaleString()}${reward?.xp?` • ${reward.xp} XP`:''}${reward?.perkPoints?` • ${reward.perkPoints} perk points`:''}${reward?.seasonPoints?` • ${reward.seasonPoints} season points`:''}`;
-    return `<section class="missionDebrief"><h3>${esc(run.title)} • ${run.completed?'Mission Debrief':'Attempt Debrief'}</h3>
+    return `<section class="missionDebrief">${milestoneApi?.reportHtml(state,run)||''}<h3>${esc(run.title)} • ${run.completed?'Mission Debrief':'Attempt Debrief'}</h3>
       <p>${run.scope==='coop'?'Co-op':'Solo'} • Time: ${esc(time(run.durationMs))}${run.restarts?` • Includes ${run.restarts} restart${run.restarts===1?'':'s'}`:''}</p>
       <p>Civilians saved: ${run.rescued}/${run.civilianTotal} • Captured: ${run.captures} • Killed: ${run.kills}</p><p>${payout}</p>
       ${run.scope==='solo'?'<small>Other bonuses remain itemized in the existing reward breakdown.</small>':''}
