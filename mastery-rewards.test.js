@@ -2,9 +2,9 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const rewards=require('./mastery-rewards'),debrief=require('./mission-debrief');
 function result(level=1,scope='solo',extra={}){return {id:`${scope}:${level}`,scope,missionKey:scope==='coop'?`shared-story:${level}::`:`Story:CAMPAIGN:${level}:${level}:`,campaignLevel:level,mode:'Story',completed:true,durationMs:60000,title:`Story ${level}`,civilianTotal:2,rescued:2,captures:1,kills:0,wipes:scope==='coop'?0:null,...extra};}
 function cleared(count=1,scope='solo'){let state={};for(let level=1;level<=count;level++)state=debrief.record(state,result(level,scope)).state;return state;}
-test('ten cosmetics have exact requirements and unlock without granting power or currency',()=>{
+test('seventeen cosmetics have exact requirements without granting power or currency',()=>{
   const state=cleared(10),before=JSON.stringify(state),rows=rewards.rewards(state,'solo');
-  assert.equal(rows.filter(r=>r.target>0).length,10);assert(rows.every(r=>r.unlocked));
+  assert.equal(rows.filter(r=>r.target>0).length,17);assert.equal(rows.filter(r=>r.target>0&&r.unlocked).length,10);
   assert.deepEqual(rewards.progress(state,'solo'),{clears:10,rescues:10,captures:10,chapters:1});
   assert.equal(JSON.stringify(state),before);
   assert(rewards.CATALOG.every(r=>!('damage' in r)&&!('cash' in r)&&!('hp' in r)));
@@ -89,7 +89,7 @@ test('cosmetic writes cannot overwrite concurrent gameplay progress',async()=>{
 });
 test('release loads rewards before gameplay; both identity renderers and authenticated endpoint are wired',()=>{
   const fs=require('node:fs'),html=fs.readFileSync('index.html','utf8'),game=fs.readFileSync('game.js','utf8'),client=fs.readFileSync('squad-coop.js','utf8'),route=fs.readFileSync('api/squad/session.js','utf8');
-  assert(html.indexOf('mastery-rewards.js?v=5236-soldier-uniforms')<html.indexOf('game.js?v=5236-soldier-uniforms'));
+  assert(html.indexOf('mastery-rewards.js?v=5237-chapter-uniforms')<html.indexOf('game.js?v=5237-chapter-uniforms'));
   assert(game.includes('function missionMasteryRewardCommand'));assert(game.includes('const missionTitle=window.TigerMasteryRewards?.identity'));
   assert(client.includes("'mastery-equip':()=>masteryRewardCommand"));assert(client.includes('drawMasteryIdentity(ctx,p,draw.x'));
   assert(route.indexOf('validateTelegramInitData(initData, botToken)')<route.indexOf("if(action === 'mastery-equip')"));

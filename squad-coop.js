@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V12.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V12.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.2 • Soldier Appearance & Squad Identity");
+      ? `Tiger Strike V12.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V12.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.3 • Complete Chapter Uniform Collection");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -788,7 +788,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.2 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.3 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){

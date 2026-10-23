@@ -14,7 +14,7 @@ function soloRenderer(){
 }
 test('three uniforms have clear fair requirements and palettes cannot inject gameplay properties',()=>{
   const rows=wardrobe.rewards(clears(),'solo').filter(r=>r.slot==='uniform'&&r.target>0);
-  assert.deepEqual(rows.map(r=>r.id),['jungle-ranger','rescue-guardian','midnight-tracker']);assert(rows.every(r=>r.unlocked));
+  assert.equal(rows.length,10);assert.deepEqual(rows.slice(0,3).map(r=>r.id),['jungle-ranger','rescue-guardian','midnight-tracker']);assert(rows.slice(0,3).every(r=>r.unlocked));assert(rows.slice(3).every(r=>!r.unlocked));
   for(const row of rows){const palette=wardrobe.uniformPalette(row.id);assert.deepEqual(Object.keys(palette).sort(),['body','dark','helmet','light','trim','vest']);assert(Object.isFrozen(palette));}
   assert.equal(wardrobe.uniformPalette('__proto__'),null);assert.equal(wardrobe.uniformPalette('toString'),null);
   assert.throws(()=>wardrobe.equip({},'solo','jungle-ranger'),/locked/);
@@ -39,7 +39,7 @@ test('shared renderer changes only color, retaining geometry, player markers and
   const entity={x:120,y:90,face:2,role:'medic'},before=JSON.stringify(entity);
   for(const mine of [true,false]){
     const standard=context(),baseline=renderer.drawSoldier(standard.ctx,entity,{mine,walking:true,phase:1.2});
-    for(const id of ['jungle-ranger','rescue-guardian','midnight-tracker']){
+    for(const id of wardrobe.CATALOG.filter(r=>r.slot==='uniform'&&r.target>0).map(r=>r.id)){
       const alternate=context(),palette=wardrobe.uniformPalette(id),drawn=renderer.drawSoldier(alternate.ctx,entity,{mine,walking:true,phase:1.2,uniformPalette:palette});
       assert.deepEqual(alternate.geometry,standard.geometry);assert.deepEqual(drawn,baseline);assert(alternate.colors.includes(palette.body));assert(alternate.colors.includes(palette.helmet));assert(alternate.colors.includes(palette.vest));
     }
@@ -49,7 +49,7 @@ test('shared renderer changes only color, retaining geometry, player markers and
 test('actual Solo model retains geometry and animation while using the selected body, vest and helmet colors',()=>{
   const solo=soloRenderer(),entity={id:17,face:2,step:.4},standard=context();
   solo.drawSoldierModelOnContext(standard.ctx,entity,20,30,{blend:.6});
-  for(const id of ['jungle-ranger','rescue-guardian','midnight-tracker']){
+  for(const id of wardrobe.CATALOG.filter(r=>r.slot==='uniform'&&r.target>0).map(r=>r.id)){
     const alternate=context(),palette=wardrobe.uniformPalette(id);
     solo.drawSoldierModelOnContext(alternate.ctx,entity,20,30,{blend:.6,uniformPalette:palette});
     assert.deepEqual(alternate.geometry,standard.geometry);assert(alternate.colors.includes(palette.body));assert(alternate.colors.includes(palette.vest));assert(alternate.colors.includes(palette.helmet));
