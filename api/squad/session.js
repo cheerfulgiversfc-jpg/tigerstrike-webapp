@@ -17,6 +17,7 @@ const {
   applyAction,
   claimReward,
   applyCoopEquipmentAction,
+  equipCoopMasteryReward,
   readCoopProfile,
   closeSession,
   ensureLiveSession,
@@ -166,6 +167,9 @@ module.exports = async function handler(req, res){
     const action = String(body?.action || "status").trim().toLowerCase();
     if(action === "profile"){
       return json(res, 200, { ok:true, profile:await readCoopProfile(user), gearCatalog:COOP_GEAR_CATALOG });
+    }
+    if(action === 'mastery-equip'){
+      return json(res,200,{ok:true,profile:await equipCoopMasteryReward(user,body?.itemId)});
     }
     if(action === "gear-buy" || action === "gear-equip"){
       return json(res, 200, { ok:true, profile:await applyCoopEquipmentAction(null, user, action, body || {}), gearCatalog:COOP_GEAR_CATALOG });

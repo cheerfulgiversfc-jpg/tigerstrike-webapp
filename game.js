@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5234";
+const TS_BUILD = "5235";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4877,6 +4877,7 @@ function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
   const report={id:S._missionRunId||`legacy:${S.mode}:${meta.number}:${Date.now()}`,scope:'solo',missionKey:`${S.mode}:${meta.storyVariant||''}:${meta.number}:${meta.runIndex||0}:${S.mode==='Arcade'&&S.arcadeWeeklySeedEnabled?S.arcadeWeeklySeedKey||'':''}`,title:currentMissionLabel(),mode:S.mode,completed:true,durationMs:duration,civilianTotal:civTotal,civilianLost:civDead,rescued:stats.evac,captures:stats.captures,kills:stats.kills,reward:{cash:stats.cashEarned},rewardState:'awarded'};
   report.campaignLevel=S.mode==='Story'&&meta.storyVariant===STORY_VARIANTS.CAMPAIGN?meta.number:0;
   S.missionDebriefs=api.record(S.missionDebriefs,report).state;
+  S.missionDebriefs=window.TigerMasteryRewards?.remember(S.missionDebriefs,'solo')||S.missionDebriefs;
 }
 
 function renderMissionVictoryHero(summary=null){
@@ -8332,6 +8333,7 @@ function renderAchievementPrestigeShowcase(){
   const shareText = playerProfileShareText(S);
   const profileCards = [
     playerProfileStatCard("Commander", profile.name, `${profile.title} • Clan ${profile.clan}`),
+    playerProfileStatCard('Story Mastery Identity',window.TigerMasteryRewards?.identityText(window.TigerMasteryRewards.identity(S.missionDebriefs,'solo'))||'Not equipped','Solo earned title and profile badge • cosmetic only'),
     playerProfileStatCard("Prestige Rank", `${prestige.current.icon} ${prestige.current.name}`, progress),
     playerProfileStatCard("Campaign", `Story ${profile.storyLevel}`, `${profile.mission} • ${profile.hqIdentity}`),
     playerProfileStatCard("Mode Progress", `${profile.mode}`, `Arcade Lv ${profile.arcadeLevel} • Survival Wave ${profile.survivalWave}`),
@@ -8341,7 +8343,7 @@ function renderAchievementPrestigeShowcase(){
     playerProfileStatCard("Boss Hunt Season", profile.season?.title || "No active season", profile.season ? `${profile.season.points}/${profile.season.target} pts • ${profile.season.theme?.bonus || "Boss hunt records will appear here."}` : "Cinematic boss hunt records will appear here."),
     playerProfileStatCard("Social Rescue Rank", `${socialRank.icon} ${socialRank.name}`, `Week ${social.weekKey} • Best ${Math.max(0, Number(social.weekly.bestScore || 0)).toLocaleString()} pts • ${Math.max(0, Number(social.weekly.evac || 0))} saved`),
   ].join("");
-  root.innerHTML = `${publicShowcaseCardHtml(S)}
+  root.innerHTML = `${window.TigerMasteryRewards?.lockerHtml?.(window.TigerMissionDebrief?.normalize(S.missionDebriefs),'solo',profile.name)||''}${publicShowcaseCardHtml(S)}
   <div class="item">
     <div>
       <div class="itemName">${prestige.current.icon} Player Profile • ${baseHqEsc(effectiveDisplayTitle(S))}</div>
@@ -8768,6 +8770,8 @@ function masteryEliteTitleDisplay(state=S){
   return { id, ...MASTERY_ELITE_TITLES[id] };
 }
 function effectiveDisplayTitle(state=S){
+  const missionTitle=window.TigerMasteryRewards?.identity(state?.missionDebriefs,'solo')?.title;
+  if(missionTitle)return `${missionTitle.icon} ${missionTitle.name}`;
   const elite = masteryEliteTitleDisplay(state);
   if(elite) return `${elite.icon} ${elite.name}`;
   return String(state?.title || "Rookie");
@@ -12472,6 +12476,29 @@ function setWorldMapPrep(key, value){
   renderWorldMapCampaign();
   return false;
 }
+function missionMasteryRewardCommand(action,id,button){
+  const api=window.TigerMasteryRewards;if(!api)return;
+  const root=button?.closest('.masteryLocker');
+  if(action==='preview'){
+    const preview=root?.querySelector('[data-mastery-preview]');
+    if(preview)preview.innerHTML=api.previewHtml(S.missionDebriefs,'solo',id);
+    return;
+  }
+  if(action!=='equip')return;
+  try{
+    S.missionDebriefs=api.equip(window.TigerMissionDebrief.normalize(S.missionDebriefs),'solo',id);
+    save();
+    if(document.getElementById('invShowcasePage')?.style.display==='block')renderAchievementPrestigeShowcase();
+    document.querySelectorAll('[data-mastery-locker="solo"]').forEach(locker=>{
+      locker.innerHTML=api.lockerHtml(S.missionDebriefs,'solo');
+      const replacement=locker.firstElementChild;
+      locker.replaceWith(replacement);
+      replacement.querySelector('details').open=true;
+      replacement.querySelector('.masteryLockerStatus').textContent='Solo identity saved. Cosmetic only.';
+    });
+    toast('Solo mastery identity saved. Cosmetic only.');
+  }catch(error){toast(error.message);}
+}
 function toggleWorldMapDebugInfo(){
   const prep = ensureWorldMapPrepState(S);
   prep.debugOpen = !prep.debugOpen;
@@ -12530,6 +12557,7 @@ function worldMapStoryLevelPickerHtml(state=S){
         <button class="ghost" type="button" onclick="setWorldMapPrep('selectedLevel',${Math.max(1, maxLevel - 1)})">Previous</button>
         <button class="good" type="button" onclick="setWorldMapPrep('selectedLevel',${maxLevel})">Current ${maxLevel}</button>
       </div>
+      ${window.TigerMasteryRewards?.lockerHtml?.(window.TigerMissionDebrief?.normalize(state.missionDebriefs),'solo')||''}
       ${window.TigerMissionDebrief?.journeyHtml?.({scope:'solo',state:state.missionDebriefs,maxLevel,selectedLevel,missions:STORY_CAMPAIGN_OBJECTIVES.map(objective=>({objective}))}) || `<div class="row" style="margin-top:8px">${buttons.join("")}</div>`}
     </div>
   `;
@@ -52716,7 +52744,8 @@ function renderHUD(){
   const seasonFinisher = seasonPassFinisherDisplay(seasonPass);
   const displayTitle = effectiveDisplayTitle(S);
 
-  document.getElementById("titleTxt").innerText = `${seasonBadge.icon} ${displayTitle}`;
+  const missionBadge=window.TigerMasteryRewards?.identity(S.missionDebriefs,'solo')?.badge;
+  document.getElementById("titleTxt").innerText = `${missionBadge?`${missionBadge.icon} ${missionBadge.name} • `:seasonBadge.icon+' '}${displayTitle}`;
   document.getElementById("achvTxt").innerText = `${achvCount()} • Pass Lv ${seasonLevelNow}`;
   const seasonHudTxt = document.getElementById("seasonHudTxt");
   if(seasonHudTxt){

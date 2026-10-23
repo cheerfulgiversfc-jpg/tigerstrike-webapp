@@ -12,6 +12,7 @@ const civilianRescue = require("../../civilian-rescue");
 const rescueTools = require("../../rescue-tools");
 const escortTeamwork = require("../../escort-teamwork");
 const missionDebrief = require("../../mission-debrief");
+const masteryRewards = require("../../mastery-rewards");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -2049,7 +2050,13 @@ function refreshCoopAchievements(profile){
 async function readCoopProfile(user){
   const uid = userIdOf(user);
   if(!uid) throw new Error("Telegram player identity is missing.");
-  return normalizeCoopProfile(await getState(coopProfileKey(uid)), user);
+  const [raw,locker]=await Promise.all([getState(coopProfileKey(uid)),getState(`coop_mastery_locker_${uid}`)]);
+  const profile=normalizeCoopProfile(raw,user);
+  if(locker&&typeof locker==='object'){
+    profile.missionDebriefs.locker.coop={title:cleanText(locker.title,150),badge:cleanText(locker.badge,150)};
+    profile.missionDebriefs.masteryEarned.coop=[...new Set([...profile.missionDebriefs.masteryEarned.coop,...(Array.isArray(locker.earned)?locker.earned:[])])];
+  }
+  return profile;
 }
 async function writeCoopProfile(profile, user=profile?.userId){
   const clean = refreshCoopAchievements(normalizeCoopProfile({ ...profile, updatedAt:nowMs() }, user));
@@ -2060,6 +2067,14 @@ async function changeCoopStat(user, key, amount=1){
   const profile = await readCoopProfile(user);
   if(Object.prototype.hasOwnProperty.call(profile.stats, key)) profile.stats[key] = clamp(profile.stats[key] + amount, 0, 999999999);
   return writeCoopProfile(profile, user);
+}
+
+async function equipCoopMasteryReward(user,itemId){
+  const profile=await readCoopProfile(user);
+  const equipped=masteryRewards.equip(profile.missionDebriefs,'coop',String(itemId||''));
+  // Cosmetic writes must never overwrite a concurrent mission reward or supply purchase.
+  await setState(`coop_mastery_locker_${profile.userId}`,{...equipped.locker.coop,earned:equipped.masteryEarned.coop});
+  return readCoopProfile(user);
 }
 
 async function applyCoopEquipmentAction(session, user, action, payload={}){
@@ -3297,8 +3312,10 @@ async function buildSnapshot(session, viewerId){
   const at = nowMs();
   const mission = missionDefinition(session);
   const derived = sessionDerived(session, players, at);
-  const viewerProfile = await readCoopProfile(viewerId);
-  const leaderProfile = session.hostId === userIdOf(viewerId) ? viewerProfile : await readCoopProfile(session.hostId);
+  const profileIds=[...new Set([userIdOf(viewerId),session.hostId,...players.map(player=>player.userId)])];
+  const profiles=new Map(await Promise.all(profileIds.map(async id=>[id,await readCoopProfile(id)])));
+  const viewerProfile=profiles.get(userIdOf(viewerId)),leaderProfile=profiles.get(session.hostId);
+  const masteryIdentities=new Map(players.map(player=>[player.userId,masteryRewards.identity(profiles.get(player.userId).missionDebriefs,'coop')]));
   const leaderSanctuaryState = sanctuarySystem.syncLegacyCaptures(leaderProfile.sanctuary, leaderProfile.stats.captures);
   const leaderSanctuarySummary = sanctuarySystem.collectionSummary(leaderSanctuaryState);
   const livingWorldEffect = activeLivingWorldMission(session);
@@ -3402,7 +3419,7 @@ async function buildSnapshot(session, viewerId){
     },
     gearCatalog:COOP_GEAR_CATALOG,
     extractionReadyIds:derived.extractionReadyIds,
-    players:players.map((p)=>({ ...p, online:at - p.lastSeenAt <= 15000 })),
+    players:players.map((p)=>({ ...p, masteryIdentity:masteryIdentities.get(p.userId), online:at - p.lastSeenAt <= 15000 })),
   };
 }
 
@@ -4206,6 +4223,7 @@ async function claimReward(session, user){
   const report=buildMissionDebrief(session,auditPlayers,auditDerived,uid,awardedReward,rewardApplied?'awarded':'already-claimed');
   const recorded=missionDebrief.record(profile.missionDebriefs,report);
   profile.missionDebriefs=recorded.state;
+  profile.missionDebriefs=masteryRewards.remember(profile.missionDebriefs,'coop');
   if(rewardApplied||recorded.applied)profile=await writeCoopProfile(profile,user);
   return {
     firstClaim:rewardApplied,
@@ -4304,6 +4322,7 @@ module.exports = {
   readCoopProfile,
   writeCoopProfile,
   applyCoopEquipmentAction,
+  equipCoopMasteryReward,
   closeSession,
   ensureLiveSession,
   userIdOf,

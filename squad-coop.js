@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V12.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V12.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.0 • Mission Mastery & Chapter Journey");
+      ? `Tiger Strike V12.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V12.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.1 • Mastery Rewards & Soldier Identity");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -627,6 +627,7 @@
       const status = player.downed ? (respawn > 0 ? `RESPAWNING IN ${respawn}s` : "DOWNED — needs revive") : (player.online ? `HP ${Math.round(player.hp)}/${Math.round(player.maxHp)}` : "Reconnecting…");
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
         <div class="squadMemberName">${Number(player.userId) === Number(state.snapshot?.hostId) ? "👑 " : ""}${mine ? "⭐ " : ""}${esc(player.name)}</div>
+        <div class="squadMemberMeta">${esc(window.TigerMasteryRewards?.identityText(player.masteryIdentity)||'No mastery identity equipped')}</div>
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
         <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Escorting ${(state.snapshot?.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(player.userId)).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
@@ -695,6 +696,7 @@
         <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</span></button>
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
+      ${masteryLockerHtml()}
       ${leaderSanctuaryHtml()}
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
       ${rescueToolChoicesHtml()}
@@ -725,6 +727,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
+      ${masteryLockerHtml()}
       <div class="squadHomeHero"><div class="squadKicker">V11.4 Tiger Strike • Living Sanctuary</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for any of the 100 Shared Story missions or a Special Operation. Personal sanctuary progress remains safely separated from co-op inventory while squads continue to share real mission outcomes.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
@@ -784,7 +787,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.0 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.1 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -793,6 +796,7 @@
     return `<div class="squadPanel">
       <button type="button" class="squadBackLink" data-squad-command="hub-home">← Co-op Home</button>
       <div class="squadSectionHead"><div><div class="squadKicker">Same campaign • choose every mission</div><div class="squadMissionName">📖 Story Campaign</div><div class="squadDesc">Your normal Story missions and unlocks. Choose Solo when you are alone or Two Players when a teammate is ready.</div></div><span class="squadProgressPill">Story ${maxUnlockedStoryLevel()}/100</span></div>
+      ${masteryLockerHtml()}
       ${window.TigerMissionDebrief?.journeyHtml?.({scope:'coop',state:state.profile?.missionDebriefs,maxLevel:maxUnlockedStoryLevel(),selectedLevel:level,missions:SHARED_STORY_LEVELS}) || storyLevelButtonsHtml()}
       <div class="squadSelectedMission"><div><div class="squadKicker">Selected mission</div><div class="squadSectionTitle">Story Mission ${level}</div><div class="squadDesc">${esc(selectedStoryDescription())}</div></div><span class="squadReadyPill ${coopReady ? "ready" : "pending"}">${coopReady ? "Two Player ready" : "Solo only for now"}</span></div>
       <div class="squadPartyChoice">
@@ -1226,6 +1230,8 @@
       "gear-tab":()=>{ state.equipmentOpen = button?.dataset?.squadEquipment === "inventory" ? "inventory" : "shop"; render(); },
       "gear-buy":()=>gearCommand("gear-buy", button?.dataset?.squadItem),
       "gear-equip":()=>gearCommand("gear-equip", button?.dataset?.squadItem),
+      'mastery-preview':()=>masteryRewardCommand('preview',button?.dataset?.squadItem,button),
+      'mastery-equip':()=>masteryRewardCommand('equip',button?.dataset?.squadItem,button),
       "gear-use":()=>gearCommand("gear-use", button?.dataset?.squadItem),
       claim:()=>claim(),
       "transport-skip":()=>skipSquadTransportMovie(),
@@ -1370,6 +1376,28 @@
       }
       setMessage(error.message, true);
     }
+  }
+
+  function masteryLockerHtml(){
+    if(!state.profile)return '<div class="squadSmall">Connect through Telegram to load your Co-op mastery locker.</div>';
+    return window.TigerMasteryRewards?.lockerHtml(state.profile.missionDebriefs,'coop',state.profile.name)||'';
+  }
+  async function masteryRewardCommand(action,itemId,button){
+    const apiRewards=window.TigerMasteryRewards;
+    const locker=button?.closest('.masteryLocker');
+    if(!apiRewards||!locker)return;
+    if(action==='preview'){
+      locker.querySelector('[data-mastery-preview]').innerHTML=apiRewards.previewHtml(state.profile?.missionDebriefs,'coop',itemId,state.profile?.name);
+      return;
+    }
+    try{
+      await api('mastery-equip',{itemId});
+      locker.innerHTML=masteryLockerHtml();
+      const replacement=locker.firstElementChild;
+      locker.replaceWith(replacement);
+      replacement.querySelector('details').open=true;
+      replacement.querySelector('.masteryLockerStatus').textContent='Co-op identity saved. Your teammate sees it on the next squad refresh.';
+    }catch(error){locker.querySelector('.masteryLockerStatus').textContent=error.message;}
   }
 
   async function gearCommand(actionName, itemId){
@@ -2176,6 +2204,7 @@
     if(window.TigerStrikeBattlefieldRenderer?.drawSoldier){
       const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine});
       const recovery=respawnSeconds(p),downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=drawn.accent;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,drawn.labelY);
+      drawMasteryIdentity(ctx,p,draw.x,drawn.labelY-16);
       ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-28,drawn.barY,56,8,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-27,drawn.barY+1,54*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),6,3);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,drawn.barY+22);
       return;
     }
@@ -2187,8 +2216,15 @@
     ctx.fillStyle="#334155";roundRect(ctx,-14,-4,28,16,4);ctx.fill();ctx.fillStyle="#c98f6c";ctx.beginPath();ctx.ellipse(0,-14,9,10,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-3+lookX,-15+lookY,1.3,0,Math.PI*2);ctx.arc(3+lookX,-15+lookY,1.3,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-2+lookX*.4,-10);ctx.lineTo(2+lookX*.4,-10);ctx.stroke();ctx.fillStyle="#6b7c65";ctx.beginPath();ctx.arc(0,-19,12,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-12,-19,24,5);
     ctx.save();ctx.rotate(face);ctx.strokeStyle="#dbeafe";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(7,-1);ctx.lineTo(28,0);ctx.stroke();ctx.fillStyle="#0f172a";roundRect(ctx,17,-5,18,7,2);ctx.fill();ctx.fillStyle="#64748b";ctx.fillRect(31,-3,9,3);ctx.restore();ctx.restore();
     const recovery=respawnSeconds(p);const downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=outline;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,draw.y-35);
+    drawMasteryIdentity(ctx,p,draw.x,draw.y-51);
     ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-26,draw.y+31,52,7,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-25,draw.y+32,50*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),5,3);ctx.fill();
     ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,draw.y+52);
+  }
+
+  function drawMasteryIdentity(ctx,player,x,y){
+    const text=window.TigerMasteryRewards?.identityText(player.masteryIdentity);
+    if(!text)return;
+    ctx.save();ctx.textAlign='center';ctx.font='800 11px system-ui';ctx.lineWidth=3;ctx.strokeStyle='#071424';ctx.fillStyle='#fde68a';ctx.strokeText(text,x,y,180);ctx.fillText(text,x,y,180);ctx.restore();
   }
 
   function drawPremiumDistrictTexture(ctx,view,worldW,worldH,now){
