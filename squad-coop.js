@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V12.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V12.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.1 • Mastery Rewards & Soldier Identity");
+      ? `Tiger Strike V12.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V12.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.2 • Soldier Appearance & Squad Identity");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -628,6 +628,7 @@
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
         <div class="squadMemberName">${Number(player.userId) === Number(state.snapshot?.hostId) ? "👑 " : ""}${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(window.TigerMasteryRewards?.identityText(player.masteryIdentity)||'No mastery identity equipped')}</div>
+        <div class="squadMemberMeta">Uniform: ${esc(player.masteryIdentity?.uniform?.name||'Default')}</div>
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
         <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Escorting ${(state.snapshot?.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(player.userId)).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
@@ -787,7 +788,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.1 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.2 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -1388,6 +1389,7 @@
     if(!apiRewards||!locker)return;
     if(action==='preview'){
       locker.querySelector('[data-mastery-preview]').innerHTML=apiRewards.previewHtml(state.profile?.missionDebriefs,'coop',itemId,state.profile?.name);
+      locker.querySelector('[data-mastery-preview]').scrollIntoView({block:'nearest'});
       return;
     }
     try{
@@ -2198,11 +2200,12 @@
   function skipSquadTransportMovie(){cancelAnimationFrame(state.transportFrame);drawSquadTransportMovie(1);setMessage("Wildlife transport movie skipped. Every cage was safely loaded.");}
 
   function drawStorySoldier(ctx,p,source,draw,mine){
-    const body="#64734b";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=Number(source.face||0);
+    const cloth=window.TigerMasteryRewards?.uniformPalette(p.masteryIdentity?.uniform?.id);
+    const body=cloth?.body||"#64734b";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=Number(source.face||0);
     const key=String(p.userId);const prior=state.walkVisual.get(key)||{x:Number(draw.x),y:Number(draw.y),phase:0};const moved=Math.hypot(Number(draw.x)-prior.x,Number(draw.y)-prior.y);const walking=moved>.18&&!p.downed;prior.phase=walking?prior.phase+Math.min(1.1,moved*.24):prior.phase*.88;prior.x=Number(draw.x);prior.y=Number(draw.y);state.walkVisual.set(key,prior);
     const stride=walking?Math.sin(prior.phase)*7:0;const bob=walking?Math.abs(Math.sin(prior.phase))*2:0;const lookX=Math.cos(face)*1.5,lookY=Math.sin(face)*.7;
     if(window.TigerStrikeBattlefieldRenderer?.drawSoldier){
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth});
       const recovery=respawnSeconds(p),downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=drawn.accent;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,drawn.labelY);
       drawMasteryIdentity(ctx,p,draw.x,drawn.labelY-16);
       ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-28,drawn.barY,56,8,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-27,drawn.barY+1,54*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),6,3);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,drawn.barY+22);
@@ -2213,7 +2216,7 @@
     ctx.strokeStyle="#172033";ctx.lineWidth=7;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-5,9);ctx.lineTo(-8-stride*.48,25);ctx.moveTo(5,9);ctx.lineTo(8+stride*.48,25);ctx.stroke();
     ctx.fillStyle="#111827";ctx.beginPath();ctx.ellipse(-8-stride*.48,26,6,3,0,0,Math.PI*2);ctx.ellipse(8+stride*.48,26,6,3,0,0,Math.PI*2);ctx.fill();
     ctx.fillStyle=body;roundRect(ctx,-12,-8,24,27,6);ctx.fill();ctx.strokeStyle=outline;ctx.lineWidth=2.5;ctx.stroke();
-    ctx.fillStyle="#334155";roundRect(ctx,-14,-4,28,16,4);ctx.fill();ctx.fillStyle="#c98f6c";ctx.beginPath();ctx.ellipse(0,-14,9,10,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-3+lookX,-15+lookY,1.3,0,Math.PI*2);ctx.arc(3+lookX,-15+lookY,1.3,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-2+lookX*.4,-10);ctx.lineTo(2+lookX*.4,-10);ctx.stroke();ctx.fillStyle="#6b7c65";ctx.beginPath();ctx.arc(0,-19,12,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-12,-19,24,5);
+    ctx.fillStyle=cloth?.vest||"#334155";roundRect(ctx,-14,-4,28,16,4);ctx.fill();ctx.fillStyle="#c98f6c";ctx.beginPath();ctx.ellipse(0,-14,9,10,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-3+lookX,-15+lookY,1.3,0,Math.PI*2);ctx.arc(3+lookX,-15+lookY,1.3,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-2+lookX*.4,-10);ctx.lineTo(2+lookX*.4,-10);ctx.stroke();ctx.fillStyle=cloth?.helmet||"#6b7c65";ctx.beginPath();ctx.arc(0,-19,12,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-12,-19,24,5);
     ctx.save();ctx.rotate(face);ctx.strokeStyle="#dbeafe";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(7,-1);ctx.lineTo(28,0);ctx.stroke();ctx.fillStyle="#0f172a";roundRect(ctx,17,-5,18,7,2);ctx.fill();ctx.fillStyle="#64748b";ctx.fillRect(31,-3,9,3);ctx.restore();ctx.restore();
     const recovery=respawnSeconds(p);const downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=outline;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,draw.y-35);
     drawMasteryIdentity(ctx,p,draw.x,draw.y-51);

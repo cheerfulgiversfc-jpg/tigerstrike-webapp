@@ -2053,7 +2053,7 @@ async function readCoopProfile(user){
   const [raw,locker]=await Promise.all([getState(coopProfileKey(uid)),getState(`coop_mastery_locker_${uid}`)]);
   const profile=normalizeCoopProfile(raw,user);
   if(locker&&typeof locker==='object'){
-    profile.missionDebriefs.locker.coop={title:cleanText(locker.title,150),badge:cleanText(locker.badge,150)};
+    profile.missionDebriefs.locker.coop={title:cleanText(locker.title,150),badge:cleanText(locker.badge,150),uniform:cleanText(locker.uniform,150)};
     profile.missionDebriefs.masteryEarned.coop=[...new Set([...profile.missionDebriefs.masteryEarned.coop,...(Array.isArray(locker.earned)?locker.earned:[])])];
   }
   return profile;

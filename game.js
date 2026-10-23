@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5235";
+const TS_BUILD = "5236";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -7651,7 +7651,10 @@ function seasonSoldierPalette(state=S){
   const pass = ensureSeasonPassState(state);
   const skinId = pass?.equipped?.skin || "SKIN_FIELD_STANDARD";
   const skin = SEASON_PASS_SKINS[skinId] || SEASON_PASS_SKINS.SKIN_FIELD_STANDARD;
-  return skin.palette || SEASON_PASS_SKINS.SKIN_FIELD_STANDARD.palette;
+  const base=skin.palette || SEASON_PASS_SKINS.SKIN_FIELD_STANDARD.palette;
+  const wardrobe=window.TigerMasteryRewards;
+  const uniform=wardrobe?.uniformPalette(wardrobe.identity(state?.missionDebriefs,'solo').uniform?.id);
+  return uniform?{...base,pants:uniform.body,armorOuter:uniform.body,armorInner:uniform.vest,arm:uniform.body,shoulder:uniform.dark,helmet:uniform.helmet,trim:uniform.trim,masteryUniform:uniform}:base;
 }
 function grantSeasonPassPoints(amount, source=""){
   if(window.__TUTORIAL_MODE__) return;
@@ -12481,7 +12484,7 @@ function missionMasteryRewardCommand(action,id,button){
   const root=button?.closest('.masteryLocker');
   if(action==='preview'){
     const preview=root?.querySelector('[data-mastery-preview]');
-    if(preview)preview.innerHTML=api.previewHtml(S.missionDebriefs,'solo',id);
+    if(preview){preview.innerHTML=api.previewHtml(S.missionDebriefs,'solo',id);preview.scrollIntoView({block:'nearest'});}
     return;
   }
   if(action!=='equip')return;
@@ -59079,6 +59082,15 @@ function drawRealisticCivilianModel(entity, x, y, opts={}){
 }
 
 function drawRealisticSoldierModel(entity, x, y, opts={}){
+  return drawSoldierModelOnContext(ctx,entity,x,y,opts);
+}
+function drawMissionUniformPreview(previewContext,uniformPalette){
+  previewContext.save();previewContext.translate(120,88);
+  drawSoldierModelOnContext(previewContext,{id:17,face:0,step:0},0,0,{blend:0,scale:2.1,uniformPalette});
+  previewContext.restore();
+}
+function drawSoldierModelOnContext(ctx,entity,x,y,opts={}){
+  const roundedRectFill=(x,y,w,h,r)=>{ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();ctx.fill();};
   if(!ctx || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
   const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.8)), 0, 1);
   const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
@@ -59090,11 +59102,12 @@ function drawRealisticSoldierModel(entity, x, y, opts={}){
   const rescue = role === "rescue";
   const stride = Math.sin(step * 3.25) * (4.0 + blend * 6.2);
   const lift = Math.abs(Math.sin(step * 3.25)) * (1.3 + blend * 2.6);
-  const camoA = attacker ? "rgba(101,69,38,.98)" : "rgba(82,86,59,.98)";
-  const camoB = attacker ? "rgba(150,104,58,.96)" : "rgba(132,121,78,.96)";
-  const camoC = "rgba(45,54,40,.96)";
-  const vest = rescue ? "rgba(22,78,99,.98)" : "rgba(58,45,32,.98)";
-  const trim = opts.accent || (rescue ? "rgba(125,211,252,.96)" : "rgba(251,191,36,.92)");
+  const uniform=opts.uniformPalette;
+  const camoA = uniform?.body || (attacker ? "rgba(101,69,38,.98)" : "rgba(82,86,59,.98)");
+  const camoB = uniform?.light || (attacker ? "rgba(150,104,58,.96)" : "rgba(132,121,78,.96)");
+  const camoC = uniform?.dark || "rgba(45,54,40,.96)";
+  const vest = uniform?.vest || (rescue ? "rgba(22,78,99,.98)" : "rgba(58,45,32,.98)");
+  const trim = uniform?.trim || opts.accent || (rescue ? "rgba(125,211,252,.96)" : "rgba(251,191,36,.92)");
   const camoSeed = Math.abs(Math.floor(Number(entity.id || 17))) % 5;
   ctx.save();
   ctx.translate(x, y);
@@ -59156,12 +59169,12 @@ function drawRealisticSoldierModel(entity, x, y, opts={}){
   ctx.beginPath(); ctx.arc(-12, 3.7 + stride * 0.08, 2.8, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(12, 3.7 - stride * 0.08, 2.8, 0, Math.PI * 2); ctx.fill();
 
-  ctx.fillStyle = "rgba(86,80,58,.98)";
+  ctx.fillStyle = uniform?.helmet || "rgba(86,80,58,.98)";
   ctx.beginPath();
   ctx.ellipse(0, -25, 10.5, 7.8, 0, Math.PI, Math.PI * 2);
   ctx.fill();
   roundedRectFill(-10.2, -25, 20.4, 5.6, 2.8);
-  ctx.fillStyle = "rgba(101,92,64,.96)";
+  ctx.fillStyle = uniform?.light || "rgba(101,92,64,.96)";
   roundedRectFill(-8.2, -29.2, 16.4, 5.2, 2.2);
   ctx.strokeStyle = "rgba(232,213,167,.55)";
   ctx.lineWidth = 0.9;
@@ -60270,6 +60283,7 @@ function drawSoldier(){
     });
   }
   safeCanvasLayer("drawRealisticSoldierModel.player", ()=>drawRealisticSoldierModel(S.me, x, y, {
+    uniformPalette:palette.masteryUniform,
     blend:rolling ? 1 : moveBlend,
     topSpeed:3.0,
     face:ang,

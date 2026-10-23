@@ -20,9 +20,9 @@
       contributions:(raw.contributions||[]).slice(0,2).map(p=>({name:clean(p.name),recruited:p.recruited==null?null:number(p.recruited),captures:number(p.captures),kills:number(p.kills),damage:number(p.damage),revives:number(p.revives)}))};
   }
   function normalize(raw={}){
-    const masteryEarned=Object.fromEntries(['solo','coop'].map(scope=>[scope,(Array.isArray(raw?.masteryEarned?.[scope])?raw.masteryEarned[scope]:[]).map(clean).slice(0,9)]));
+    const masteryEarned=Object.fromEntries(['solo','coop'].map(scope=>[scope,(Array.isArray(raw?.masteryEarned?.[scope])?raw.masteryEarned[scope]:[]).map(clean).slice(0,32)]));
     const records=Object.fromEntries(Object.entries(raw?.records||{}).filter(([key])=>/^(solo|coop):/.test(key)).slice(-400).map(([key,r])=>[clean(key),{title:clean(r?.title||key),campaignLevel:campaignLevelForRecord(key,r),medals:medalList(r?.medals),fastestMs:r?.fastestMs>0?number(r.fastestMs):null,bestRescued:number(r?.bestRescued),civilianTotal:number(r?.civilianTotal),clears:number(r?.clears)}]));
-    return {records,masteryEarned,receipts:(Array.isArray(raw?.receipts)?raw.receipts:[]).map(clean).slice(-600),last:raw?.last?summary({...raw.last,missionKey:String(raw.last.key||'').replace(/^(solo|coop):/,'')}):null,lastChanges:raw?.lastChanges||{},locker:Object.fromEntries(['solo','coop'].map(scope=>[scope,{title:clean(raw?.locker?.[scope]?.title),badge:clean(raw?.locker?.[scope]?.badge)}]))};
+    return {records,masteryEarned,receipts:(Array.isArray(raw?.receipts)?raw.receipts:[]).map(clean).slice(-600),last:raw?.last?summary({...raw.last,missionKey:String(raw.last.key||'').replace(/^(solo|coop):/,'')}):null,lastChanges:raw?.lastChanges||{},locker:Object.fromEntries(['solo','coop'].map(scope=>[scope,{title:clean(raw?.locker?.[scope]?.title),badge:clean(raw?.locker?.[scope]?.badge),uniform:clean(raw?.locker?.[scope]?.uniform)}]))};
   }
   function medals(run){
     if(!run.completed)return [];

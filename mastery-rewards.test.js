@@ -2,9 +2,9 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const rewards=require('./mastery-rewards'),debrief=require('./mission-debrief');
 function result(level=1,scope='solo',extra={}){return {id:`${scope}:${level}`,scope,missionKey:scope==='coop'?`shared-story:${level}::`:`Story:CAMPAIGN:${level}:${level}:`,campaignLevel:level,mode:'Story',completed:true,durationMs:60000,title:`Story ${level}`,civilianTotal:2,rescued:2,captures:1,kills:0,wipes:scope==='coop'?0:null,...extra};}
 function cleared(count=1,scope='solo'){let state={};for(let level=1;level<=count;level++)state=debrief.record(state,result(level,scope)).state;return state;}
-test('seven cosmetics have exact requirements and unlock without granting power or currency',()=>{
+test('ten cosmetics have exact requirements and unlock without granting power or currency',()=>{
   const state=cleared(10),before=JSON.stringify(state),rows=rewards.rewards(state,'solo');
-  assert.equal(rows.filter(r=>r.target>0).length,7);assert(rows.every(r=>r.unlocked));
+  assert.equal(rows.filter(r=>r.target>0).length,10);assert(rows.every(r=>r.unlocked));
   assert.deepEqual(rewards.progress(state,'solo'),{clears:10,rescues:10,captures:10,chapters:1});
   assert.equal(JSON.stringify(state),before);
   assert(rewards.CATALOG.every(r=>!('damage' in r)&&!('cash' in r)&&!('hp' in r)));
@@ -26,7 +26,7 @@ test('Solo cannot unlock Co-op rewards; incomplete chapters and unrecorded medal
 test('locked and unknown selections reject, forged selections are not displayed',()=>{
   assert.throws(()=>rewards.equip({},'solo','wildlife-warden'),/locked/);
   assert.throws(()=>rewards.equip({},'solo','<script>'),/does not exist/);
-  assert.deepEqual(rewards.identity({locker:{solo:{title:'first-responder',badge:'lifeline'}}},'solo'),{title:null,badge:null});
+  assert.deepEqual(rewards.identity({locker:{solo:{title:'first-responder',badge:'lifeline'}}},'solo'),{title:null,badge:null,uniform:null});
 });
 test('equipment persists through save, normalization, new results and unequip; other scope is preserved',()=>{
   let state=rewards.equip(cleared(),'solo','first-responder');state=rewards.equip(state,'solo','lifeline');
@@ -37,7 +37,7 @@ test('equipment persists through save, normalization, new results and unequip; o
   const unequipped=rewards.equip(state,'solo','none-title');
   assert.equal(rewards.identity(unequipped,'solo').title,null);assert.equal(rewards.identity(unequipped,'solo').badge.id,'lifeline');
   assert.equal(rewards.identity(state,'solo').title.id,'first-responder','pure equip preserves input');
-  assert.deepEqual(rewards.identity(state,'coop'),{title:null,badge:null});
+  assert.deepEqual(rewards.identity(state,'coop'),{title:null,badge:null,uniform:null});
 });
 test('preview is safe, visible and read-only even for locked cosmetics',()=>{
   const state=cleared(),before=JSON.stringify(state);
@@ -71,7 +71,7 @@ test('server validates each player, persists Co-op identity and shares only veri
   await squad.updateOwnPresence(room,mate,{masteryIdentity:{title:{name:'Fake unlock'}}});
   const snap=await squad.buildSnapshot(room,mate.id),shown=snap.players.find(p=>p.userId===host.id).masteryIdentity;
   assert.equal(shown.title.id,'first-responder');assert.equal(shown.badge.id,'living-paw');
-  assert.deepEqual(snap.players.find(p=>p.userId===mate.id).masteryIdentity,{title:null,badge:null});
+  assert.deepEqual(snap.players.find(p=>p.userId===mate.id).masteryIdentity,{title:null,badge:null,uniform:null});
   assert.equal((await squad.readCoopProfile(host)).funds,profile.funds);
   assert.equal((await squad.readCoopProfile(mate)).missionDebriefs.locker.coop.title,'');
   await squad.equipCoopMasteryReward(host,'none-title');
@@ -89,7 +89,7 @@ test('cosmetic writes cannot overwrite concurrent gameplay progress',async()=>{
 });
 test('release loads rewards before gameplay; both identity renderers and authenticated endpoint are wired',()=>{
   const fs=require('node:fs'),html=fs.readFileSync('index.html','utf8'),game=fs.readFileSync('game.js','utf8'),client=fs.readFileSync('squad-coop.js','utf8'),route=fs.readFileSync('api/squad/session.js','utf8');
-  assert(html.indexOf('mastery-rewards.js?v=5235-mastery-rewards')<html.indexOf('game.js?v=5235-mastery-rewards'));
+  assert(html.indexOf('mastery-rewards.js?v=5236-soldier-uniforms')<html.indexOf('game.js?v=5236-soldier-uniforms'));
   assert(game.includes('function missionMasteryRewardCommand'));assert(game.includes('const missionTitle=window.TigerMasteryRewards?.identity'));
   assert(client.includes("'mastery-equip':()=>masteryRewardCommand"));assert(client.includes('drawMasteryIdentity(ctx,p,draw.x'));
   assert(route.indexOf('validateTelegramInitData(initData, botToken)')<route.indexOf("if(action === 'mastery-equip')"));

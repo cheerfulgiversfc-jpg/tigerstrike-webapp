@@ -29,32 +29,33 @@
     const facing=Math.cos(face)<0?-1:1;
     const mine=!!options.mine,accent=downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");
     const role=String(entity.role||"support");
+    const cloth=options.uniformPalette;
     ctx.save();ctx.translate(x,y-bob);ctx.scale(facing,1);
     ellipse(ctx,2,27+bob,25,8,"rgba(2,6,23,.43)");
     if(downed){ctx.rotate(facing*.08);ctx.translate(0,9);}
 
     // Independent articulated legs keep the character upright while walking.
     line(ctx,"#202a24",8,[[-7,10],[-10-stride*.55,26]]);line(ctx,"#202a24",8,[[7,10],[10+stride*.55,26]]);
-    line(ctx,"#536548",5,[[-7,11],[-10-stride*.55,24]]);line(ctx,"#536548",5,[[7,11],[10+stride*.55,24]]);
+    line(ctx,cloth?.body||"#536548",5,[[-7,11],[-10-stride*.55,24]]);line(ctx,cloth?.body||"#536548",5,[[7,11],[10+stride*.55,24]]);
     ellipse(ctx,-11-stride*.55,27,8,3,"#090e12",-.1);ellipse(ctx,11+stride*.55,27,8,3,"#090e12",.1);
 
     // Uniform, vest, belt, shoulder plates and backpack.
-    const uniform=ctx.createLinearGradient(-14,-10,14,20);uniform.addColorStop(0,"#718159");uniform.addColorStop(.55,"#4f6246");uniform.addColorStop(1,"#314235");ctx.fillStyle=uniform;rounded(ctx,-14,-9,28,29,7);ctx.fill();ctx.strokeStyle=accent;ctx.lineWidth=2.2;ctx.stroke();
-    ctx.fillStyle="#233044";rounded(ctx,-16,-3,32,18,5);ctx.fill();ctx.strokeStyle="#65758a";ctx.lineWidth=1.5;ctx.stroke();
+    const uniform=ctx.createLinearGradient(-14,-10,14,20);uniform.addColorStop(0,cloth?.light||"#718159");uniform.addColorStop(.55,cloth?.body||"#4f6246");uniform.addColorStop(1,cloth?.dark||"#314235");ctx.fillStyle=uniform;rounded(ctx,-14,-9,28,29,7);ctx.fill();ctx.strokeStyle=accent;ctx.lineWidth=2.2;ctx.stroke();
+    ctx.fillStyle=cloth?.vest||"#233044";rounded(ctx,-16,-3,32,18,5);ctx.fill();ctx.strokeStyle="#65758a";ctx.lineWidth=1.5;ctx.stroke();
     ctx.fillStyle="#111827";ctx.fillRect(-15,12,30,4);ctx.fillStyle="#8b6f47";rounded(ctx,-3,11,7,7,2);ctx.fill();
     ctx.fillStyle="#172033";rounded(ctx,-20,-5,7,20,3);ctx.fill();
     for(const px of [-9,2]){ctx.fillStyle="#3e4f42";rounded(ctx,px,2,8,9,2);ctx.fill();ctx.strokeStyle="#91a47f";ctx.lineWidth=1;ctx.stroke();}
 
     // Arms and weapon point toward the aim direction without rotating the body.
     const aimY=clamp(Math.sin(face)*7,-6,6);
-    line(ctx,"#455842",7,[[-11,-2],[-20,7+aimY*.2],[-5,5]]);line(ctx,"#455842",7,[[10,-2],[19,5+aimY*.2],[7,5]]);
+    line(ctx,cloth?.body||"#455842",7,[[-11,-2],[-20,7+aimY*.2],[-5,5]]);line(ctx,cloth?.body||"#455842",7,[[10,-2],[19,5+aimY*.2],[7,5]]);
     ellipse(ctx,-4,4,4,4,"#c98f6c");ellipse(ctx,8,4,4,4,"#c98f6c");
     ctx.save();ctx.translate(3,2);ctx.rotate(facing===1?Math.atan2(Math.sin(face),Math.abs(Math.cos(face))):Math.atan2(Math.sin(face),Math.abs(Math.cos(face))));
     ctx.fillStyle="#101822";rounded(ctx,-7,-4,39,8,2);ctx.fill();ctx.fillStyle="#8da0ae";ctx.fillRect(27,-2,17,4);ctx.fillStyle="#27384b";rounded(ctx,4,-7,17,6,2);ctx.fill();ctx.fillStyle="#121923";ctx.beginPath();ctx.moveTo(10,4);ctx.lineTo(19,14);ctx.lineTo(24,13);ctx.lineTo(20,4);ctx.fill();ctx.fillStyle="#7dd3fc";ctx.fillRect(18,-6,5,2);ctx.restore();
 
     // Face has features, hair/helmet, chin and headset.
     ellipse(ctx,0,-16,10,11,"#c98f6c");ellipse(ctx,0,-12,8,6,"#d9a27f");
-    ctx.fillStyle="#55664c";ctx.beginPath();ctx.arc(0,-21,13,Math.PI,TAU);ctx.fill();ctx.fillRect(-13,-22,26,5);ctx.fillStyle="#29352e";ctx.fillRect(-9,-25,18,4);
+    ctx.fillStyle=cloth?.helmet||"#55664c";ctx.beginPath();ctx.arc(0,-21,13,Math.PI,TAU);ctx.fill();ctx.fillRect(-13,-22,26,5);ctx.fillStyle="#29352e";ctx.fillRect(-9,-25,18,4);
     ctx.fillStyle="#0b1119";ctx.beginPath();ctx.arc(-3.4,-17.2,1.35,0,TAU);ctx.arc(3.4,-17.2,1.35,0,TAU);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1.1;ctx.beginPath();ctx.moveTo(-2,-11.8);ctx.quadraticCurveTo(0,-10.5,2,-11.8);ctx.stroke();
     ctx.strokeStyle="#111827";ctx.lineWidth=2;ctx.beginPath();ctx.arc(-9,-17,4,Math.PI*.6,Math.PI*1.45);ctx.stroke();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-10,-14,2,0,TAU);ctx.fill();
     if(role==="medic"){ctx.fillStyle="#f8fafc";rounded(ctx,-5,-2,10,10,2);ctx.fill();ctx.fillStyle="#ef4444";ctx.fillRect(-1,-1,2,8);ctx.fillRect(-4,2,8,2);}
