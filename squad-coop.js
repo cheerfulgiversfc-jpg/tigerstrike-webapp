@@ -297,6 +297,7 @@
       <button type="button" class="squadBtn" data-squad-command="shop">🛒 Shop</button>
       <button type="button" class="squadBtn" data-squad-command="inventory">🎒 Inventory</button>
       <button type="button" class="squadBtn" data-squad-command="combat-comfort">Combat Comfort</button>
+      <button type="button" class="squadBtn" data-squad-command="smooth-play">Graphics</button>
     </div>`;
   }
 
@@ -435,6 +436,8 @@
     reactionPresentation?.observe(snapshot,Date.now());
     combatPresentation?.ingest(snapshot,Date.now());
     state.snapshotReceivedAt = receivedAt;
+    state.lastSnapshotWallAt = Date.now();
+    state.connectionFailed = false;
     if(snapshot.viewerProfile) state.profile = snapshot.viewerProfile;
     if(Array.isArray(snapshot.gearCatalog)) state.gearCatalog = snapshot.gearCatalog;
     state.launchType = normalizeLaunchType(snapshot.launchType);
@@ -866,7 +869,7 @@
         <div class="squadHudCard"><div class="squadHudLabel">Field Lives</div><div class="squadHudValue" id="squadLivesHud">${esc(livesHudText())}</div></div>
       </div>
       <div class="squadStoryStrip"><span>${sharedStoryActive() ? "📖" : selectedOperation().icon} ${esc(missionMeta().title || missionName())}</span><span>🎯 ${esc(missionMeta().objective || "Shared objectives")}</span><span>${sharedStoryActive() ? "🏘️ Story Campaign District" : `🗺️ ${esc(missionMeta().chapterName || selectedOperation().mapLabel)}`}</span></div>
-      <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
+      <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection" role="status">${esc(playerConnectionText())}</div>
       ${postCampaignActive() && snap.memberCount < 2 && snap.status === "active" ? `<div class="squadRow"><button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate During Crisis</button><button type="button" class="squadBtn" data-squad-command="copy-code">Copy Drop-in Code</button></div>` : ""}
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
@@ -1241,6 +1244,7 @@
       shop:()=>openEquipment("shop"),
       inventory:()=>openEquipment("inventory"),
       'combat-comfort':()=>window.TigerCombatFeel?.openComfort(),
+      'smooth-play':()=>window.TigerSmoothPlay?.open(),
       "gear-back":()=>returnFromEquipment(),
       "gear-tab":()=>{ state.equipmentOpen = button?.dataset?.squadEquipment === "inventory" ? "inventory" : "shop"; render(); },
       "gear-buy":()=>gearCommand("gear-buy", button?.dataset?.squadItem),
@@ -1774,6 +1778,9 @@
   }
 
   function resetRoomState(){
+    state.lastArenaDrawAt = 0;
+    state.lastSnapshotWallAt = 0;
+    state.connectionFailed = false;
     reactionPresentation?.reset();
     combatPresentation?.clear();
     state.roomEpoch += 1;
@@ -1924,9 +1931,11 @@
       state.syncPromise = api("sync", { player });
       await state.syncPromise;
       state.lastSyncAt = Date.now();
+      state.connectionFailed = false;
       const node = $("squadConnection");
       if(node){ node.textContent = playerConnectionText(); node.classList.toggle("bad", remoteSnapshotPlayer()?.online === false); }
     }catch(error){
+      state.connectionFailed = true;
       const node = $("squadConnection");
       if(node){ node.textContent = "Connection interrupted—reconnecting…"; node.classList.add("bad"); }
       if(force) throw error;
@@ -1967,9 +1976,28 @@
       if(!state.open || !state.snapshot || !["active","complete","failed"].includes(state.snapshot.status)) return;
       const dt = clamp((at - state.lastFrameAt)/1000,0,.05);
       state.lastFrameAt = at;
-      updateMovement(dt);
-      if(at - state.lastActionUiAt > 160){ state.lastActionUiAt = at; updateActionButtons(); }
-      drawArena(dt);
+      if(!document.hidden){
+        updateMovement(dt);
+        if(at - state.lastActionUiAt > 160){
+          state.lastActionUiAt = at; updateActionButtons();
+          const connectionNode=$('squadConnection');
+          if(connectionNode){
+            const warning=window.TigerSmoothPlay?.connection(state.lastSnapshotWallAt,Date.now(),state.connectionFailed)||'';
+            const text=warning||playerConnectionText();
+            if(connectionNode.textContent!==text)connectionNode.textContent=text;
+            connectionNode.classList.toggle('bad',!!warning||remoteSnapshotPlayer()?.online===false);
+          }
+        }
+        const drawInterval=window.TigerSmoothPlay?.policy().cooperativeFrameMs||0;
+        if(!state.equipmentOpen && (!drawInterval || at-Number(state.lastArenaDrawAt||0)>=drawInterval-1)){
+          const drawGap=at-Number(state.lastArenaDrawAt||0);
+          if(state.lastArenaDrawAt && drawGap>0 && drawGap<1000)window.TigerSmoothPlay?.metrics.record('coop.gap',drawGap);
+          const drawDt=clamp((at-Number(state.lastArenaDrawAt||at-16.7))/1000,0,.1);
+          state.lastArenaDrawAt=at;
+          const drawStart=performance.now();drawArena(drawDt);
+          window.TigerSmoothPlay?.metrics.record('coop.draw',performance.now()-drawStart);
+        }
+      }
       state.frame = requestAnimationFrame(tick);
     };
     state.frame = requestAnimationFrame(tick);
@@ -2139,7 +2167,8 @@
       if(!state.civilianDraw)state.civilianDraw=new Map();
       const key=`${state.snapshot?.code}:${state.snapshot?.startedAt}:${civ.id}`;
       const prior=state.civilianDraw.get(key)||{x:civ.x,y:civ.y};
-      prior.x+=(civ.x-prior.x)*.18;prior.y+=(civ.y-prior.y)*.18;
+      const at=performance.now(),elapsed=clamp(at-Number(prior.frameAt??at-16.67),0,100),blend=1-Math.pow(1-.18,elapsed/16.67);
+      prior.x+=(civ.x-prior.x)*blend;prior.y+=(civ.y-prior.y)*blend;prior.frameAt=at;
       state.civilianDraw.set(key,prior);civ={...civ,x:prior.x,y:prior.y};
     }
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"],soldier:["#4d7c0f","#1f2937"]};
@@ -2168,7 +2197,9 @@
   }
 
   function drawStoryTiger(ctx,tiger,now){
-    now=Number(now||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
+    // drawArena already advances server time between packets. Advancing twice
+    // made the visible wind-up/landing run ahead of the authoritative warning.
+    now=Number.isFinite(now)?now:Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
     if(tiger?.faction === "government"){
       if(tiger.defeated) return;
       const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);
@@ -2961,7 +2992,7 @@
     const focus=state.local||localSnapshotPlayer()||{x:worldW*.5,y:worldH*.5};
     const targetX=clamp(Number(focus.x)-w*.5,0,Math.max(0,worldW-w)),targetY=clamp(Number(focus.y)-h*.5,0,Math.max(0,worldH-h));
     if(!state.camera.ready){state.camera.x=targetX;state.camera.y=targetY;state.camera.ready=true;}
-    else{state.camera.x+=(targetX-state.camera.x)*.16;state.camera.y+=(targetY-state.camera.y)*.16;}
+    else{const cameraBlend=1-Math.pow(1-.16,clamp(dt,0,.1)*60);state.camera.x+=(targetX-state.camera.x)*cameraBlend;state.camera.y+=(targetY-state.camera.y)*cameraBlend;}
     const view={x:state.camera.x,y:state.camera.y,w,h};ctx.clearRect(0,0,w,h);ctx.save();const impactShake=combatPresentation?.shake(Date.now())||{x:0,y:0};ctx.translate(-view.x+impactShake.x,-view.y+impactShake.y);
     drawExpandedDistrict(ctx,snap,view);
     if(snap.rescueHouse && (snap.securedCivilianIds||[]).length){
@@ -3055,8 +3086,11 @@
 
 
   const isTypingTarget = (target)=>!!target?.closest?.("input,textarea,select,[contenteditable='true']");
-  window.addEventListener('combat-comfort-open',()=>{state.keys.clear();Object.keys(state.move).forEach(key=>{state.move[key]=false;});state.joystick={active:false,pointerId:null,x:0,y:0};});
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('combatComfortDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  function clearPresentationInput(){state.keys.clear();Object.keys(state.move).forEach(key=>{state.move[key]=false;});state.joystick={active:false,pointerId:null,x:0,y:0};}
+  window.addEventListener('combat-comfort-open',clearPresentationInput);
+  window.addEventListener('blur',clearPresentationInput);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPresentationInput();});
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });

@@ -86,6 +86,7 @@ test('Co-op smooths tiger artwork between packets without moving authoritative t
   const next=Object.freeze({...target,x:160});frameAt+=16;scope.drawStoryTiger(c.ctx,next,1016);
   const first=frames.at(-1).x;assert(first>120&&first<160);assert(frames.at(-1).walking);
   frameAt+=16;scope.drawStoryTiger(c.ctx,next,1032);assert(frames.at(-1).x>first);assert(frames.at(-1).walking);
+  assert.equal(frames.at(-1).now,1032,'the render clock is not advanced a second time inside tiger drawing');
   assert.equal(next.x,160);assert.equal(state.snapshot.players.length,0);
   state.snapshot.startedAt=2000;frameAt=2000;scope.drawStoryTiger(c.ctx,next,2000);
   assert.equal(frames.at(-1).x,160);assert.equal(frames.at(-1).phase,0);assert.equal(frames.at(-1).attack,null);

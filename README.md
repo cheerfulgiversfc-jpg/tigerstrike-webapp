@@ -1,6 +1,17 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V13.1 — Smooth Play & Smart Graphics
+
+- Graphics opens from the existing gear/Auto button or the live squad equipment bar. Auto, Battery Saver and High Quality preferences are stored locally per device, shared across modes, and do not enter a player's inventory or cloud progression. Legacy Performance preferences migrate to Battery Saver; iPhone safety fallbacks remain active.
+- HQ information generation is limited to 250 ms between passive refreshes, with immediate updates for explicit actions, room/dialog changes and opening/closing the panel. Movement and drawing are not throttled. The paused Solo scene yields drawing to the opaque Live Squad overlay.
+- Battery Saver reduces decorative grass and water strokes (including fewer, not zero, fish) and targets 30 FPS for Co-op drawing. It does not reduce movement/input polling. Camera and escort smoothing use elapsed time. Tiger drawing consumes the already-advanced server clock exactly once.
+- Delayed/failed Co-op updates display a connection warning. Existing bounded remote prediction, authoritative positions, interactions, rewards and reconnection remain unchanged. Hidden pages clear held movement inputs.
+- Graphics contains local rolling diagnostics: at most 96 task names and 120 samples per task. No data is sent anywhere. These describe recent loop/drawing cadence and CPU cost, not a guaranteed FPS on a phone. The settings dialog does not pause a live mission.
+- Regression coverage: graphics persistence and blocked storage, HQ refresh gating, equal-time camera motion, hidden/gear drawing, input protection, stale connections, crowded shared actors/water/capture effects, all Story missions, equipment, and existing combat/reward rules. Local browser checks cover graphics selection/reopening, Done/Escape, Shop tabs and Inventory. Physical Telegram device performance still depends on the phone and connection; no new two-phone test is claimed by this release.
+
+Run the complete regression suite with Node: `node --test --test-concurrency=4 *.test.js api/_lib/squad-session.test.js`.
+
 ## Telegram Stars (in-app invoices)
 This project now includes a `Stars` tab in the in-game shop, wired to Telegram in-app invoice checkout.
 

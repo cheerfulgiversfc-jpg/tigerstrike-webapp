@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5247";
+const TS_BUILD = "5248";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -19071,19 +19071,23 @@ function normalizePerformanceMode(mode){
 }
 function performanceMode(){
   if(!S || typeof S !== "object") return "AUTO";
+  const preference = window.TigerSmoothPlay?.settings(S.performanceMode === 'PERFORMANCE' ? 'BATTERY' : 'AUTO');
   if(iphoneStabilityModeActive()) return "PERFORMANCE";
+  if(preference) return preference === 'BATTERY' ? 'PERFORMANCE' : 'AUTO';
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
   return S.performanceMode;
 }
 function updatePerformanceLabels(){
   const mode = performanceMode();
-  const label = mode === "PERFORMANCE" ? "Performance" : "Auto";
+  const preference = window.TigerSmoothPlay?.settings();
+  const label = preference === 'BATTERY' ? 'Battery Saver' : preference === 'HIGH' ? 'High Quality' : (preference ? 'Auto' : mode === "PERFORMANCE" ? "Performance" : "Auto");
   const perfLbl = document.getElementById("perfLbl");
   if(perfLbl) perfLbl.innerText = label;
   const perfLblMobile = document.getElementById("perfLblMobile");
   if(perfLblMobile) perfLblMobile.innerText = label;
 }
 function togglePerformanceMode(){
+  if(window.TigerSmoothPlay){window.TigerSmoothPlay.open();return;}
   const mode = performanceMode();
   S.performanceMode = mode === "PERFORMANCE" ? "AUTO" : "PERFORMANCE";
   __liteEntityRenderNeedSince = 0;
@@ -19095,6 +19099,11 @@ function togglePerformanceMode(){
     ? "Performance mode enabled (more stable on heavy missions)."
     : "Performance mode set to Auto.");
 }
+window.addEventListener('smooth-play-change',()=>{
+  __liteEntityRenderNeedSince = 0;
+  __liteEntityRenderRelaxUntil = 0;
+  updatePerformanceLabels();
+});
 function toggleLagMonitor(force){
   if(typeof force === "boolean"){
     window.__TS_SHOW_MONITOR__ = force;
@@ -19801,12 +19810,15 @@ function reportTickError(key, err){
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, (performance.now ? performance.now() : now) + 2200);
 }
 function safeTick(key, fn){
+  const sampleStart = performance.now();
   try{
     fn();
     return true;
   }catch(err){
     reportTickError(key, err);
     return false;
+  }finally{
+    window.TigerSmoothPlay?.metrics.record(key, performance.now() - sampleStart);
   }
 }
 function runFrameTask(key, intervalMs, fn, options={}){
@@ -19992,6 +20004,8 @@ function renderStabilityMonitor(force=false){
     `\nauto x${Number(tuning.autoTune || 1).toFixed(2)} | fail ${failPct}% | deaths ${Math.floor(Number(balance.lastDeathsRecent || 0))}`;
 }
 function noteFrameSample(frameGap, frameCost){
+  window.TigerSmoothPlay?.metrics.record('solo.frame', frameCost);
+  if(frameGap > 0 && frameGap < 1000) window.TigerSmoothPlay?.metrics.record('solo.gap', frameGap);
   __pushStabilitySample(__stabilityMonitorState.frameGaps, frameGap);
   __pushStabilitySample(__stabilityMonitorState.frameCosts, frameCost);
   if(frameGap > 70 || frameCost > 30){
@@ -34814,9 +34828,16 @@ function refreshBaseHqDailyNews(){
   renderBaseHQ();
   toast("HQ news board refreshed.");
 }
-function renderBaseHqWorldHud(){
+function renderBaseHqWorldHud(force=true){
   const hud = document.getElementById("baseHqWorldHud");
   if(!hud) return;
+  const now = Date.now();
+  const refreshKey = `${__baseHqActive}:${now <= Number(__baseHqHudUntil || 0)}:${__baseHqSelectedRoom}:${__baseHqDialogNpc}:${__baseHqDialogIndex}:${__baseHqFactOffset}:${__baseHqQuickMenuCollapsed}`;
+  // Only the information panel is rate-limited; movement, drawing and clicks
+  // still run immediately. Explicit actions can always force fresh state.
+  if(!force && hud.__refreshKey === refreshKey && now - Number(hud.__refreshAt || 0) < 250) return;
+  hud.__refreshKey = refreshKey;
+  hud.__refreshAt = now;
   armBaseHqHudScroll(hud);
   if(!__baseHqActive || Date.now() > Number(__baseHqHudUntil || 0)){
     setBaseHqHudOpenClass(false);
@@ -35120,7 +35141,7 @@ function baseHqMoveTick(){
     }
     __baseHqHint = near.npc ? `Talk to ${near.npc.name}` : `Use ${near.room.name}`;
   }
-  renderBaseHqWorldHud();
+  renderBaseHqWorldHud(false);
   return direct;
 }
 function drawBaseHqLabel(text, x, y, color="rgba(226,232,240,.96)"){
@@ -44073,6 +44094,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
+  if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
 
@@ -44227,7 +44249,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('combatComfortDialog')?.open)return;
+  if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
   const key = e.key.toLowerCase();
@@ -57696,6 +57718,8 @@ function animationPassQuality(){
   const lag = frameLagTier();
   if(visualExtremeLoadMode() && frameBudgetExceeded(0.72)) return "lite";
   if(lag >= 2) return "balanced";
+  if(window.TigerSmoothPlay?.policy().battery) return 'balanced';
+  if(window.TigerSmoothPlay?.policy(undefined,lag > 0 || frameIsSlow() || visualExtremeLoadMode() || frameBudgetExceeded(.55) || iphoneStabilityModeActive()).preferredDetail) return 'full';
   if(visualReadabilityHeavyMode() || lag >= 1) return "balanced";
   return "full";
 }
@@ -57744,6 +57768,7 @@ function premiumVisualPolishLevel(){
   const mobile = isMobileViewport();
   const perf = performanceMode() === "PERFORMANCE";
   if(lag >= 3 && frameBudgetExceeded(0.92)) return iphoneStabilityModeActive() ? 1 : 0;
+  if(window.TigerSmoothPlay?.policy().battery) return 1;
   if(frameBudgetExceeded(0.96) && (mobile || perf)) return 1;
   if(iphoneStabilityModeActive()) return lag >= 2 ? 1 : 2;
   if(lag >= 2 || visualExtremeLoadMode()) return 1;
@@ -64680,6 +64705,13 @@ function draw(){
     }
     beginFrameBudget(frameStart);
     const startupLoading = startupLoadingGuardActive();
+    // The Solo state is already paused by the live squad hub. Its opaque
+    // overlay owns the screen; do not draw a second animated world underneath.
+    if(!startupLoading && S.paused && window.TigerLiveSquad?.isOpen()){
+      runFrameTask('adaptiveAudio', 220, tickAudioDirectors, {costHint:0.25});
+      maybeAutosave();
+      return;
+    }
     updateStartupLoadingOverlay();
     safeTick("stabilityMasterTick", ()=>stabilityMasterTick("draw"));
     const lagTier = frameLagTier();
@@ -64710,7 +64742,7 @@ function draw(){
       safeTick("baseHqMoveTick", baseHqMoveTick);
       safeTick("drawBaseHQScene", ()=>drawBaseHQScene(Date.now()));
       safeTick("renderCombatControls", renderCombatControls);
-      safeTick("renderBaseHqWorldHud", renderBaseHqWorldHud);
+      safeTick("renderBaseHqWorldHud", ()=>renderBaseHqWorldHud(false));
       maybeAutosave();
       return;
     }

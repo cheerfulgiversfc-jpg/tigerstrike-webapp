@@ -39,6 +39,7 @@ const windowObject = {
   openSoloStoryMissionFromCoop(level){ soloLevel = level; },
 };
 const documentObject = {
+  addEventListener(){},
   getElementById:element,
   querySelectorAll:()=>[],
   createElement:()=>element("temporary"),

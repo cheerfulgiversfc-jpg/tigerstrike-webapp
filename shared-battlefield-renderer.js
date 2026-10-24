@@ -439,6 +439,7 @@
 
   // Shared map art only. These helpers never create terrain, collision or objectives.
   function drawGroundTexture(ctx,view={},options={}){
+    if(globalThis.TigerSmoothPlay?.policy().battery)options={...options,heavy:true};
     const x=Number(view.x)||0,y=Number(view.y)||0,w=Math.max(1,Number(view.w)||1),h=Math.max(1,Number(view.h)||1);
     const heavy=!!options.heavy,urban=/downtown|industrial/i.test(String(options.family||""));
     const step=Math.max(heavy?96:56,Math.ceil(Math.sqrt(w*h/(heavy?100:220))/8)*8);
@@ -523,6 +524,7 @@
     ctx.restore();
   }
   function drawMapWaterSurface(ctx,trace,bounds={},options={}){
+    if(globalThis.TigerSmoothPlay?.policy().battery)options={...options,heavy:true};
     const x=Number(bounds.x)||0,y=Number(bounds.y)||0,w=Math.max(1,Number(bounds.w)||1),h=Math.max(1,Number(bounds.h)||1);
     ctx.save();
     trace(ctx);ctx.strokeStyle="#756f4d";ctx.lineWidth=12;ctx.stroke();

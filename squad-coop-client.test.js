@@ -75,6 +75,7 @@ const windowObject = {
 const context = {
   window:windowObject,
   document:{
+    addEventListener(){},
     getElementById:element,
     querySelectorAll:()=>[],
     createElement:()=>element("temporary"),
