@@ -14,6 +14,7 @@ const escortTeamwork = require("../../escort-teamwork");
 const missionDebrief = require("../../mission-debrief");
 const masteryRewards = require("../../mastery-rewards");
 const waterTerrain = require("../../water-terrain");
+const chapterMaps = require("../../chapter-maps");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -1747,108 +1748,6 @@ const ROLE_DEFS = Object.freeze({
   trapper:Object.freeze({ key:"trapper", label:"Trapper", damage:30, maxHp:112, speed:1.00 }),
 });
 
-const SHARED_STORY_WORLD_SIZES = Object.freeze({
-  1:Object.freeze({ width:3840, height:2160 }),
-  2:Object.freeze({ width:3984, height:2240 }),
-  3:Object.freeze({ width:4128, height:2320 }),
-  4:Object.freeze({ width:4272, height:2400 }),
-  5:Object.freeze({ width:4416, height:2480 }),
-  6:Object.freeze({ width:4500, height:2520 }),
-  7:Object.freeze({ width:4560, height:2560 }),
-  8:Object.freeze({ width:4620, height:2600 }),
-  9:Object.freeze({ width:4680, height:2640 }),
-  10:Object.freeze({ width:4740, height:2680 }),
-  11:Object.freeze({ width:4800, height:2800 }),
-  12:Object.freeze({ width:4800, height:2800 }),
-  13:Object.freeze({ width:4800, height:2800 }),
-  14:Object.freeze({ width:4800, height:2800 }),
-  15:Object.freeze({ width:4800, height:2800 }),
-  16:Object.freeze({ width:4800, height:2800 }),
-  17:Object.freeze({ width:4800, height:2800 }),
-  18:Object.freeze({ width:4800, height:2800 }),
-  19:Object.freeze({ width:4800, height:2800 }),
-  20:Object.freeze({ width:4800, height:2800 }),
-  21:Object.freeze({ width:4800, height:2800 }),
-  22:Object.freeze({ width:4800, height:2800 }),
-  23:Object.freeze({ width:4800, height:2800 }),
-  24:Object.freeze({ width:4800, height:2800 }),
-  25:Object.freeze({ width:4800, height:2800 }),
-  26:Object.freeze({ width:4800, height:2800 }),
-  27:Object.freeze({ width:4800, height:2800 }),
-  28:Object.freeze({ width:4800, height:2800 }),
-  29:Object.freeze({ width:4800, height:2800 }),
-  30:Object.freeze({ width:4800, height:2800 }),
-  31:Object.freeze({ width:4800, height:2800 }),
-  32:Object.freeze({ width:4800, height:2800 }),
-  33:Object.freeze({ width:4800, height:2800 }),
-  34:Object.freeze({ width:4800, height:2800 }),
-  35:Object.freeze({ width:4800, height:2800 }),
-  36:Object.freeze({ width:4800, height:2800 }),
-  37:Object.freeze({ width:4800, height:2800 }),
-  38:Object.freeze({ width:4800, height:2800 }),
-  39:Object.freeze({ width:4800, height:2800 }),
-  40:Object.freeze({ width:4800, height:2800 }),
-  41:Object.freeze({ width:4800, height:2800 }),
-  42:Object.freeze({ width:4800, height:2800 }),
-  43:Object.freeze({ width:4800, height:2800 }),
-  44:Object.freeze({ width:4800, height:2800 }),
-  45:Object.freeze({ width:4800, height:2800 }),
-  46:Object.freeze({ width:4800, height:2800 }),
-  47:Object.freeze({ width:4800, height:2800 }),
-  48:Object.freeze({ width:4800, height:2800 }),
-  49:Object.freeze({ width:4800, height:2800 }),
-  50:Object.freeze({ width:4800, height:2800 }),
-  51:Object.freeze({ width:4800, height:2800 }),
-  52:Object.freeze({ width:4800, height:2800 }),
-  53:Object.freeze({ width:4800, height:2800 }),
-  54:Object.freeze({ width:4800, height:2800 }),
-  55:Object.freeze({ width:4800, height:2800 }),
-  56:Object.freeze({ width:4800, height:2800 }),
-  57:Object.freeze({ width:4800, height:2800 }),
-  58:Object.freeze({ width:4800, height:2800 }),
-  59:Object.freeze({ width:4800, height:2800 }),
-  60:Object.freeze({ width:4800, height:2800 }),
-  61:Object.freeze({ width:4800, height:2800 }),
-  62:Object.freeze({ width:4800, height:2800 }),
-  63:Object.freeze({ width:4800, height:2800 }),
-  64:Object.freeze({ width:4800, height:2800 }),
-  65:Object.freeze({ width:4800, height:2800 }),
-  66:Object.freeze({ width:4800, height:2800 }),
-  67:Object.freeze({ width:4800, height:2800 }),
-  68:Object.freeze({ width:4800, height:2800 }),
-  69:Object.freeze({ width:4800, height:2800 }),
-  70:Object.freeze({ width:4800, height:2800 }),
-  71:Object.freeze({ width:4800, height:2800 }),
-  72:Object.freeze({ width:4800, height:2800 }),
-  73:Object.freeze({ width:4800, height:2800 }),
-  74:Object.freeze({ width:4800, height:2800 }),
-  75:Object.freeze({ width:4800, height:2800 }),
-  76:Object.freeze({ width:4800, height:2800 }),
-  77:Object.freeze({ width:4800, height:2800 }),
-  78:Object.freeze({ width:4800, height:2800 }),
-  79:Object.freeze({ width:4800, height:2800 }),
-  80:Object.freeze({ width:4800, height:2800 }),
-  81:Object.freeze({ width:4800, height:2800 }),
-  82:Object.freeze({ width:4800, height:2800 }),
-  83:Object.freeze({ width:4800, height:2800 }),
-  84:Object.freeze({ width:4800, height:2800 }),
-  85:Object.freeze({ width:4800, height:2800 }),
-  86:Object.freeze({ width:4800, height:2800 }),
-  87:Object.freeze({ width:4800, height:2800 }),
-  88:Object.freeze({ width:4800, height:2800 }),
-  89:Object.freeze({ width:4800, height:2800 }),
-  90:Object.freeze({ width:4800, height:2800 }),
-  91:Object.freeze({ width:4800, height:2800 }),
-  92:Object.freeze({ width:4800, height:2800 }),
-  93:Object.freeze({ width:4800, height:2800 }),
-  94:Object.freeze({ width:4800, height:2800 }),
-  95:Object.freeze({ width:4800, height:2800 }),
-  96:Object.freeze({ width:4800, height:2800 }),
-  97:Object.freeze({ width:4800, height:2800 }),
-  98:Object.freeze({ width:4800, height:2800 }),
-  99:Object.freeze({ width:4800, height:2800 }),
-  100:Object.freeze({ width:4800, height:2800 }),
-});
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
 const VILLAGE_SIEGE_WORLD_SIZE = Object.freeze({ width:4680, height:2640 });
@@ -2172,14 +2071,15 @@ function expandMissionDefinition(base, targetWorld){
   const truth = missionMapTruth.scale(Number(base.level || 0), WORLD.width, WORLD.height);
   const truthLandmarks = truth ? truth.landmarks.map((item)=>point({ ...item })) : [];
   const baseCheckpoints = (base.checkpoints || []).map(point);
+  let extraction={x:Math.round(Number(base.extraction.x || 0)*sx),y:Math.round(Number(base.extraction.y || 0)*sy),r:110};
+  if(Number(base.level)>0&&base.extractionType==='boat'){
+    const berth=waterTerrain.boatPlacement(chapterMaps.forMission(base.level).waterZones[0],extraction);
+    extraction={x:berth.vehicleX,y:berth.vehicleY,r:110};
+  }
   return Object.freeze({
     ...base,
     world,
-    extraction:Object.freeze({
-      x:Math.round(Number(base.extraction.x || 0) * sx),
-      y:Math.round(Number(base.extraction.y || 0) * sy),
-      r:110,
-    }),
+    extraction:Object.freeze(extraction),
     spawns:Object.freeze((base.spawns || []).map(point)),
     civilians:Object.freeze((base.civilians || []).map(point)),
     tigers:Object.freeze((base.tigers || []).map(tiger)),
@@ -2189,14 +2089,14 @@ function expandMissionDefinition(base, targetWorld){
     mapTruthLandmarks:Object.freeze(truthLandmarks),
     mapTruthRequiredActionIds:Object.freeze(truth ? [...truth.requiredActionIds] : []),
     fireZones:Object.freeze((base.fireZones || []).map(fireZone)),
-    waterZones:Object.freeze((base.waterZones || []).map(waterZone)),
+    waterZones:Number(base.level)>0?chapterMaps.forMission(base.level).waterZones:Object.freeze((base.waterZones || []).map(waterZone)),
   });
 }
 
 const EXPANDED_SHARED_STORY_MISSIONS = Object.freeze(Object.fromEntries(
   Object.entries(SHARED_STORY_MISSIONS).map(([level, mission])=>[
     level,
-    expandMissionDefinition(mission, SHARED_STORY_WORLD_SIZES[level] || SHARED_STORY_WORLD_SIZES[1]),
+    expandMissionDefinition(mission, chapterMaps.forMission(level).world),
   ])
 ));
 const EXPANDED_NIGHT_FANG_MISSION = expandMissionDefinition({
@@ -3283,6 +3183,7 @@ async function maybeFinishSession(session, players){
 }
 
 function missionSceneWater(mission,session){
+  if(session.launchType==='shared-story')return chapterMaps.forMission(mission.level).waterZones;
   const w=Number(mission.world?.width||WORLD.width),h=Number(mission.world?.height||WORLD.height);
   const families=['forest','suburbs','forest','downtown','suburbs','industrial','forest','downtown','suburbs','industrial'];
   const family=session.launchType==='shared-story'?(families[Math.floor((Number(mission.level||1)-1)/10)]||'forest'):'operations';
@@ -3403,6 +3304,7 @@ async function buildSnapshot(session, viewerId){
       playerCount:Math.max(1, Number(mission.playerCount || session.memberIds.length || 1)),
     },
     world:mission.world,
+    chapterMapId:session.launchType==='shared-story'?chapterMaps.forMission(mission.level).id:null,
     spawns:mission.spawns,
     extraction:mission.extraction,
     rescueHouse:rescueHouseFor(mission),

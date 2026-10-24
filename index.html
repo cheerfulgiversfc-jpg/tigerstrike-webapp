@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V12.10 (Living Water & Swimming)</title>
+  <title>Tiger Strike 🐅 — V12.11 (Chapter Map Lock)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5244-living-water">
+  <link rel="stylesheet" href="./squad-coop.css?v=5245-chapter-maps">
 
   <style>
     :root{
@@ -2576,9 +2576,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V12.10</span> <span class="tag">Living Water & Swimming</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V12.11</span> <span class="tag">Chapter Map Lock</span></div>
       <div class="sub">
-        V12.10 replaces the old Solo oval water stamps and repeating river tiles with one continuous meandering river. Water is painted below scenery; decorative houses and trees avoid its banks, and bridge decks stay dry. Solo and Co-op share shoreline/depth checks and visible swimming poses for soldiers, civilians and living tigers. Water has animated currents and submerged fish; small irregular rain puddles appear only during rain or storms. Story boat pickups and departures follow the real river. Co-op retains authored pools and river objectives, now with natural banks. There is no drowning, new combat requirement or reward/progression change.<br>
+        V12.11 locks Story Missions 1–100 into ten permanent chapter maps: 1–10 share a map, 11–20 share the next, and so on. Solo and Shared Story use the same 4800 × 2800 chapter bounds, base roads, riverbanks, bridge decks, decorative homes, trees and chapter colors. Exploration and phone orientation no longer resize Story geography. River Territory keeps the same river and capture pool throughout Missions 41–50. Mission objectives, active landmarks, enemies, civilians, hazards and weather still vary. Living water, swimming, animated fish and rain-only puddles remain. Arcade, Survival and the tutorial retain their existing layouts; combat, rewards and unlock requirements are unchanged.<br>
         Settlement Siege, Escaped Alpha Transport, and Government Response Raid are real playable Solo crises with their own enemies, civilians, objectives, rewards, completion receipts, and safe return to the command network.<br>
         All 100 Story missions now share one authored map-truth system across Solo and Shared Story. Every future mission batch includes Mission Map Truth &amp; Parity in the same update—not as a later visual patch.<br>
         Mission 98 is the exact eighteen-tiger final swarm with no fake side objective. Mission 99 fields exactly fourteen temple guards and requires all four guardian seals activated in order. Mission 100 is the single 8,500-HP Ancient Tiger; defeating it or capturing it alive is valid before the final Story extraction.<br>
@@ -3549,7 +3549,7 @@
     <div class="modalTop"><div class="modalTitle">🎬 Story Finale</div><button class="ghost" type="button" onclick="closePostCampaignEnding()">Skip / Continue</button></div>
     <div class="modalBody">
       <div class="postCampaignEndingHero">
-        <div class="small">V12.10 • LIVING WATER & SWIMMING</div>
+        <div class="small">V12.11 • CHAPTER MAP LOCK</div>
         <div class="hudTitle" id="postCampaignEndingTitle">The World Changes</div>
         <div class="hudLine" id="postCampaignEndingRoute">Campaign ending</div>
       </div>
@@ -3564,7 +3564,7 @@
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V12.10 • Living Water & Swimming</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V12.11 • Chapter Map Lock</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3609,32 +3609,33 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5244-living-water"></script>
-  <script src="./extraction-geometry.js?v=5244-living-water"></script>
-  <script src="./ammo-modes.js?v=5244-living-water"></script>
-  <script src="./government-policy.js?v=5244-living-water"></script>
-  <script src="./tiger-intelligence.js?v=5244-living-water"></script>
-  <script src="./tiger-encounters.js?v=5244-living-water"></script>
-  <script src="./living-world.js?v=5244-living-water"></script>
-  <script src="./mission-map-truth.js?v=5244-living-water"></script>
-  <script src="./post-campaign.js?v=5244-living-water"></script>
-  <script src="./sanctuary.js?v=5244-living-water"></script>
-  <script src="./player-experience.js?v=5244-living-water"></script>
-  <script src="./field-radio.js?v=5244-living-water"></script>
-  <script src="./civilian-rescue.js?v=5244-living-water"></script>
-  <script src="./rescue-tools.js?v=5244-living-water"></script>
-  <script src="./escort-teamwork.js?v=5244-living-water"></script>
-  <script src="./chapter-milestones.js?v=5244-living-water"></script>
-  <script src="./mission-debrief.js?v=5244-living-water"></script>
-  <script src="./mastery-rewards.js?v=5244-living-water"></script>
-  <script src="./shared-battlefield-renderer.js?v=5244-living-water"></script>
-  <script src="./game.js?v=5244-living-water"></script>
-  <script src="./story-cinematics.js?v=5244-living-water"></script>
-  <script src="./field-systems.js?v=5244-living-water"></script>
-  <script src="./tutorial.js?v=5244-living-water"></script>
-  <script src="./squad-motion.js?v=5244-living-water"></script>
-  <script src="./squad-coop.js?v=5244-living-water"></script>
-  <script src="./extraction-qa.js?v=5244-living-water"></script>
+  <script src="./water-terrain.js?v=5245-chapter-maps"></script>
+  <script src="./chapter-maps.js?v=5245-chapter-maps"></script>
+  <script src="./extraction-geometry.js?v=5245-chapter-maps"></script>
+  <script src="./ammo-modes.js?v=5245-chapter-maps"></script>
+  <script src="./government-policy.js?v=5245-chapter-maps"></script>
+  <script src="./tiger-intelligence.js?v=5245-chapter-maps"></script>
+  <script src="./tiger-encounters.js?v=5245-chapter-maps"></script>
+  <script src="./living-world.js?v=5245-chapter-maps"></script>
+  <script src="./mission-map-truth.js?v=5245-chapter-maps"></script>
+  <script src="./post-campaign.js?v=5245-chapter-maps"></script>
+  <script src="./sanctuary.js?v=5245-chapter-maps"></script>
+  <script src="./player-experience.js?v=5245-chapter-maps"></script>
+  <script src="./field-radio.js?v=5245-chapter-maps"></script>
+  <script src="./civilian-rescue.js?v=5245-chapter-maps"></script>
+  <script src="./rescue-tools.js?v=5245-chapter-maps"></script>
+  <script src="./escort-teamwork.js?v=5245-chapter-maps"></script>
+  <script src="./chapter-milestones.js?v=5245-chapter-maps"></script>
+  <script src="./mission-debrief.js?v=5245-chapter-maps"></script>
+  <script src="./mastery-rewards.js?v=5245-chapter-maps"></script>
+  <script src="./shared-battlefield-renderer.js?v=5245-chapter-maps"></script>
+  <script src="./game.js?v=5245-chapter-maps"></script>
+  <script src="./story-cinematics.js?v=5245-chapter-maps"></script>
+  <script src="./field-systems.js?v=5245-chapter-maps"></script>
+  <script src="./tutorial.js?v=5245-chapter-maps"></script>
+  <script src="./squad-motion.js?v=5245-chapter-maps"></script>
+  <script src="./squad-coop.js?v=5245-chapter-maps"></script>
+  <script src="./extraction-qa.js?v=5245-chapter-maps"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

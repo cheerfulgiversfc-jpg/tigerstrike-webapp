@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5244";
+const TS_BUILD = "5245";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -18740,6 +18740,10 @@ function worldScaleForModeMission(mode, mission){
 function desiredWorldLayout(state=S){
   const mode = normalizeModeName(state?.mode || "Story");
   const mission = missionProgressForWorld(state);
+  const chapterMap=globalThis.TigerChapterMaps?.forMission(mission);
+  if(mode==='Story'&&!window.__TUTORIAL_MODE__&&chapterMap){
+    return {mode,mission,scale:chapterMap.world.width/WORLD_BASE_WIDTH,w:chapterMap.world.width,h:chapterMap.world.height};
+  }
   const scale = clamp(worldScaleForModeMission(mode, mission) + streamedWorldScaleBonus(state), 1, MAP_EXPANSION_MAX_SCALE);
   const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
@@ -25281,6 +25285,9 @@ function addMapObstacleForLandmark(rects, circles, item){
   pushMapObstacleRect(rects, item.x, item.y, profile.w * scale, profile.h * scale, profile.pad || 0);
 }
 function buildMapWaterZones(mapKey, chapter, w=worldWidth(S), h=worldHeight(S)){
+  if(normalizeModeName(S?.mode)==='Story'&&!window.__TUTORIAL_MODE__&&globalThis.TigerChapterMaps){
+    return globalThis.TigerChapterMaps.forMission((chapter-1)*10+1).waterZones;
+  }
   const water=globalThis.TigerWaterTerrain;
   return water?[water.river(w,h,water.crossings(w,'district'))]:[];
 }
@@ -54380,7 +54387,11 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   const drawX = Number.isFinite(camX) ? Number(camX) : 0;
   const drawY = Number.isFinite(camY) ? Number(camY) : 0;
   const zone = missionEvacZoneSafe(S);
-  drawSharedStoryDistrictFoundation(w, h, heavy,{x:drawX,y:drawY,w:drawW,h:drawH},mapSceneryClearZones(S),{now:frameNow,weather:lightingAtmosphereMood(frameNow).weatherFx});
+  if(normalizeModeName(S?.mode)==='Story'&&!window.__TUTORIAL_MODE__&&globalThis.TigerChapterMaps){
+    globalThis.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:missionProgressForWorld(S),worldW:w,worldH:h,heavy,view:{x:drawX,y:drawY,w:drawW,h:drawH},clearZones:mapSceneryClearZones(S),now:frameNow,weather:lightingAtmosphereMood(frameNow).weatherFx});
+  }else{
+    drawSharedStoryDistrictFoundation(w, h, heavy,{x:drawX,y:drawY,w:drawW,h:drawH},mapSceneryClearZones(S),{now:frameNow,weather:lightingAtmosphereMood(frameNow).weatherFx});
+  }
 
   if(S.mode !== "Survival"){
     const ex = zone.x;

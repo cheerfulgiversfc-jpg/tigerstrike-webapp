@@ -553,7 +553,7 @@ async function run(){
       assert.equal(levelSnapshot.mission.chapterName, "River Territory", "Mission 41 starts the real Chapter 5 campaign");
       assert.equal(levelSnapshot.mission.rescueRequired, 6, "Mission 41 escorts six civilians across the broken bridge");
       assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 41 has three shared broken-bridge checkpoints");
-      assert.equal(levelSnapshot.waterZones.length, 1, "Mission 41 exposes the river as a real map area");
+      assert.deepEqual(levelSnapshot.waterZones, require('../../chapter-maps').forMission(41).waterZones, "Mission 41 shares the permanent chapter river and capture pool");
     }
     if(level === 42){
       assert.equal(levelSnapshot.tigers.length, 7, "Mission 42 has seven riverbank attackers");

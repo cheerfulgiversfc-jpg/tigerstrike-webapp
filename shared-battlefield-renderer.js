@@ -1,8 +1,8 @@
 (function(root,factory){
-  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain);
+  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root)root.TigerStrikeBattlefieldRenderer=api;
-})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain){
+})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain,chapterMaps){
   "use strict";
 
   const VERSION="10.22";
@@ -579,6 +579,9 @@
   }
 
   function drawStoryMapFoundation(ctx,options={}){
+    const chapterMap=Number(options.level)>0?chapterMaps?.forMission(options.level):null;
+    if(chapterMap)options={...options,family:chapterMap.family,waterZones:chapterMap.waterZones};
+    const random=(i,salt)=>seeded(i+(chapterMap?.seed||0),salt);
     const worldW=Math.max(900,Number(options.worldW)||900),worldH=Math.max(760,Number(options.worldH)||760);
     const view=options.view||{x:0,y:0,w:worldW,h:worldH},family=String(options.family||storyFamilyForLevel(options.level));
     const visible=(x,y,pad=100)=>x>=view.x-pad&&x<=view.x+view.w+pad&&y>=view.y-pad&&y<=view.y+view.h+pad;
@@ -603,22 +606,26 @@
     };
 
     const palettes={forest:["#17492e","#0f2f20"],suburbs:["#276641","#174b31"],downtown:["#26394a","#172534"],industrial:["#4a463d","#292b2d"]};
-    const colors=palettes[family]||palettes.forest,g=ctx.createLinearGradient(0,0,0,worldH);g.addColorStop(0,colors[0]);g.addColorStop(1,colors[1]);ctx.fillStyle=g;ctx.fillRect(view.x,view.y,view.w,view.h);
+    const colors=chapterMap?.palette||palettes[family]||palettes.forest,g=ctx.createLinearGradient(0,0,0,worldH);g.addColorStop(0,colors[0]);g.addColorStop(1,colors[1]);ctx.fillStyle=g;ctx.fillRect(view.x,view.y,view.w,view.h);
     const tile=96,startX=Math.floor(view.x/tile)*tile,startY=Math.floor(view.y/tile)*tile;for(let y=startY;y<view.y+view.h+tile;y+=tile)for(let x=startX;x<view.x+view.w+tile;x+=tile){ctx.fillStyle=(Math.floor(x/tile)+Math.floor(y/tile))%2?"rgba(255,255,255,.025)":"rgba(2,6,23,.035)";ctx.fillRect(x,y,tile,tile);}
     drawGroundTexture(ctx,view,{family,heavy:options.heavy});
     for(const zone of options.waterZones||[])drawMapWater(ctx,zone,{view,heavy:options.heavy,now:options.now});
     drawRainPuddles(ctx,view,{weather:options.weather,now:options.now,waterZones:options.waterZones,blockedRects:options.blockedRects});
 
     if(family==="forest"){
+      // A permanent north/south track connects the river bridge to both banks.
+      path([[worldW*.5,0],[worldW*.5,worldH]],72,"#665038","rgba(31,41,30,.68)",true);
       path([[0,worldH*.18],[worldW*.25,worldH*.29],[worldW*.49,worldH*.23],[worldW*.75,worldH*.35],[worldW,worldH*.28]],72,"#665038","rgba(31,41,30,.68)",true);
       path([[0,worldH*.55],[worldW*.24,worldH*.48],[worldW*.47,worldH*.54],[worldW*.69,worldH*.42],[worldW,worldH*.49]],88,"#70583e","rgba(31,41,30,.68)",true);
       path([[0,worldH*.79],[worldW*.28,worldH*.72],[worldW*.51,worldH*.78],[worldW*.73,worldH*.66],[worldW,worldH*.72]],80,"#69533b","rgba(31,41,30,.68)",true);
-      for(let i=0;i<190;i++){const x=50+seeded(i,23)*(worldW-100),y=55+seeded(i,61)*(worldH-110);const band=[.18,.29,.23,.35,.28];if(Math.abs(y-worldH*(band[i%band.length]||.5))<75)continue;tree(x,y,.72+seeded(i,91)*.38);}
+      for(let i=0;i<190;i++){const x=50+random(i,23)*(worldW-100),y=55+random(i,61)*(worldH-110);const band=[.18,.29,.23,.35,.28];if(Math.abs(y-worldH*(band[i%band.length]||.5))<75)continue;tree(x,y,.72+random(i,91)*.38);}
+      // Permanent ranger hamlets belong to the chapter, not one mission.
+      for(const [x,y] of [[.10,.39],[.14,.39],[.38,.37],[.42,.37],[.62,.60],[.66,.60],[.83,.56],[.87,.56]])house(worldW*x,worldH*y,1.3);
     }else if(family==="suburbs"){
       const roads=[worldH*.21,worldH*.52,worldH*.80];for(const y of roads)path([[0,y],[worldW*.25,y-worldH*.015],[worldW*.5,y+worldH*.018],[worldW*.75,y-worldH*.012],[worldW,y]],96,"#4b5563","#26303d");
       path([[worldW*.18,0],[worldW*.20,worldH*.3],[worldW*.18,worldH*.62],[worldW*.21,worldH]],78,"#4b5563","#26303d");path([[worldW*.70,0],[worldW*.72,worldH*.34],[worldW*.70,worldH*.65],[worldW*.73,worldH]],78,"#4b5563","#26303d");
       for(let i=0;i<48;i++){const col=i%8,row=Math.floor(i/8),x=worldW*(.08+col*.12),y=worldH*(.10+row*.16);house(x,y,.82+((i%3)*.08));}
-      for(let i=0;i<52;i++)tree(40+seeded(i,33)*(worldW-80),40+seeded(i,79)*(worldH-80),.65+seeded(i,17)*.28);
+      for(let i=0;i<52;i++)tree(40+random(i,33)*(worldW-80),40+random(i,79)*(worldH-80),.65+random(i,17)*.28);
     }else if(family==="downtown"){
       const xs=[.12,.32,.52,.72,.90].map(v=>worldW*v),ys=[.15,.36,.58,.80].map(v=>worldH*v);for(const x of xs)path([[x,0],[x,worldH]],92,"#475569","#172033");for(const y of ys)path([[0,y],[worldW,y]],96,"#475569","#172033");
       for(let i=0;i<38;i++){const x=worldW*(.05+(i%6)*.17),y=worldH*(.08+Math.floor(i/6)*.15);building(x,y,105+(i%3)*22,76+(i%4)*14);}

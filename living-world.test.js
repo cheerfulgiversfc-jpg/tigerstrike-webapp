@@ -592,8 +592,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("PHANTOM RAGE WARD ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5244-living-water"));
-  assert(html.includes("V12.10 (Living Water & Swimming)"));
+  assert(html.includes("living-world.js?v=5245-chapter-maps"));
+  assert(html.includes("V12.11 (Chapter Map Lock)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1413,7 +1413,7 @@ test("Brokenwater Reach protects the exact Missions 41–43 encounters", async (
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.waterZones.length, 1);
+    assert.deepEqual(waiting.waterZones, require('./chapter-maps').forMission(level).waterZones);
     assert.equal(waiting.mission.mapTruthVersion, "10.34");
     if(level === 43){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s43_currentstripe"]);
@@ -1478,7 +1478,7 @@ test("Floodplain Lifeline protects the exact Missions 44–47 encounters", async
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.waterZones.length, 1);
+    assert.deepEqual(waiting.waterZones, require('./chapter-maps').forMission(level).waterZones);
     assert.equal(waiting.mission.mapTruthVersion, "10.34");
     assert(waiting.mapTruthLandmarks.length >= 4);
   }
@@ -1538,7 +1538,7 @@ test("Tidefang Delta protects the exact Missions 48–50 encounters", async () =
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.waterZones.length, waterCount);
+    assert.deepEqual(waiting.waterZones, require('./chapter-maps').forMission(level).waterZones);
     assert.equal(waiting.mission.mapTruthVersion, "10.34");
     assert(waiting.mapTruthLandmarks.length >= 4);
     if(level === 48) assert.equal(waiting.mission.extractionType, "boat");
