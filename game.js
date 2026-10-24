@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5239";
+const TS_BUILD = "5240";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -56561,12 +56561,16 @@ function drawCaptureCage(cage){
   ctx.translate(x, y);
   ctx.fillStyle = "rgba(2,6,23,.36)";
   ctx.beginPath();ctx.ellipse(0,18,42,13,0,0,Math.PI*2);ctx.fill();
+  if(globalThis.TigerStrikeBattlefieldRenderer?.drawTiger){
+    globalThis.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{id:cage.tigerId,type:cage.tigerType,name:cage.tigerName,captured:true,x:0,y:0},{scale:.56,facing:1,showState:false});
+  }else{
   ctx.fillStyle = "rgba(180,83,9,.94)";
   ctx.beginPath();ctx.ellipse(0,3,27,12,0,0,Math.PI*2);ctx.fill();
   ctx.beginPath();ctx.arc(23,-1,9,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle = "rgba(17,24,39,.98)";
   ctx.lineWidth = 3;
   for(const sx of [-16,-6,5,15]){ctx.beginPath();ctx.moveTo(sx,-7);ctx.lineTo(sx+5,11);ctx.stroke();}
+  }
   ctx.strokeStyle = "rgba(203,213,225,.98)";
   ctx.lineWidth = 4;
   ctx.strokeRect(-39,-25,78,52);
@@ -61793,6 +61797,15 @@ function drawPremium2DArtPhase7TigerPremiumInk(t, s, c, visual, behaviorAnim={},
   ctx.restore();
 }
 
+function drawSharedMissionTiger(t,x,y,scale,colors,behavior={},now=Date.now()){
+  const speed=Math.hypot(Number(t.vx)||0,Number(t.vy)||0);
+  const facing=Number.isFinite(t.drawDir)?(t.drawDir<0?-1:1):(Math.cos(t.heading||0)<0?-1:1);
+  return globalThis.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{...t,x,y,boss:isBossTiger(t)},{
+    facing,scale,palette:colors,now,walking:speed>.15,
+    running:speed>2.1,gait:t.gaitState,phase:(Number(t.step)||0)*2.18,
+    pouncing:!!behavior.pounce,crouching:!!behavior.crouch,roaring:!!behavior.roaring
+  });
+}
 function drawRealisticTigerModel(t, s, c, visual, behaviorAnim={}, now=Date.now(), headReach=0, headBob=0){
   if(!ctx || !t) return;
   const hpPct = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
@@ -62230,6 +62243,10 @@ function drawTiger(t){
     ctx.globalAlpha = alpha;
   }
 
+  // Shared artwork replaces the entire legacy stack, never paints over old limbs.
+  if(globalThis.TigerStrikeBattlefieldRenderer?.drawTiger){
+    drawSharedMissionTiger(t,x,y,s,c,behaviorAnim,now);
+  }else{
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(drawDir, 1);
@@ -62430,6 +62447,7 @@ function drawTiger(t){
   }
   safeCanvasLayer("drawRealisticTigerModel", ()=>drawRealisticTigerModel(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob));
   ctx.restore();
+  }
   if(grassHidden) drawTigerGrassCover(t, x, y, s, alpha, now, "over");
 
   if(t._held){

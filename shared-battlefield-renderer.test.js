@@ -11,7 +11,7 @@ const html=fs.readFileSync("index.html","utf8");
 test("V11.4 keeps one reusable premium battlefield renderer",()=>{
   assert.equal(renderer.VERSION,"10.22");
   for(const name of ["drawSoldier","drawCivilian","drawTiger","drawBattlefieldFinish"])assert.equal(typeof renderer[name],"function");
-  assert(html.includes('shared-battlefield-renderer.js?v=5239-shared-soldiers'));
+  assert(html.includes('shared-battlefield-renderer.js?v=5240-shared-tigers'));
   assert(html.indexOf("shared-battlefield-renderer.js")<html.indexOf("squad-coop.js"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawSoldier"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawCivilian"));
@@ -36,7 +36,7 @@ test("premium units contain faces, equipment and articulated motion",()=>{
   assert(source.includes("Uniform, vest, belt, shoulder plates and backpack"));
   assert(source.includes("Face has features, hair/helmet, chin and headset"));
   assert(source.includes("Head, muzzle, ears, eyes and whiskers"));
-  assert(source.includes('const stride=walking?Math.sin(phase)*7:0'));
+  assert(source.includes('const stride=moving?Math.sin(phase)*(running?10:5):0'));
   assert(!source.includes("rotate(face)"),"the soldier body must never rotate upside down");
 });
 

@@ -156,42 +156,142 @@
     return {x,y,labelY:y-42};
   }
 
+  // Derive presentation from real state only; never alter damage, capture or AI.
+  function tigerVisualState(entity={},options={}){
+    const now=Number(options.now??Date.now()),hp=Number(entity.hp),max=Number(entity.hpMax);
+    const asleep=!!entity.captured||!!entity.cage;
+    const dead=!asleep&&(!!entity.carcass||!!entity.defeated||entity.alive===false||(Number.isFinite(hp)&&hp<=0));
+    const tagged=!dead&&!asleep&&!!entity.tranqTagged;
+    const slowed=!dead&&!asleep&&(!!entity.rubberSlowed||now<Number(entity.rubberSlowUntil||0));
+    const injured=!dead&&!asleep&&max>0&&Number.isFinite(hp)&&hp/max<=.36;
+    const lethal=!asleep&&!!entity.lethalWounded;
+    const attack=options.attack||(entity.attackWarnings||[]).find(a=>now<Number(a.resolveAt)+420);
+    const validAttack=!dead&&!asleep&&attack&&Number(entity.lastRubberHitAt||0)<=Number(attack.startedAt||0);
+    const warning=!dead&&!asleep&&(validAttack&&now<Number(attack.resolveAt)||now<Number(entity.pounceWindupUntil||0));
+    const pounceProgress=validAttack&&now>=Number(attack.resolveAt)?clamp((now-Number(attack.resolveAt))/420,0,1):
+      options.pouncing&&Number(entity.pounceWindupUntil)>0?clamp((now-Number(entity.pounceWindupUntil))/Math.max(420,Number(entity.huntStateUntil||0)-Number(entity.pounceWindupUntil)),0,1):0;
+    const pouncing=!dead&&!asleep&&!warning&&(pounceProgress>0&&pounceProgress<1||!!options.pouncing);
+    const awareness=String(entity.awarenessState||"calm").toLowerCase();
+    const aggressive=!dead&&!asleep&&(warning||pouncing||options.roaring||["attacking","blood_frenzy"].includes(awareness));
+    const labels=asleep?["TRANQUILIZED"]:dead?["DEAD"]:lethal?["LETHAL WOUND"]:tagged?["TRANQ TAGGED"]:warning?["POUNCE — MOVE!"]:pouncing?["POUNCE"]:aggressive?[awareness==="blood_frenzy"?"BLOOD FRENZY":"AGGRESSIVE"]:injured?["INJURED"]:[];
+    if(!asleep&&!dead&&slowed)labels.push("SLOWED");
+    if(!asleep&&!dead&&injured&&!labels.includes("INJURED"))labels.push("INJURED");
+    return {asleep,dead,tagged,slowed,injured,lethal,warning:!!warning,pouncing:!!pouncing,pounceProgress,aggressive,label:labels.join(" • ")};
+  }
   function drawTiger(ctx,entity={},options={}){
-    const encounterNow=Number(options.now||Date.now());
-    const posture=typeof globalThis!=='undefined'?globalThis.TigerEncounters?.posture(entity,encounterNow):null;
-    const x=Number(entity.x)||0,y=Number(entity.y)||0;
-    const boss=!!entity.boss,scale=Number(options.scale)||(boss?1.28:(entity.type==="Armored"?1.08:.98));
-    const facing=Number(options.facing)<0?-1:1,walking=!!options.walking,phase=Number(options.phase)||0;
-    const stride=walking?Math.sin(phase)*7:0,bob=walking?Math.abs(Math.sin(phase))*1.8:0;
-    const id=String(entity.id||""),ghost=/ghost|shade|phantom/i.test(id),blood=/blood/i.test(id),ancient=/ancient/i.test(id);
-    const coat=posture?.hit?(entity.rubberSlowed?'#bae6fd':'#fda4af'):(blood?"#b91c1c":(ghost?"#dbeafe":(ancient?"#facc15":"#f59e0b")));
-    const dark=blood?"#7f1d1d":(ghost?"#94a3b8":(ancient?"#a16207":"#c76808"));
-    ctx.save();ctx.translate(x+(posture?.hit?Math.sin(encounterNow*.08)*3:0),y-bob+(posture?.warning?6:0));ctx.scale(facing*scale*(posture?.warning?1.12:1),scale*(posture?.warning?0.80:1));
-    ellipse(ctx,0,25+bob,46,10,"rgba(2,6,23,.42)");
-
-    // Tail, body and chest silhouette.
-    ctx.strokeStyle=coat;ctx.lineWidth=11;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-31,1);ctx.bezierCurveTo(-56,-18,-72,-12,-69,9);ctx.bezierCurveTo(-67,20,-78,22,-81,13);ctx.stroke();
-    ctx.strokeStyle="#111827";ctx.lineWidth=3;for(const t of [[-48,-8,-55,1],[-61,-5,-67,4],[-70,4,-76,9]]){ctx.beginPath();ctx.moveTo(t[0],t[1]);ctx.lineTo(t[2],t[3]);ctx.stroke();}
-    const body=ctx.createLinearGradient(-35,-18,35,19);body.addColorStop(0,dark);body.addColorStop(.35,coat);body.addColorStop(.72,coat);body.addColorStop(1,dark);ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(-3,0,39,22,-.03,0,TAU);ctx.fill();ellipse(ctx,18,3,20,22,coat,.12);ellipse(ctx,1,12,27,9,ghost?"#f8fafc":"#fed7aa");
-
-    // Four legs use actual movement, never an idle clock animation.
-    const legs=[[-24,-stride],[-10,stride],[8,-stride],[22,stride]];
-    for(const [lx,swing] of legs){line(ctx,dark,8,[[lx,11],[lx+swing*.55,28-Math.abs(swing)*.1]]);line(ctx,coat,5,[[lx,12],[lx+swing*.55,27-Math.abs(swing)*.1]]);ellipse(ctx,lx+swing*.55,29,7,3,"#18181b");}
-
-    // Head, muzzle, ears, eyes and whiskers.
-    ellipse(ctx,32,-8,18,17,coat);ctx.fillStyle=coat;ctx.beginPath();ctx.moveTo(20,-19);ctx.lineTo(22,-34);ctx.lineTo(32,-22);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(35,-23);ctx.lineTo(44,-34);ctx.lineTo(47,-17);ctx.closePath();ctx.fill();
-    ctx.fillStyle="#fda4af";ctx.beginPath();ctx.moveTo(24,-23);ctx.lineTo(24,-29);ctx.lineTo(29,-23);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(39,-25);ctx.lineTo(43,-29);ctx.lineTo(44,-22);ctx.closePath();ctx.fill();
-    ellipse(ctx,42,-4,12,9,ghost?"#f8fafc":"#ffedd5");ellipse(ctx,48,-6,3.5,2.7,"#111827");
-    ellipse(ctx,28,-11,3.4,3,"#111827");ellipse(ctx,39,-12,3.4,3,"#111827");ellipse(ctx,29,-12,1.1,1.1,"#fef08a");ellipse(ctx,40,-13,1.1,1.1,"#fef08a");
-    ctx.strokeStyle="#111827";ctx.lineWidth=1.8;ctx.beginPath();ctx.moveTo(48,-2);ctx.quadraticCurveTo(45,3,40,1);ctx.stroke();ctx.strokeStyle="#f8fafc";ctx.lineWidth=1.2;for(const wy of [-7,-3,1]){ctx.beginPath();ctx.moveTo(45,wy);ctx.lineTo(62,wy-3);ctx.stroke();}
-
-    // Body and facial stripes are clipped to the animal, not an oval marker.
-    ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const sx of [-27,-14,-1,12,23]){ctx.beginPath();ctx.moveTo(sx,-18);ctx.lineTo(sx+8,10);ctx.stroke();}
-    ctx.lineWidth=3;for(const sy of [-17,-10]){ctx.beginPath();ctx.moveTo(22,sy);ctx.lineTo(31,sy+5);ctx.stroke();ctx.beginPath();ctx.moveTo(44,sy+1);ctx.lineTo(37,sy+5);ctx.stroke();}
-    if(entity.type==="Armored"){ctx.fillStyle="rgba(51,65,85,.88)";rounded(ctx,-19,-19,34,14,5);ctx.fill();ctx.strokeStyle="#cbd5e1";ctx.lineWidth=2;ctx.stroke();}
-    if(boss){ctx.fillStyle="rgba(127,29,29,.48)";ctx.beginPath();ctx.arc(28,-8,24,Math.PI*.6,Math.PI*1.65);ctx.strokeStyle="#fb7185";ctx.lineWidth=4;ctx.stroke();}
+    const now=Number(options.now??Date.now()),state=tigerVisualState(entity,{...options,now});
+    const x=Number(entity.x)||0,y=Number(entity.y)||0,boss=!!entity.boss;
+    const scale=clamp(options.scale??(boss?1.28:entity.type==="Armored"?1.08:.98),.2,4);
+    const facing=Number(options.facing)<0?-1:1,phase=Number(options.phase)||0;
+    const moving=!!options.walking&&!state.asleep&&!state.dead&&!state.warning;
+    const running=moving&&(options.running||options.gait==="run"||options.gait==="sprint");
+    const stride=moving?Math.sin(phase)*(running?10:5):0;
+    const leap=state.pouncing?(state.pounceProgress>0?Math.sin(state.pounceProgress*Math.PI):.85):0;
+    const crouch=state.warning?5:options.crouching?2:0;
+    const bob=moving?Math.abs(Math.sin(phase))*(running?2.2:.7):0;
+    const rest=state.asleep||state.dead;
+    const identity=String(entity.id||"")+" "+String(entity.name||entity.alias||"");
+    const ghost=/ghost|shade|phantom/i.test(identity),blood=/blood/i.test(identity),ancient=/ancient/i.test(identity);
+    const colors=options.palette||{};
+    const coat=colors.body||(blood?"#b9432f":ghost?"#dbe6ed":ancient?"#eabd48":"#e89432");
+    const dark=blood?"#682c26":ghost?"#91a6b3":ancient?"#9d7024":"#a85520";
+    const stripe=colors.stripe||"#242b2b",cream=colors.belly||(ghost?"#f4f8fa":"#ffedc9");
+    const hit=now<Number(entity.hitFlashUntil||entity.hitUntil||0);
+    const legBase=rest?17:26;
+    const box=(x,y,w,h,color,r=2)=>{ctx.fillStyle=color;rounded(ctx,x,y,w,h,r);ctx.fill();};
+    ctx.save();ctx.translate(x,y);ctx.scale(facing*scale,scale);
+    ellipse(ctx,-2,28,39-leap*4,5-leap,"rgba(2,6,23,.32)");
+    ctx.translate(0,crouch-bob-leap*9+(rest?13:0));
+    // Tail, body and chest silhouette: a flexible spine, not a sliding oval.
+    const tailWave=moving?Math.sin(phase-.7)*(running?7:3):0;
+    line(ctx,dark,6,[[-29,-3],[-45,-8+tailWave],[-57,-17+tailWave*.5],[-62,-15+tailWave*.4]]);
+    line(ctx,coat,4.5,[[-29,-4],[-45,-9+tailWave],[-57,-18+tailWave*.5],[-62,-16+tailWave*.4]]);
+    for(let i=0;i<4;i++)line(ctx,stripe,2,[[-42-i*5,-7-i*2+tailWave*.7],[-44-i*5,-11-i*2+tailWave*.7]]);
+    function leg(lx,index,front){
+      const paired=index===0||index===3;
+      const swing=rest?0:state.pouncing?(lx<0?-12:16):(paired?stride:-stride)*(state.injured&&index===2?.45:1);
+      const lift=moving?Math.max(0,Math.cos(phase+(paired?0:Math.PI)))*(running?6:3):0;
+      const knee=lx+swing*.4+(front?2:-3),foot=lx+swing;
+      const fy=legBase-lift-crouch-(state.pouncing?5:0);
+      line(ctx,dark,7,[[lx,7],[knee,16],[foot,fy]]);
+      line(ctx,front?coat:dark,4.5,[[lx,7],[knee,16],[foot,fy-1]]);
+      line(ctx,stripe,2,[[knee-2,14],[knee+2,17]]);
+      ellipse(ctx,foot+2,fy+1,5.5,2.8,cream);
+      for(let n=0;n<2;n++)line(ctx,"#bda98d",.6,[[foot+n*2,fy],[foot+1+n*2,fy+2]]);
+    }
+    // Four articulated legs are distance-driven; idle tigers do not tread in place.
+    leg(-18,0,false);leg(14,1,false);
+    ctx.save();
+    if(rest){ctx.translate(0,1);ctx.scale(1,.67);}
+    const body=ctx.createLinearGradient(0,-21,0,19);
+    body.addColorStop(0,dark);body.addColorStop(.26,coat);body.addColorStop(.67,coat);body.addColorStop(1,cream);
+    ellipse(ctx,-5,-1,33,18,body,-.04);ellipse(ctx,-22,1,16,17,coat,-.16);
+    ellipse(ctx,17,-3,17,20,coat,.14);ellipse(ctx,0,11,24,5.5,cream);
+    // Tapered stripes and short fur marks stay clipped inside the coat silhouette.
+    ctx.save();ctx.beginPath();ctx.ellipse(-5,-1,33,18,-.04,0,TAU);ctx.clip();
+    for(let i=0;i<7;i++){
+      const sx=-32+i*8.5;
+      ctx.fillStyle=stripe;ctx.beginPath();ctx.moveTo(sx,-21);ctx.bezierCurveTo(sx+1,-11,sx+9,-6,sx+4,12);
+      ctx.bezierCurveTo(sx+12,2,sx+8,-10,sx+5,-21);ctx.closePath();ctx.fill();
+      if(i%2===0)line(ctx,stripe,1.3,[[sx+7,-5],[sx+12,2],[sx+10,7]]);
+    }
+    for(let i=0;i<18;i++){
+      const fx=-30+(i%9)*6.5,fy=-12+Math.floor(i/9)*16;
+      line(ctx,i%3===0?cream:dark,.65,[[fx,fy],[fx+3,fy+1.2]]);
+    }
     ctx.restore();
-    return {x,y,labelY:y-(boss?79:61),barY:y-(boss?67:50)};
+    // Chest ruff breaks up the outline and catches the same warm rim light.
+    for(let i=0;i<5;i++){
+      ctx.fillStyle=i%2?coat:cream;ctx.beginPath();ctx.moveTo(19+i*.8,-3+i*3);
+      ctx.lineTo(30+i*.5,1+i*3);ctx.lineTo(23+i*.5,5+i*3);ctx.fill();
+    }
+    if(entity.type==="Armored"){
+      box(-19,-20,31,11,"#425360",3);line(ctx,"#b2c3c8",1,[[-16,-18],[9,-18]]);
+      for(const px of [-13,-3,7])ellipse(ctx,px,-14,1,1,"#d3dfe1");
+    }
+    ctx.restore();
+    leg(-26,2,true);leg(21,3,true);
+    // Head, muzzle, ears, eyes and whiskers.
+    const headY=-11+(rest?7:state.injured?3:0),headX=30+(state.pouncing?4:0);
+    ctx.save();ctx.translate(headX,headY);
+    ellipse(ctx,-6,-11,5.5,6,stripe);ellipse(ctx,6,-12,5.5,6,stripe);
+    ellipse(ctx,-6,-11,3.2,3.6,coat);ellipse(ctx,6,-12,3.2,3.6,coat);
+    ellipse(ctx,-6,-11,1.5,2,"#c98f7a");ellipse(ctx,6,-12,1.5,2,"#c98f7a");
+    ellipse(ctx,0,0,15,14,coat,.08);ellipse(ctx,-6,6,8,7,cream,-.1);
+    ellipse(ctx,10,5,10,7,cream);ellipse(ctx,17,2,3.2,2.4,"#353333");
+    line(ctx,stripe,2,[[-11,-7],[-4,-3],[-9,0]]);line(ctx,stripe,2,[[1,-12],[3,-7],[0,-5]]);
+    line(ctx,stripe,2,[[8,-10],[7,-6],[11,-4]]);
+    if(rest){
+      line(ctx,stripe,1.4,[[2,-2],[8,-1]]);
+    }else{
+      ellipse(ctx,5,-3,3.4,2.6,cream);
+      if(state.tagged)line(ctx,stripe,1.5,[[2,-3],[8,-3]]);
+      else{
+        ellipse(ctx,5,-3,2.2,state.aggressive?1.7:2.2,state.aggressive?"#ff9b64":"#cfb754");
+        ellipse(ctx,5.5,-3,.8,1.9,stripe);ellipse(ctx,6,-3.8,.6,.6,"#fff7e0");
+      }
+    }
+    line(ctx,stripe,1,[[17,4],[16,8],[11,9]]);
+    if(state.aggressive&&!rest){ellipse(ctx,13,10,6,3.5,"#542e2c");line(ctx,cream,1.5,[[11,8],[12,11]]);line(ctx,cream,1.5,[[16,8],[15,11]]);}
+    for(let i=0;i<3;i++)line(ctx,cream,.7,[[11,5+i*2],[25,2+i*4]]);
+    for(const [dx,dy] of [[9,4],[12,5],[10,7]])ellipse(ctx,dx,dy,.6,.6,stripe);
+    ctx.restore();
+    if(state.tagged&&!rest){
+      line(ctx,"#8eddd9",1.7,[[-13,-6],[-20,-14]]);box(-22,-17,5,4,"#b6f3f0",1);
+    }
+    if(state.slowed&&!rest)line(ctx,"#83cedd",1.5,[[-18,18],[-10,21],[-3,18]]);
+    if(state.lethal&&!rest)line(ctx,"#8a3d32",1.7,[[-16,-4],[-11,1],[-13,5]]);
+    if(hit){ctx.strokeStyle=state.slowed?"#a5dce9":"#f0c79e";ctx.lineWidth=1.4;ctx.beginPath();ctx.arc(8,-6,6,0,TAU);ctx.stroke();}
+    ctx.restore();
+    if(options.showState!==false&&state.label){
+      ctx.save();ctx.font="800 9px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+      const w=Math.min(210,Math.max(90,state.label.length*5.7));
+      ctx.fillStyle="rgba(6,17,24,.9)";rounded(ctx,x-w/2,y+35*scale,w,17,5);ctx.fill();
+      ctx.fillStyle=state.asleep||state.tagged?"#b3e7df":state.lethal?"#ffb7a8":state.aggressive?"#ffc3a5":"#e5d9bd";
+      ctx.fillText(state.label,x,y+43.5*scale);
+      ctx.restore();
+    }
+    return {x,y,labelY:y-(boss?79:61),barY:y-(boss?67:50),state};
   }
 
   function storyFamilyForLevel(level=1){
@@ -251,5 +351,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,storyFamilyForLevel,drawStoryMapFoundation,drawSoldier,drawCivilian,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,storyFamilyForLevel,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });
