@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V12.6 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V12.6 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.6 • Shared Tiger Visuals");
+      ? `Tiger Strike V12.7 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V12.7 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.7 • Shared Map Visuals");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -790,7 +790,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.6 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.7 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -1972,6 +1972,7 @@
   }
 
   function drawStoryTree(ctx,x,y,size=1){
+    if(window.TigerStrikeBattlefieldRenderer?.drawMapTree)return window.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y,size);
     ctx.save();
     ctx.fillStyle="rgba(2,6,23,.34)";ctx.beginPath();ctx.ellipse(x+7*size,y+18*size,30*size,10*size,-.08,0,Math.PI*2);ctx.fill();
     const trunk=ctx.createLinearGradient(x-6*size,y,x+8*size,y);trunk.addColorStop(0,"#3f2b20");trunk.addColorStop(.5,"#8b5a32");trunk.addColorStop(1,"#4a2f22");ctx.fillStyle=trunk;roundRect(ctx,x-6*size,y-7*size,12*size,32*size,3*size);ctx.fill();
@@ -1980,6 +1981,7 @@
   }
 
   function drawStoryBuilding(ctx,x,y,w,h,roof="#9a5c38"){
+    if(window.TigerStrikeBattlefieldRenderer?.drawMapHouse)return window.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x,y,w,h,{roof});
     ctx.save();ctx.fillStyle="rgba(2,6,23,.34)";roundRect(ctx,x+11,y+13,w,h,9);ctx.fill();
     const wall=ctx.createLinearGradient(x,y,x,y+h);wall.addColorStop(0,"#ead9b8");wall.addColorStop(1,"#ae9875");ctx.fillStyle=wall;roundRect(ctx,x,y,w,h,8);ctx.fill();ctx.strokeStyle="rgba(255,248,220,.44)";ctx.lineWidth=3;ctx.stroke();
     ctx.fillStyle=roof;ctx.beginPath();ctx.moveTo(x-8,y+6);ctx.lineTo(x+w*.5,y-28);ctx.lineTo(x+w+8,y+6);ctx.closePath();ctx.fill();
@@ -2264,6 +2266,7 @@
   }
 
   function drawPremiumDistrictTexture(ctx,view,worldW,worldH,now){
+    if(window.TigerStrikeBattlefieldRenderer?.drawGroundTexture)return window.TigerStrikeBattlefieldRenderer.drawGroundTexture(ctx,view);
     const glow=ctx.createRadialGradient(view.x+view.w*.28,view.y+view.h*.18,20,view.x+view.w*.28,view.y+view.h*.18,Math.max(view.w,view.h)*.78);
     glow.addColorStop(0,"rgba(253,230,138,.13)");glow.addColorStop(.5,"rgba(74,222,128,.045)");glow.addColorStop(1,"rgba(2,6,23,.16)");ctx.fillStyle=glow;ctx.fillRect(view.x,view.y,view.w,view.h);
     const start=Math.max(0,Math.floor((view.x+view.y)/83));
@@ -2346,6 +2349,11 @@
     for(let x=0;x<=worldW+180;x+=180){ctx.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);}
     ctx.lineTo(worldW,worldH);ctx.lineTo(0,worldH);ctx.closePath();ctx.fill();
 
+    if(!sharedStoryFoundation&&window.TigerStrikeBattlefieldRenderer?.drawMapWaterSurface){
+      const riverTrace=c=>{c.beginPath();c.moveTo(0,riverTop);for(let x=0;x<=worldW+180;x+=180)c.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);c.lineTo(worldW,worldH);c.lineTo(0,worldH);c.closePath();};
+      window.TigerStrikeBattlefieldRenderer.drawMapWaterSurface(ctx,riverTrace,{x:0,y:riverTop-42,w:worldW,h:worldH-riverTop+42},{view,deepColor:stormExtraction?'#184c61':undefined});
+    }
+
     ctx.fillStyle=endlessSurvival?"#352f3f":(denAssault?"#49443b":(villageSiege?"#455267":(convoyRescue?"#3f4654":(alphaHunt?"#374151":(stormExtraction?"#334155":"#4b5563")))));
     for(const y of horizontalRoads) ctx.fillRect(0,y-roadW/2,worldW,roadW);
     for(const x of verticalRoads) ctx.fillRect(x-roadW/2,0,roadW,worldH);
@@ -2362,10 +2370,14 @@
 
     const drawCoopWaterZones=()=>{for(const water of (snap.waterZones||[])){
       if(!visible(water.x,water.y,Math.max(Number(water.rx||0),Number(water.ry||0))+90))continue;
+      if(window.TigerStrikeBattlefieldRenderer?.drawMapWater){
+        window.TigerStrikeBattlefieldRenderer.drawMapWater(ctx,water,{view});
+      }else{
       const gradient=ctx.createRadialGradient(water.x,water.y,18,water.x,water.y,Math.max(40,Number(water.rx||180)));
       gradient.addColorStop(0,"rgba(34,211,238,.62)");gradient.addColorStop(.72,"rgba(14,116,144,.78)");gradient.addColorStop(1,"rgba(8,47,73,.90)");
       ctx.fillStyle=gradient;ctx.beginPath();ctx.ellipse(water.x,water.y,Number(water.rx||180),Number(water.ry||90),0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=5;ctx.stroke();
       ctx.strokeStyle="rgba(207,250,254,.50)";ctx.lineWidth=3;for(const offset of [-.5,0,.5]){ctx.beginPath();ctx.ellipse(water.x,water.y+Number(water.ry||90)*offset,Number(water.rx||180)*.86,Math.max(8,Number(water.ry||90)*.13),0,0,Math.PI*2);ctx.stroke();}
+      }
       ctx.fillStyle="rgba(8,47,73,.92)";roundRect(ctx,water.x-105,water.y-Number(water.ry||90)-46,210,34,9);ctx.fill();ctx.fillStyle="#cffafe";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(`${water.label} • SLOWS MOVEMENT`,water.x,water.y-Number(water.ry||90)-23);
     }};
     if(!sharedStoryFoundation)drawCoopWaterZones();
@@ -2391,10 +2403,10 @@
     }
     if(sharedStoryFoundation){
       const family=window.TigerStrikeBattlefieldRenderer.storyFamilyForLevel(storyLevel);
-      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view});
+      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones});
       const chapterTint=bloodChapter?"rgba(127,29,29,.09)":(deepJungleChapter?"rgba(34,197,94,.07)":(abandonedVillageChapter?"rgba(148,163,184,.08)":(riverTerritoryChapter?"rgba(6,182,212,.08)":(mountainEdgeChapter?"rgba(148,163,184,.12)":(tigerTerritoryChapter?"rgba(6,78,59,.14)":(tigerKingChapter?"rgba(120,53,15,.12)":(hiddenJungleChapter?"rgba(20,83,45,.16)":(ancientGuardianChapter?"rgba(250,204,21,.05)":"rgba(0,0,0,0)"))))))));
       ctx.fillStyle=chapterTint;ctx.fillRect(view.x,view.y,view.w,view.h);
-      drawPremiumDistrictTexture(ctx,view,worldW,worldH,Number(snap.serverNow||Date.now()));
+      // Shared foundation textures the ground before roads and buildings.
       drawCoopWaterZones();
     }
     if(denAssault){

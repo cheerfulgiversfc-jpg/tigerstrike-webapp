@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5240";
+const TS_BUILD = "5241";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -54153,6 +54153,7 @@ function shouldUseMobileFastMapRenderer(state=S){
 }
 
 function drawSharedStoryTree(x, y, size=1){
+  if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapTree) return globalThis.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y,size);
   ctx.save();
   ctx.globalAlpha = 0.94;
   ctx.fillStyle = "rgba(2,6,23,.24)";
@@ -54171,6 +54172,7 @@ function drawSharedStoryTree(x, y, size=1){
 }
 
 function drawSharedStoryHouse(x, y, width, height, roof="#9a5c38"){
+  if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapHouse) return globalThis.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x,y,width,height,{roof,roofRise:25});
   ctx.save();
   ctx.globalAlpha = 0.96;
   rounded(x + 7, y + 9, width, height, 8, "rgba(2,6,23,.24)");
@@ -54190,7 +54192,7 @@ function drawSharedStoryHouse(x, y, width, height, roof="#9a5c38"){
   ctx.restore();
 }
 
-function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false){
+function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=null){
   // These are the same fixed measurements used by Shared Story co-op. Story's
   // world can be larger than a co-op room, so repeat the district instead of
   // stretching houses and trees into oversized obstacles.
@@ -54200,6 +54202,7 @@ function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false){
     [980,855,156,104,"#8b5a3c"], [335,730,138,90,"#7c4a32"]
   ];
   for(const [x,y,width,height,roof] of houses){
+    if(view&&(offsetX+x+width+20<view.x||offsetX+x-20>view.x+view.w||offsetY+y+height+30<view.y||offsetY+y-60>view.y+view.h))continue;
     drawSharedStoryHouse(offsetX + x, offsetY + y, width, height, roof);
   }
   const treeCount = heavy ? 26 : 48;
@@ -54207,26 +54210,33 @@ function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false){
     const x = (i * 173 + 51) % 1160 + 20;
     const y = (i * 113 + 37) % 1040 + 22;
     if((x>515&&x<700)||(y>440&&y<630)||((x>40&&x<255)&&(y>45&&y<210))||((x>900&&x<1165)&&(y>45&&y<220))||((x>55&&x<265)&&(y>620&&y<790))||((x>700&&x<900)&&(y>670&&y<825))||((x>950&&y>820))) continue;
+    const shore=globalThis.TigerStrikeBattlefieldRenderer?.districtShoreY?.(x);
+    if(Number.isFinite(shore)&&y+25>shore)continue; // Cosmetic trees need dry ground.
+    if(view&&(offsetX+x<view.x-75||offsetX+x>view.x+view.w+75||offsetY+y<view.y-75||offsetY+y>view.y+view.h+75))continue;
     drawSharedStoryTree(offsetX + x, offsetY + y, .72 + (i % 4) * .1);
   }
 }
 
-function drawSharedStoryDistrictFoundation(w, h, heavy=false){
+function drawSharedStoryDistrictFoundation(w, h, heavy=false, view={x:0,y:0,w,h}){
   const terrain = ctx.createLinearGradient(0, 0, 0, h);
   terrain.addColorStop(0, "#376b43");
   terrain.addColorStop(0.52, "#2b5b3b");
   terrain.addColorStop(1, "#204b35");
   ctx.fillStyle = terrain;
   ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = "rgba(91,139,81,.22)";
-  for(let y=0, row=0; y<h; y+=82, row++){
-    for(let x=0; x<w; x+=100){
+  ctx.fillStyle = "rgba(91,139,81,.07)";
+  for(let y=Math.max(0,Math.floor(view.y/82)*82), row=Math.floor(Math.max(0,view.y)/82); y<Math.min(h,view.y+view.h+82); y+=82, row++){
+    for(let x=Math.max(0,Math.floor(view.x/100)*100); x<Math.min(w,view.x+view.w+100); x+=100){
       ctx.fillRect(x + ((row % 2) * 24), y, 76, 58);
     }
   }
+  globalThis.TigerStrikeBattlefieldRenderer?.drawGroundTexture?.(ctx,view,{heavy});
 
-  for(let oy=0; oy<h; oy+=1100){
-    for(let ox=0; ox<w; ox+=1200){
+  for(let oy=Math.max(0,Math.floor((view.y-160)/1100)*1100); oy<Math.min(h,view.y+view.h+160); oy+=1100){
+    for(let ox=Math.max(0,Math.floor((view.x-180)/1200)*1200); ox<Math.min(w,view.x+view.w+180); ox+=1200){
+      if(globalThis.TigerStrikeBattlefieldRenderer?.drawDistrictRiver){
+        globalThis.TigerStrikeBattlefieldRenderer.drawDistrictRiver(ctx,ox,oy,{heavy,view});
+      }else{
       ctx.fillStyle = "rgba(39,112,137,.68)";
       ctx.beginPath();
       ctx.moveTo(ox, oy + 930);
@@ -54236,6 +54246,7 @@ function drawSharedStoryDistrictFoundation(w, h, heavy=false){
       ctx.lineTo(ox, oy + 1100);
       ctx.closePath();
       ctx.fill();
+      }
 
       ctx.fillStyle = "#4b5563";
       ctx.fillRect(ox, oy + 470, 1200, 132);
@@ -54271,9 +54282,10 @@ function drawSharedStoryDistrictFoundation(w, h, heavy=false){
         ctx.lineTo(ox + x, oy + 967);
         ctx.stroke();
       }
-      drawSharedStoryDistrictScenery(ox, oy, heavy);
+      drawSharedStoryDistrictScenery(ox, oy, heavy, view);
     }
   }
+  globalThis.TigerStrikeBattlefieldRenderer?.drawMapLighting?.(ctx,view);
 }
 
 function drawMissionMapTruthOverlay(opts={}){
@@ -54386,7 +54398,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   const drawX = Number.isFinite(camX) ? Number(camX) : 0;
   const drawY = Number.isFinite(camY) ? Number(camY) : 0;
   const zone = missionEvacZoneSafe(S);
-  drawSharedStoryDistrictFoundation(w, h, heavy);
+  drawSharedStoryDistrictFoundation(w, h, heavy,{x:drawX,y:drawY,w:drawW,h:drawH});
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -54680,6 +54692,7 @@ function drawMapScene(){
     return ((n ^ (n >> 16)) >>> 0) / 4294967295;
   }
   function terrainTexture(seed, step=30, alpha=0.08, colorA="rgba(255,255,255,.05)", colorB="rgba(0,0,0,.08)"){
+    if(globalThis.TigerStrikeBattlefieldRenderer?.drawGroundTexture)return globalThis.TigerStrikeBattlefieldRenderer.drawGroundTexture(ctx,{x:camSnap.x,y:camSnap.y,w:viewportW,h:viewportH},{family:themeKey,heavy:frameIsSlow()});
     for(let y=0; y<h; y+=step){
       for(let x=0; x<w; x+=step){
         const n = seedNoise((x/step)|0, (y/step)|0, seed);
@@ -54816,6 +54829,7 @@ function drawMapScene(){
     ctx.setLineDash([]);
   }
   function treeDot(x,y,size=8){
+    if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapTree)return globalThis.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y+size*.5,size/24);
     ctx.globalAlpha=0.25;
     ctx.fillStyle="#05070b";
     ctx.beginPath(); ctx.ellipse(x, y + (size * 0.85), size * 1.05, size * 0.45, 0, 0, Math.PI*2); ctx.fill();
@@ -54833,6 +54847,7 @@ function drawMapScene(){
     rounded(x-ww/2,y-hh/2,ww,hh,10,"rgba(55,70,95,.85)","rgba(18,24,38,.9)");
   }
   function houseBlock(x,y){
+    if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapHouse)return globalThis.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x-18,y-12,36,24,{roofRise:9});
     ctx.globalAlpha=0.2;
     rounded(x-16,y-9,36,24,8,"rgba(0,0,0,.3)");
     ctx.globalAlpha=1;
@@ -54854,6 +54869,11 @@ function drawMapScene(){
       const rx = rad.rx;
       const ry = rad.ry;
       const rot = zone.rot || 0;
+
+      if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapWater){
+        globalThis.TigerStrikeBattlefieldRenderer.drawMapWater(ctx,{x:zone.x,y:zone.y,rx,ry,rot},{view:{x:camSnap.x,y:camSnap.y,w:viewportW,h:viewportH},heavy:frameIsSlow()});
+        continue;
+      }
 
       ctx.globalAlpha = 0.92 * mul;
       ctx.fillStyle = waterPalette.fill;
