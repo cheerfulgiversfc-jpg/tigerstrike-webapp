@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5248";
+const TS_BUILD = "5249";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -44676,6 +44676,8 @@ function rollDodge(){
   if(rollCooldownLeftMs(now) > 0) return interactionFeedback(`Roll cooling down (${rollCooldownLabel(now)}).`, { battle:S.inBattle, warn:true });
 
   const t = activeTiger() || lockedTiger() || (S.tigers || []).filter((candidate)=>candidate?.alive && Number(candidate._fieldPounceResolveAt || 0) > now).sort((a,b)=>dist(S.me.x,S.me.y,a.x,a.y)-dist(S.me.x,S.me.y,b.x,b.y))[0];
+  const combo = S.inBattle ? window.TigerEngagement.roll(S._rollEscapeChain,t?.id,now) : {escape:false,chain:null};
+  S._rollEscapeChain = combo.chain;
   const away = t ? Math.atan2(S.me.y - t.y, S.me.x - t.x) : ((S.me.face || 0) + Math.PI);
   const fromX = S.me.x;
   const fromY = S.me.y;
@@ -44684,9 +44686,9 @@ function rollDodge(){
   tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
   S.target = null;
   S.rollInvulnUntil = now + ROLL_INVULN_MS;
-  S.rollBufferedDodges = 1;
-  S.rollBufferedUntil = now + ROLL_BUFFER_DODGE_MS;
-  S.rollCooldownUntil = now + ROLL_COOLDOWN_MS;
+  S.rollBufferedDodges = 0;
+  S.rollBufferedUntil = 0;
+  S.rollCooldownUntil = now + (S.inBattle && !combo.escape ? window.TigerEngagement.ROLL_RECOVERY_MS : ROLL_COOLDOWN_MS);
   S.rollAnimStart = now;
   S.rollAnimUntil = now + ROLL_ANIM_MS;
   S.rollAnimFromX = fromX;
@@ -44697,7 +44699,11 @@ function rollDodge(){
   S.me.step = (S.me.step + 2.2) % (Math.PI * 2);
   emitCombatParticles("dust", fromX, fromY + 8, { sourceX:nx, sourceY:ny });
   emitCombatParticles("dodge", S.me.x, S.me.y + 8, { sourceX:fromX, sourceY:fromY });
-  if(S.inBattle) setBattleMsg("Roll executed. Next tiger hit will be dodged.");
+  if(combo.escape){
+    endBattle('RETREAT');
+    S.lockedTigerId = null;
+    interactionFeedback('Double roll: disengaged. Move to safety to heal and restore armor.',{success:true});
+  }else if(S.inBattle) setBattleMsg("Dodge roll: engagement held. Roll again within 3 seconds to disengage.");
   else interactionFeedback("Roll executed. Ambush dodged if timed correctly.", { success:true });
   sfx("ui");
   hapticImpact("medium");
@@ -48460,6 +48466,8 @@ function keepBattleTigerBesidePlayer(t, now=Date.now()){
   if(!S.inBattle || !t || !t.alive) return;
   const meX = Number(S.me?.x) || 0;
   const meY = Number(S.me?.y) || 0;
+  t.heading = Math.atan2(meY - t.y, meX - t.x);
+  t.drawDir = Math.cos(t.heading) >= 0 ? 1 : -1;
   const dx = t.x - meX;
   const dy = t.y - meY;
   const d = Math.hypot(dx, dy);
@@ -49593,11 +49601,19 @@ function renderCombatControls(){
       : "Roll dodge. Best used during tiger combat or ambush warnings.";
   });
   const rollBtn = document.getElementById("combatRollBtn");
-  if(rollBtn) rollBtn.innerText = rollLeft ? `Roll (${rollLeft})` : "Roll";
-  if(fieldRollBtn) fieldRollBtn.innerText = rollLeft ? `↯ Roll (${rollLeft})` : "↯ Roll";
+  const escapeRoll = S.inBattle && String(S._rollEscapeChain?.target)===String(S.activeTigerId) && Date.now()-Number(S._rollEscapeChain?.at)<=3000;
+  const rollCaption = escapeRoll ? 'Roll to Escape' : 'Roll';
+  if(rollBtn) rollBtn.innerText = rollLeft ? `Roll (${rollLeft})` : rollCaption;
+  if(fieldRollBtn) fieldRollBtn.innerText = rollLeft ? `↯ Roll (${rollLeft})` : `↯ ${rollCaption}`;
   if(touchFieldRollBtn){
     const label = touchFieldRollBtn.querySelector(".touchBtnLabel");
-    if(label) label.innerText = rollLeft ? `Roll ${rollLeft}` : "Roll";
+    if(label) label.innerText = rollLeft ? `Roll ${rollLeft}` : rollCaption;
+  }
+  const touchCombatRoll=document.getElementById('touchRollBtn');
+  if(touchCombatRoll){
+    const label=touchCombatRoll.querySelector('.touchBtnLabel');
+    if(label)label.innerText=rollLeft?`Roll ${rollLeft}`:escapeRoll?'Escape':'Roll';
+    touchCombatRoll.title='One roll dodges and stays engaged. Two distinct rolls within 3 seconds disengage.';
   }
   const ammoWeapon = equippedWeapon();
   const ammoMode = selectedAmmoModeForWeapon(ammoWeapon);
@@ -49682,6 +49698,9 @@ function startCombat(){
   S.inBattle = true;
   S.activeTigerId = t.id;
   S.lockedTigerId = t.id;
+  S._rollEscapeChain = null;
+  t._battleAttack = null;
+  t._lastBattleAttack = null;
   if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("engage", { id:t.id });
   S._combatTigerAttackAt = Date.now() + (isBossTiger(t) ? 680 : 950);
   S._battleHeartbeatAt = Date.now();
@@ -49881,6 +49900,8 @@ function bindAttackButtonGestures(){
 function endBattle(reason){
   const focusTigerId = S.activeTigerId;
   const focusTiger = focusTigerId ? tigerById(focusTigerId) : null;
+  if(focusTiger)focusTiger._battleAttack=null;
+  S._rollEscapeChain = null;
   triggerBattleCinematic("exit", focusTigerId);
   const overlay = document.getElementById("battleOverlay");
   if(overlay) overlay.style.display="none";
@@ -50365,6 +50386,10 @@ function playerAction(action){
     }
 
     const w=equippedWeapon();
+    if(!window.TigerEngagement.canFire(S.me,t,equippedWeaponRange())){
+      setBattleMsg(`${w.name}: target out of firing range. Engagement held—move closer, or double-roll to disengage.`);
+      return;
+    }
     if(S.mode !== "Survival" && window.TigerTutorial?.isRunning && w.type === "lethal" && selectedAmmoModeForWeapon(w) !== "rubber"){
       setWeaponAmmoMode(w.id, "rubber", { silent:true });
     }
@@ -50553,6 +50578,16 @@ function tigerTurn(t, softened=false, opts={}){
   if(!t.alive) return;
   const now = Date.now();
   S._battleHeartbeatAt = now;
+  if(!opts.resolving){
+    if(!S.inBattle || t._battleAttack || t.holdUntil > now) return 0;
+    const kind=opts.kind||'strike';
+    const visualKind=kind==='strike'?((t._strikeSequence=Number(t._strikeSequence||0)+1)%2?'claw':'bite'):kind;
+    const windup=kind==='charge'?700:kind==='pounce'?650:560;
+    t._battleAttack={startedAt:now,resolveAt:now+windup,kind:visualKind,combatKind:kind,x:S.me.x,y:S.me.y,tigerX:t.x,tigerY:t.y,softened,damageMul:opts.dmgMul??1,maxRange:opts.maxRange??120};
+    t.attackTelegraphStart=now;t.attackTelegraphUntil=now+windup;t.attackTelegraphKind=visualKind;
+    setBattleMsg(`${visualKind.toUpperCase()} incoming—time one roll to dodge; two rolls within 3 seconds disengage.`);
+    return 0;
+  }
   if(t.holdUntil && now < t.holdUntil){
     if(S.inBattle) setBattleMsg(`Tiger #${t.id} is trapped and cannot attack.`);
     return 0;
@@ -50560,7 +50595,10 @@ function tigerTurn(t, softened=false, opts={}){
   keepBattleTigerBesidePlayer(t, now);
   const maxRange = Number.isFinite(opts.maxRange) ? opts.maxRange : 120;
   const distToPlayer = dist(t.x, t.y, S.me.x, S.me.y);
-  if(distToPlayer > maxRange) return 0;
+  if(distToPlayer > maxRange || (opts.aim && dist(S.me.x,S.me.y,opts.aim.x,opts.aim.y)>62)){
+    if(now < Number(S.rollInvulnUntil||0))triggerCombatInteraction('dodge',{tiger:t,target:S.me,x:S.me.x,y:S.me.y-8,label:'DODGE'});
+    return 0;
+  }
 
   const shieldBroken = isBossTiger(t) && now < (t.bossShieldBreakUntil || 0);
   if(shieldActiveNow() && !shieldBroken){
@@ -50577,7 +50615,7 @@ function tigerTurn(t, softened=false, opts={}){
     if(S.inBattle) setBattleMsg("⚠️ Shield break! Boss roar pierced your shield.");
   }
   const rollInvulnActive = now < (S.rollInvulnUntil || 0);
-  const rollBufferedActive = (S.rollBufferedDodges || 0) > 0 && now < (S.rollBufferedUntil || 0);
+  const rollBufferedActive = false; // A roll protects its actual dodge window, not a future untelegraphed hit.
   if(rollInvulnActive || rollBufferedActive){
     if(rollBufferedActive){
       S.rollBufferedDodges = 0;
@@ -50679,33 +50717,27 @@ function combatTick(){
   S.lockedTigerId = t.id;
   t.aggroBoost = Math.max(t.aggroBoost || 0, 0.95);
   const now = Date.now();
-  if((now - Number(S._battleHeartbeatAt || now)) > 12000){
-    endBattle("RECOVERY");
-    S.lockedTigerId = null;
-    toast("Battle recovered. Tap tiger again to re-engage.");
-    return;
-  }
+  S._battleHeartbeatAt = now;
   keepBattleTigerBesidePlayer(t, now);
 
   const d = dist(S.me.x, S.me.y, t.x, t.y);
   const rangeLimit = equippedWeaponRange();
   if(d > rangeLimit){
-    const trappedHold = !!(t.holdUntil && now < t.holdUntil);
-    const shieldOn = shieldActiveNow();
-    if(trappedHold || shieldOn){
-      if((t._rangeGraceHintAt || 0) + 950 < now){
-        t._rangeGraceHintAt = now;
-        setBattleMsg(trappedHold
-          ? "Tiger is trapped. Keep firing while the trap holds."
-          : "Shield is active. You can keep attacking while pressure is up.");
-      }
-    } else {
-      endBattle("RETREAT");
-      S.lockedTigerId = null;
-      toast(`${equippedWeapon().name} lost range. Tap that tiger again when you get back in range.`);
-      save();
-      return;
+    if((t._rangeGraceHintAt || 0) + 950 < now){
+      t._rangeGraceHintAt=now;
+      setBattleMsg('Engagement held. Move closer to fire, or roll twice within 3 seconds to disengage.');
     }
+  }
+  if(t._battleAttack){
+    const attack=t._battleAttack;
+    if(t.holdUntil>now || t.staggerUntil>now || Number(t.lastRubberHitAt||0)>attack.startedAt){t._battleAttack=null;return;}
+    if(now<attack.resolveAt)return;
+    t._battleAttack=null;
+    // Do not deliver an old queued hit after tab suspension or a long pause.
+    if(now>attack.resolveAt+1200)return;
+    t._lastBattleAttack=attack;
+    tigerTurn(t,attack.softened,{kind:attack.combatKind,dmgMul:attack.damageMul,maxRange:attack.maxRange,aim:attack,resolving:true});
+    return;
   }
   if(t.holdUntil && now < t.holdUntil){
     setBattleMsg(`Tiger #${t.id} is trapped. Attack while it is held.`);
@@ -59935,7 +59967,8 @@ function drawSoldier(){
     ctx.stroke();
     ctx.restore();
   }
-  const ang = soloCombatPresentation()?.pose('solo',now)?.face??(S.me.face||0);
+  const combatTarget=S.inBattle?activeTiger():null;
+  const ang = combatTarget?.alive?Math.atan2(combatTarget.y-y,combatTarget.x-x):(soloCombatPresentation()?.pose('solo',now)?.face??(S.me.face||0));
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
   const stride = rolling ? 0 : (Math.sin(step * 1.9) * (0.95 + (1.55 * moveBlend)));
   const shoulderShift = rolling ? 0 : (Math.sin(step * 2.1) * 0.7);
@@ -60769,8 +60802,12 @@ function markTigerBehaviorAnim(t, kind, ms=720){
 
 function applyCombatKnockback(ent, fromX, fromY, distancePx=18, radius=16){
   if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return false;
-  const a = Math.atan2(ent.y - Number(fromY || ent.y), ent.x - Number(fromX || ent.x));
-  const distPx = clamp(Number(distancePx || 0), 0, 48);
+  const a = Math.atan2(ent.y - Number(fromY ?? ent.y), ent.x - Number(fromX ?? ent.x));
+  let distPx = clamp(Number(distancePx || 0), 0, 48);
+  if(S.inBattle && ent!==S.me && ent.id===S.activeTigerId && dist(Number(fromX),Number(fromY),S.me.x,S.me.y)<3){
+    const room=Math.max(0,equippedWeaponRange()-2-dist(ent.x,ent.y,S.me.x,S.me.y));
+    distPx=Math.min(distPx,room);
+  }
   if(distPx <= 0) return false;
   const nx = ent.x + Math.cos(a) * distPx;
   const ny = ent.y + Math.sin(a) * distPx;
@@ -61759,11 +61796,13 @@ function drawPremium2DArtPhase7TigerPremiumInk(t, s, c, visual, behaviorAnim={},
 
 function drawSharedMissionTiger(t,x,y,scale,colors,behavior={},now=Date.now()){
   const speed=Math.hypot(Number(t.vx)||0,Number(t.vy)||0);
-  const facing=Number.isFinite(t.drawDir)?(t.drawDir<0?-1:1):(Math.cos(t.heading||0)<0?-1:1);
+  const focused=typeof S==='object'&&S.inBattle&&S.activeTigerId===t.id;
+  const facing=focused?(S.me.x>=x?1:-1):Number.isFinite(t.drawDir)?(t.drawDir<0?-1:1):(Math.cos(t.heading||0)<0?-1:1);
   return globalThis.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{...t,x,y,boss:isBossTiger(t)},{
     facing,scale,palette:colors,now,walking:speed>.15,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
     running:speed>2.1,gait:t.gaitState,phase:(Number(t.step)||0)*2.18,
     pouncing:!!behavior.pounce,crouching:!!behavior.crouch,roaring:!!behavior.roaring,
+    attack:t._battleAttack||t._lastBattleAttack,
     reaction:typeof soloCombatReactions==='function'?soloCombatReactions()?.pose('tiger',String(t.id),now,combatComfortSettings())||0:0
   });
 }
@@ -62982,6 +63021,9 @@ function drawEntities(){
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
   drawSafe("drawFieldObjectiveBeacons",drawFieldObjectiveBeacons);
   drawSafe('drawSharedWeaponImpacts',()=>soloCombatPresentation()?.draw(ctx,Date.now(),combatComfortSettings()));
+  drawSafe('drawTigerStrike',()=>{
+    for(const t of S.tigers||[]){if(!t.alive)continue;window.TigerCombatReactions?.drawStrike(ctx,t._battleAttack||t._lastBattleAttack,Date.now(),combatComfortSettings());}
+  });
   drawSafe('drawSharedActionMoments',()=>soloCombatReactions()?.draw(ctx,Date.now(),combatComfortSettings(),{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height}));
   drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
   const iphoneStability = iphoneStabilityModeActive();

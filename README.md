@@ -1,6 +1,13 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V13.2 — Engagement & Dodge Control
+
+- Solo engagement survives shotgun knockback, movement outside firing range and a single roll. Actual shots still require weapon range, and player-shot stagger knockback cannot push an in-range active tiger beyond that weapon's firing edge. No damage/ammunition/capture/reward values change.
+- One roll provides the existing 520 ms invulnerability window and stays engaged. A second distinct roll after 520 ms but within 3000 ms of the first disengages. The combo belongs to one target and resets on battle entry/exit. Field rolls retain their existing cooldown. There is no stored promise to dodge an unrelated future attack.
+- Solo tiger strikes queue a visible 560/650/700 ms claw-or-bite/pounce/charge warning before damage resolution. Interrupted, ended and stale attacks do not land later. The shared tiger artwork shows grounded strikes versus leaps, plus readable claw/bite marks. Characters aim toward their combat target between shots. Accepted shot cues get a first-painted-frame tracer, with reduced-flash settings respected.
+- Co-op remains free-movement combat, not the Solo engagement state machine. It receives shared facing/shot/pounce-strike presentation improvements; this update does not add a new Co-op Roll action or lock. Existing server combat/rewards remain unchanged.
+
 ## V13.1 — Smooth Play & Smart Graphics
 
 - Graphics opens from the existing gear/Auto button or the live squad equipment bar. Auto, Battery Saver and High Quality preferences are stored locally per device, shared across modes, and do not enter a player's inventory or cloud progression. Legacy Performance preferences migrate to Battery Saver; iPhone safety fallbacks remain active.

@@ -2218,6 +2218,8 @@
     if(tiger.defeated) return;const alpha=!!tiger.boss;const tigerId=String(tiger.id||"");const ghost=tigerId==="ghoststripe_alpha"||tigerId==="s83_shadeclaw"||tigerId==="s90_phantom_tiger";const blood=tigerId==="s20_blood_tiger"||tigerId==="s70_legendary_blood_tiger";const ancient=tigerId==="s100_ancient_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":(ancient?"#facc15":"#f59e0b"));const ear=blood?"#fb7185":(ghost?"#e2e8f0":(ancient?"#fef08a":"#fbbf24"));const leg=blood?"#7f1d1d":(ghost?"#94a3b8":(ancient?"#a16207":"#d97706"));const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const nearest=(state.snapshot?.players||[]).slice().sort((a,b)=>distance(a,tiger)-distance(b,tiger))[0];const facing=nearest?(Number(nearest.x)>=Number(tiger.x)?1:-1):1;
     if(window.TigerStrikeBattlefieldRenderer?.drawTiger){
       const key=`tiger:${tiger.id}`;
+      const combatOpponent=(state.snapshot?.players||[]).find(p=>String(p.pendingTigerAttack?.tigerId)===String(tiger.id))||(state.snapshot?.players||[]).find(p=>(p.combatEvents||[]).some(e=>String(e.targetId)===String(tiger.id)&&now-Number(e.at)>=0&&now-Number(e.at)<8000));
+      const combatFacing=combatOpponent?(Number(combatOpponent.x)>=Number(tiger.x)?1:-1):null;
       const prior=state.walkVisual.get(key)||{x:Number(tiger.x),y:Number(tiger.y),phase:0,facing};
       const visualRun=`${state.snapshot?.code}:${state.snapshot?.startedAt}`;
       if(prior.run!==visualRun){prior.attack=null;prior.run=visualRun;prior.x=Number(tiger.x);prior.y=Number(tiger.y);prior.phase=0;}
@@ -2228,7 +2230,7 @@
       const dx=drawX-prior.x,moved=Math.hypot(dx,drawY-prior.y);
       const walking=moved>.14&&!tiger.captured;
       if(walking){prior.phase+=Math.min(1.15,moved*.2);if(Math.abs(dx)>.05)prior.facing=dx<0?-1:1;}
-      const visualFacing=tiger.attackWarnings?.length?facing:(walking?prior.facing:facing);
+      const visualFacing=combatFacing??(tiger.attackWarnings?.length?facing:(walking?prior.facing:facing));
       prior.x=drawX;prior.y=drawY;prior.frameAt=frameAt;state.walkVisual.set(key,prior);
       // Smooth only this local drawing copy; server hitboxes and warnings stay authoritative.
       tiger={...tiger,x:drawX,y:drawY};
@@ -2237,6 +2239,7 @@
       const warning=(tiger.attackWarnings||[]).find(a=>now<Number(a.resolveAt));
       if(warning)prior.attack={...warning};
       if(prior.attack&&(now>Number(prior.attack.resolveAt)+420||Number(tiger.lastRubberHitAt||0)>Number(prior.attack.startedAt||0)))prior.attack=null;
+      if(prior.attack)window.TigerCombatReactions?.drawStrike(ctx,{...prior.attack,kind:'pounce',tigerX:tiger.x,tigerY:tiger.y},now,window.TigerCombatFeel?.settings(),false);
       const drawn=window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,tiger,{facing:visualFacing,walking:walking&&!tiger.attackWarnings?.length,running:moved>.8,phase:prior.phase,scale:s,now,attack:prior.attack,swimming:coopSwimmingAt(tiger.x,tiger.y),reaction:typeof reactionPresentation==='object'?reactionPresentation?.pose('tiger',String(tiger.id),Date.now(),window.TigerCombatFeel?.settings())||0:0});
       const encounter=window.TigerEncounters?.posture(tiger,now);
       if(encounter){ctx.fillStyle=encounter.warning?'#ffe4e6':'#fef3c7';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText(encounter.label,tiger.x,drawn.labelY-16);}
@@ -2309,7 +2312,11 @@
   function drawStorySoldier(ctx,p,source,draw,mine){
     const cloth=window.TigerMasteryRewards?.uniformPalette(p.masteryIdentity?.uniform?.id);
     const impactPose=combatPresentation?.pose(String(p.userId),Date.now());
-    const body=cloth?.body||"#64734b";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=impactPose?.face??Number(source.face||0);
+    const aimNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
+    const recentShot=(p.combatEvents||[]).filter(e=>!e.captured&&aimNow-Number(e.at)>=0&&aimNow-Number(e.at)<8000).at(-1);
+    const aimTarget=recentShot&&(state.snapshot?.tigers||[]).find(t=>String(t.id)===String(recentShot.targetId)&&!t.defeated&&Number(t.hp)>0);
+    const aimFace=aimTarget?Math.atan2(aimTarget.y-draw.y,aimTarget.x-draw.x):null;
+    const body=cloth?.body||"#64734b";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=aimFace??impactPose?.face??Number(source.face||0);
     const key=String(p.userId);const prior=state.walkVisual.get(key)||{x:Number(draw.x),y:Number(draw.y),phase:0};const moved=Math.hypot(Number(draw.x)-prior.x,Number(draw.y)-prior.y);const walking=moved>.18&&!p.downed;prior.phase=walking?prior.phase+Math.min(1.1,moved*.24):prior.phase*.88;prior.x=Number(draw.x);prior.y=Number(draw.y);state.walkVisual.set(key,prior);
     const stride=walking?Math.sin(prior.phase)*7:0;const bob=walking?Math.abs(Math.sin(prior.phase))*2:0;const lookX=Math.cos(face)*1.5,lookY=Math.sin(face)*.7;
     if(window.TigerStrikeBattlefieldRenderer?.drawSoldier){

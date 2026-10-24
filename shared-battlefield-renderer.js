@@ -294,16 +294,18 @@
     const lethal=!asleep&&!!entity.lethalWounded;
     const attack=options.attack||(entity.attackWarnings||[]).find(a=>now<Number(a.resolveAt)+420);
     const validAttack=!dead&&!asleep&&attack&&Number(entity.lastRubberHitAt||0)<=Number(attack.startedAt||0);
+    const strikeKind=String(attack?.kind||'pounce'),groundStrike=['claw','bite','strike'].includes(strikeKind);
     const warning=!dead&&!asleep&&(validAttack&&now<Number(attack.resolveAt)||now<Number(entity.pounceWindupUntil||0));
     const pounceProgress=validAttack&&now>=Number(attack.resolveAt)?clamp((now-Number(attack.resolveAt))/420,0,1):
       options.pouncing&&Number(entity.pounceWindupUntil)>0?clamp((now-Number(entity.pounceWindupUntil))/Math.max(420,Number(entity.huntStateUntil||0)-Number(entity.pounceWindupUntil)),0,1):0;
-    const pouncing=!dead&&!asleep&&!warning&&(pounceProgress>0&&pounceProgress<1||!!options.pouncing);
+    const striking=!!validAttack&&now>=Number(attack.resolveAt)&&now<Number(attack.resolveAt)+420;
+    const pouncing=!dead&&!asleep&&!warning&&!groundStrike&&(pounceProgress>0&&pounceProgress<1||!!options.pouncing);
     const awareness=String(entity.awarenessState||"calm").toLowerCase();
     const aggressive=!dead&&!asleep&&(warning||pouncing||options.roaring||["attacking","blood_frenzy"].includes(awareness));
-    const labels=asleep?["TRANQUILIZED"]:dead?["DEAD"]:lethal?["LETHAL WOUND"]:tagged?["TRANQ TAGGED"]:warning?["POUNCE — MOVE!"]:pouncing?["POUNCE"]:aggressive?[awareness==="blood_frenzy"?"BLOOD FRENZY":"AGGRESSIVE"]:injured?["INJURED"]:[];
+    const labels=asleep?["TRANQUILIZED"]:dead?["DEAD"]:lethal?["LETHAL WOUND"]:tagged?["TRANQ TAGGED"]:warning?[`${strikeKind.toUpperCase()} — DODGE!`]:pouncing?["POUNCE"]:striking?[strikeKind.toUpperCase()]:aggressive?[awareness==="blood_frenzy"?"BLOOD FRENZY":"AGGRESSIVE"]:injured?["INJURED"]:[];
     if(!asleep&&!dead&&slowed)labels.push("SLOWED");
     if(!asleep&&!dead&&injured&&!labels.includes("INJURED"))labels.push("INJURED");
-    return {asleep,dead,tagged,slowed,injured,lethal,warning:!!warning,pouncing:!!pouncing,pounceProgress,aggressive,label:labels.join(" • ")};
+    return {asleep,dead,tagged,slowed,injured,lethal,warning:!!warning,pouncing:!!pouncing,pounceProgress,aggressive,striking,strikeKind,label:labels.join(" • ")};
   }
   function drawTiger(ctx,entity={},options={}){
     if(options.swimming&&!entity.captured&&!entity.carcass&&Number(entity.hp)>0)return drawSwimming(ctx,entity,options,drawTiger,true);
@@ -342,7 +344,7 @@
     for(let i=0;i<4;i++)line(ctx,stripe,2,[[-42-i*5,-7-i*2+tailWave*.7],[-44-i*5,-11-i*2+tailWave*.7]]);
     function leg(lx,index,front){
       const paired=index===0||index===3;
-      const swing=rest?0:state.pouncing?(lx<0?-12:16):(paired?stride:-stride)*(state.injured&&index===2?.45:1);
+      const swing=rest?0:state.pouncing?(lx<0?-12:16):state.striking&&lx>0?Math.sin(state.pounceProgress*Math.PI)*15:(paired?stride:-stride)*(state.injured&&index===2?.45:1);
       const lift=moving?Math.max(0,Math.cos(phase+(paired?0:Math.PI)))*(running?6:3):0;
       const knee=lx+swing*.4+(front?2:-3),foot=lx+swing;
       const fy=legBase-lift-crouch-(state.pouncing?5:0);
@@ -405,7 +407,7 @@
       }
     }
     line(ctx,stripe,1,[[17,4],[16,8],[11,9]]);
-    if(state.aggressive&&!rest){ellipse(ctx,13,10,6,3.5,"#542e2c");line(ctx,cream,1.5,[[11,8],[12,11]]);line(ctx,cream,1.5,[[16,8],[15,11]]);}
+    if((state.aggressive||state.striking)&&!rest){ellipse(ctx,13,10,6,state.strikeKind==='bite'&&state.striking?6:3.5,"#542e2c");line(ctx,cream,1.5,[[11,8],[12,11]]);line(ctx,cream,1.5,[[16,8],[15,11]]);}
     for(let i=0;i<3;i++)line(ctx,cream,.7,[[11,5+i*2],[25,2+i*4]]);
     for(const [dx,dy] of [[9,4],[12,5],[10,7]])ellipse(ctx,dx,dy,.6,.6,stripe);
     ctx.restore();

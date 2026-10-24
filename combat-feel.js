@@ -38,7 +38,10 @@
     }
     function live(now){active=active.filter(e=>now-e.born>=0&&now-e.born<620);return active;}
     function draw(ctx,now=Date.now(),comfort=settings()){
-      for(const e of live(now))drawEvent(ctx,e,now-e.born,comfort);
+      for(const e of live(now)){
+        if(!Number.isFinite(e.firstDrawAt))e.firstDrawAt=now;
+        drawEvent(ctx,e,now-e.born,comfort,now-e.firstDrawAt);
+      }
     }
     function shake(now=Date.now(),comfort=settings()){
       if(!comfort.shake||comfort.reducedFlashes)return {x:0,y:0};
@@ -52,13 +55,13 @@
     }
     return {emit,ingest,draw,shake,pose,clear(){active=[];seen.clear();run=null;latestServer=-Infinity;},count:()=>active.length};
   }
-  function drawEvent(ctx,e,age,comfort){
+  function drawEvent(ctx,e,age,comfort,flashAge=age){
     if(age<0||age>=620)return;
     const color=COLORS[e.mode],dx=e.x2-e.x1,dy=e.y2-e.y1,angle=Math.atan2(dy,dx),ux=Math.cos(angle),uy=Math.sin(angle),mx=e.x1+ux*32,my=e.y1+uy*32-5;
     ctx.save();ctx.lineCap='round';ctx.lineWidth=2;ctx.strokeStyle=color;ctx.fillStyle=color;
-    if(age<100&&!comfort.reducedFlashes){
-      ctx.save();ctx.translate(mx,my);ctx.rotate(angle);ctx.globalAlpha=1-age/100;ctx.beginPath();ctx.moveTo(-3,0);ctx.lineTo(8,-4);ctx.lineTo(16,0);ctx.lineTo(8,4);ctx.closePath();ctx.fill();ctx.restore();
-      ctx.globalAlpha=(1-age/100)*.7;ctx.strokeStyle=e.accent||color;ctx.lineWidth=e.width||2;ctx.setLineDash(e.mode==='tranq'?[4,8]:[]);ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(e.x2,e.y2-10);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle=color;ctx.lineWidth=2;
+    if(flashAge<150){
+      if(!comfort.reducedFlashes){ctx.save();ctx.translate(mx,my);ctx.rotate(angle);ctx.globalAlpha=1-flashAge/150;ctx.beginPath();ctx.moveTo(-3,0);ctx.lineTo(8,-4);ctx.lineTo(16,0);ctx.lineTo(8,4);ctx.closePath();ctx.fill();ctx.restore();}
+      ctx.globalAlpha=comfort.reducedFlashes?.4:(1-flashAge/150)*.7;ctx.strokeStyle=e.accent||color;ctx.lineWidth=e.width||2;ctx.setLineDash(e.mode==='tranq'?[4,8]:[]);ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(e.x2,e.y2-10);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle=color;ctx.lineWidth=2;
     }
     ctx.globalAlpha=comfort.reducedFlashes?.65:Math.max(.15,1-age/620);
     const r=7+Math.min(age,220)/22;
