@@ -1,6 +1,14 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V13.3 — Combat Performance & Network Resilience
+
+- Solo reaction sampling copies only combat scalars, not full support-unit equipment or tiger records. Local drawing-layer diagnostics help identify remaining hotspots.
+- Co-op omits off-camera actor models only; simulation, minimap markers, objective warnings and visible scent halos remain. A repeatable 60-tiger/40-civilian river scene generates 21,121 rather than 45,646 canvas calls per frame (about 54% fewer). Node command generation measured approximately 5.2 ms median versus 8.5 ms baseline; these are not phone FPS results.
+- A stationary viewer refreshes promptly while a teammate moves. Late-packet corrections are speed-bounded; prediction remains capped at 360 ms. Pauses, restarts and down-state transitions clear stale movement presentation. Server authority, combat values, music, difficulty and rewards are unchanged.
+- Presence updates no longer rebuild unchanged Shop/Inventory buttons and interrupt taps. Actual gear/profile changes still refresh immediately.
+- Combined regression tests use two isolated clients and memory-only services for crowded river rendering, capture, separate Shop/Inventory profiles, purchase isolation and dropped-resume recovery. The localhost browser lab adds 120–1400 ms delays and every-fifth-sync failures. Physical Telegram two-phone weak-link testing remains outstanding. See `qa/V13.3-VALIDATION.md` for scope and reproduction.
+
 ## V13.2 — Engagement & Dodge Control
 
 - Solo engagement survives shotgun knockback, movement outside firing range and a single roll. Actual shots still require weapon range, and player-shot stagger knockback cannot push an in-range active tiger beyond that weapon's firing edge. No damage/ammunition/capture/reward values change.

@@ -9,6 +9,13 @@
   const MAX_PREDICTION_MS = 360;
   const SNAP_DISTANCE = 420;
   const clamp = (value, min, max)=>Math.max(min, Math.min(max, Number(value) || 0));
+  function correct(point,target,dt,speed=185,gain=18){
+    const seconds=clamp(dt,0,.1),blend=1-Math.exp(-gain*seconds);
+    let dx=(target.x-point.x)*blend,dy=(target.y-point.y)*blend;
+    const distance=Math.hypot(dx,dy),limit=Math.max(100,Math.max(0,Number(speed)||0)*2.2)*seconds;
+    if(distance>limit&&distance>0){dx*=limit/distance;dy*=limit/distance;}
+    return {x:point.x+dx,y:point.y+dy};
+  }
 
   function accept(previous, player, receivedAt, world){
     const width = Math.max(48, Number(world?.width || 1200));
@@ -44,13 +51,13 @@
     const travel = Math.max(0, Number(speed) || 0) * predictionMs / 1000;
     const targetX = clamp(sample.x + sample.moveX * travel, 24, width - 24);
     const targetY = clamp(sample.y + sample.moveY * travel, 24, height - 24);
-    const blend = 1 - Math.exp(-18 * clamp(dt, 0, .05));
+    const draw=correct({x:sample.drawX,y:sample.drawY},{x:targetX,y:targetY},dt,speed);
     return {
       ...sample,
-      drawX:sample.drawX + (targetX - sample.drawX) * blend,
-      drawY:sample.drawY + (targetY - sample.drawY) * blend,
+      drawX:draw.x,
+      drawY:draw.y,
     };
   }
 
-  return Object.freeze({ accept, step, MAX_PREDICTION_MS });
+  return Object.freeze({ accept, step, correct, MAX_PREDICTION_MS });
 });

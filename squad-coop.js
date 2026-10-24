@@ -425,12 +425,14 @@
     if(!snapshot || typeof snapshot !== "object") return;
     const previousStatus=state.snapshot?.status;
     if(state.snapshot && cleanCode(snapshot.code) === cleanCode(state.snapshot.code) && Number(snapshot.serverNow || 0) < Number(state.snapshot.serverNow || 0)) return;
-    if(state.snapshot && cleanCode(snapshot.code) !== cleanCode(state.snapshot.code)) state.remoteDraw.clear();
+    const changedRun=state.snapshot?.startedAt !== snapshot.startedAt || state.snapshot?.code !== snapshot.code;
+    if(changedRun){state.remoteDraw.clear();state.walkVisual.clear();state.civilianDraw=new Map();}
+    if(changedRun||snapshot.paused)clearPresentationInput();
     const receivedAt = performance.now();
     if(state.snapshot?.startedAt !== snapshot.startedAt || state.snapshot?.code !== snapshot.code)state.civilianDraw=new Map();
     for(const player of (snapshot.players || [])){
       if(Number(player.userId) === viewerId()) continue;
-      state.remoteDraw.set(player.userId, squadMotion.accept(state.remoteDraw.get(player.userId), player, receivedAt, snapshot.world));
+      state.remoteDraw.set(player.userId, squadMotion.accept(snapshot.paused?null:state.remoteDraw.get(player.userId), {...player,moving:!!player.moving&&snapshot.status==='active'&&!snapshot.paused}, receivedAt, snapshot.world));
     }
     state.snapshot = snapshot;
     reactionPresentation?.observe(snapshot,Date.now());
@@ -454,7 +456,7 @@
     if(Array.isArray(roles) && roles.length) state.roles = roles;
     const mine = localSnapshotPlayer();
     if(mine){
-      if(!state.local || Number(state.local.userId) !== Number(mine.userId)){
+      if(changedRun || !state.local || Number(state.local.userId) !== Number(mine.userId) || !!state.local.downed!==!!mine.downed){
         state.local = { ...mine };
       }else if(!Object.values(state.move).some(Boolean) && !state.keys.size && !state.joystick.active){
         state.local.x = Number(mine.x);
@@ -471,7 +473,11 @@
     }
     syncSquadMusicContext();
     const bodyMode = $("squadBody")?.dataset?.squadMode || "";
-    if(snapshot.status === "active" && bodyMode === "active" && $("squadArena")){
+    if(state.equipmentOpen && bodyMode === "equipment"){
+      // Presence packets must not replace a button between pointer-down and
+      // click. Rebuild only when this player's actual gear or message changes.
+      if(state.lastEquipmentMarkup !== equipmentHtml()) render();
+    }else if(snapshot.status === "active" && bodyMode === "active" && $("squadArena")){
       updateActiveHud();
     }else if(snapshot.status === "waiting" && bodyMode === "waiting"){
       updateWaitingLobby();
@@ -1097,7 +1103,8 @@
     if(!body) return;
     if(state.equipmentOpen){
       body.dataset.squadMode = "equipment";
-      body.innerHTML = equipmentHtml();
+      state.lastEquipmentMarkup = equipmentHtml();
+      body.innerHTML = state.lastEquipmentMarkup;
     }else if(state.snapshot && ["active","complete","failed"].includes(state.snapshot.status)){
       body.dataset.squadMode = state.snapshot.status;
       body.innerHTML = arenaHtml();
@@ -1911,7 +1918,7 @@
       if(!state.polling || !state.open || !state.code) return;
       const cycleStartedAt = Date.now();
       await sync().catch(()=>{});
-      const desiredInterval = state.snapshot?.status === "active" ? (movementInput().moving ? 300 : 750) : 1100;
+      const desiredInterval = window.TigerSmoothPlay?.pollInterval(state.snapshot,movementInput().moving) ?? (state.snapshot?.status === "active" ? (movementInput().moving ? 300 : 750) : 1100);
       state.pollTimer = window.setTimeout(run, Math.max(100, desiredInterval - (Date.now() - cycleStartedAt)));
     };
     run();
@@ -2155,9 +2162,9 @@
     ctx.fillStyle="rgba(69,10,10,.90)";roundRect(ctx,-66,-58,132,34,10);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#ffe4e6";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(label,0,-36);ctx.restore();
   }
 
-  function drawStoryCivilian(ctx,civ,rescued){
+  function drawStoryCivilian(ctx,civ,rescued,arrivalHint){
     const renderNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
-    const arrival=window.TigerCivilianRescue?.arrivalFrame(civ.rescueArrival,renderNow);
+    const arrival=arrivalHint===undefined?window.TigerCivilianRescue?.arrivalFrame(civ.rescueArrival,renderNow):arrivalHint;
     const celebration=window.TigerCombatReactions?.celebration(civ,renderNow)||0;
     if(civ.secured){
       if(!arrival || arrival.done)return;
@@ -2168,7 +2175,8 @@
       const key=`${state.snapshot?.code}:${state.snapshot?.startedAt}:${civ.id}`;
       const prior=state.civilianDraw.get(key)||{x:civ.x,y:civ.y};
       const at=performance.now(),elapsed=clamp(at-Number(prior.frameAt??at-16.67),0,100),blend=1-Math.pow(1-.18,elapsed/16.67);
-      prior.x+=(civ.x-prior.x)*blend;prior.y+=(civ.y-prior.y)*blend;prior.frameAt=at;
+      const next=window.TigerStrikeSquadMotion?.correct(prior,civ,elapsed/1000,185,12);
+      prior.x=next?.x??prior.x+(civ.x-prior.x)*blend;prior.y=next?.y??prior.y+(civ.y-prior.y)*blend;prior.frameAt=at;
       state.civilianDraw.set(key,prior);civ={...civ,x:prior.x,y:prior.y};
     }
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"],soldier:["#4d7c0f","#1f2937"]};
@@ -2226,7 +2234,8 @@
       const frameAt=performance.now(),frameMs=clamp(frameAt-Number(prior.frameAt??frameAt-16.67),1,100);
       const snapDistance=Math.hypot(Number(tiger.x)-prior.x,Number(tiger.y)-prior.y);
       const mix=snapDistance>220?1:1-Math.exp(-frameMs/55);
-      const drawX=prior.x+(Number(tiger.x)-prior.x)*mix,drawY=prior.y+(Number(tiger.y)-prior.y)*mix;
+      const correction=snapDistance<=220?window.TigerStrikeSquadMotion?.correct(prior,tiger,frameMs/1000,300,1000/55):null;
+      const drawX=correction?.x??prior.x+(Number(tiger.x)-prior.x)*mix,drawY=correction?.y??prior.y+(Number(tiger.y)-prior.y)*mix;
       const dx=drawX-prior.x,moved=Math.hypot(dx,drawY-prior.y);
       const walking=moved>.14&&!tiger.captured;
       if(walking){prior.phase+=Math.min(1.15,moved*.2);if(Math.abs(dx)>.05)prior.facing=dx<0?-1:1;}
@@ -3008,10 +3017,17 @@
     }
     window.TigerStrikeBattlefieldRenderer?.drawBattlefieldFinish?.(ctx,view,{now,mission:snap.mission});
     drawSharedMissionTruth(ctx,snap);
-    for(const civ of (snap.civilians||[])) drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id));
-    for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawTigerCage(ctx,tiger,now);
-    for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawTigerCarcass(ctx,tiger,now);
-    for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawStoryTiger(ctx,tiger,now);
+    const inView=(point,pad=220)=>window.TigerSmoothPlay?.visible?window.TigerSmoothPlay.visible(point,view,pad):true;
+    const visibleTigers=(snap.tigers||[snap.boss]).filter(t=>t&&inView(t,t.carcass?480:220));
+    for(const civ of snap.civilians||[]){
+      const arrival=window.TigerCivilianRescue?.arrivalFrame(civ.rescueArrival,now);
+      if(inView(arrival&&!arrival.done?arrival:civ))drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id),arrival);
+      else state.civilianDraw?.delete(`${snap.code}:${snap.startedAt}:${civ.id}`);
+    }
+    for(const tiger of visibleTigers)drawTigerCage(ctx,tiger,now);
+    for(const tiger of visibleTigers)drawTigerCarcass(ctx,tiger,now);
+    for(const tiger of visibleTigers)drawStoryTiger(ctx,tiger,now);
+    for(const tiger of snap.tigers||[])if(!visibleTigers.includes(tiger))state.walkVisual.delete(`tiger:${tiger.id}`);
     for(const p of (snap.players||[])){
       const mine=Number(p.userId)===viewerId(),source=mine&&state.local?state.local:p;
       const remote=mine ? null : (state.remoteDraw.get(p.userId) || squadMotion.accept(null, p, performance.now(), snap.world));

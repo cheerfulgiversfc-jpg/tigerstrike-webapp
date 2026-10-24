@@ -6,6 +6,8 @@
   function settings(legacy='AUTO'){if(cached!==undefined)return cached;try{const stored=localStorage.getItem('tiger_graphics_mode');cached=stored===null?normalize(legacy):normalize(stored);}catch(_){cached=normalize(legacy);}return cached;}
   function save(value){cached=normalize(value);try{localStorage.setItem('tiger_graphics_mode',cached);}catch(_){}return cached;}
   function policy(mode=settings(),slow=false){return {battery:mode==='BATTERY',preferredDetail:mode==='HIGH'&&!slow,cooperativeFrameMs:mode==='BATTERY'?1000/30:0};}
+  function visible(point,view,pad=220){return !!point&&[point.x,point.y,view.x,view.y,view.w,view.h].every(Number.isFinite)&&point.x>=view.x-pad&&point.x<=view.x+view.w+pad&&point.y>=view.y-pad&&point.y<=view.y+view.h+pad;}
+  function pollInterval(snapshot,localMoving=false){return snapshot?.status==='active'?(localMoving||(!snapshot.paused&&(snapshot.players||[]).some(p=>p.online!==false&&!p.downed&&p.moving))?300:750):1100;}
   // Bounded, local-only diagnostics. No account data, network logging, or timers.
   function createMetrics(){
     const rows=new Map();
@@ -27,5 +29,5 @@
     document.getElementById('graphicsMode').value=settings();renderDiagnostics();if(!dialog.open)dialog.showModal();
   }
   function change(value){save(value);window.dispatchEvent(new Event('smooth-play-change'));}
-  return Object.freeze({normalize,settings,save,policy,createMetrics,metrics,connection,open,change,renderDiagnostics});
+  return Object.freeze({normalize,settings,save,policy,visible,pollInterval,createMetrics,metrics,connection,open,change,renderDiagnostics});
 });

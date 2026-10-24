@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5249";
+const TS_BUILD = "5250";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -19,8 +19,8 @@ function soloCombatReactions(){
 function observeSoloCombatReactions(){
   const now=Date.now();
   soloCombatReactions()?.observe({code:'solo',startedAt:__soloReactionRun,serverNow:now,status:S.gameOver?'failed':'active',paused:S.paused,
-    players:[{userId:'solo',hp:S.hp,armor:S.armor,x:S.me.x,y:S.me.y},...(S.supportUnits||[]).map(p=>({...p,userId:`support:${p.id}`}))],
-    tigers:(S.tigers||[]).filter(t=>isBossTiger(t)).map(t=>({...t,boss:true})),civilians:S.civilians,securedCivilianIds:(S.civilians||[]).filter(c=>c.evac).map(c=>c.id)},now);
+    players:[{userId:'solo',hp:S.hp,armor:S.armor,x:S.me.x,y:S.me.y},...(S.supportUnits||[]).map(p=>({userId:`support:${p.id}`,hp:p.hp,armor:p.armor,x:p.x,y:p.y}))],
+    tigers:(S.tigers||[]).filter(t=>isBossTiger(t)).map(t=>({id:t.id,boss:true,hp:t.hp,x:t.x,y:t.y,alive:t.alive,captured:t.captured,defeated:t.defeated})),civilians:S.civilians,securedCivilianIds:(S.civilians||[]).filter(c=>c.evac).map(c=>c.id)},now);
 }
 function combatComfortSettings(){return window.TigerCombatFeel?.settings()||{vibration:false,reducedFlashes:false,shake:25};}
 function soloCombatPresentation(){
@@ -62879,7 +62879,9 @@ function drawTigerEcosystemTerritories(){
 function drawEntities(){
   observeSoloCombatReactions();
   const drawSafe = (label, fn)=>{
+    const sampleStart=performance.now();
     try{ fn(); }catch(err){ reportTickError(label, err); }
+    finally{window.TigerSmoothPlay?.metrics.record(`solo.${label}`,performance.now()-sampleStart);}
   };
   const liteRender = useLiteEntityRender();
   const mobile = isMobileViewport();
