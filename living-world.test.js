@@ -592,8 +592,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("PHANTOM RAGE WARD ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5243-clear-field"));
-  assert(html.includes("V12.9 (Clear Field Boundaries)"));
+  assert(html.includes("living-world.js?v=5244-living-water"));
+  assert(html.includes("V12.10 (Living Water & Swimming)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1604,7 +1604,7 @@ test("Silverpeak Ascent protects the exact Missions 51–53 encounters", async (
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.waterZones.length, 0);
+    assert.equal(waiting.waterZones.filter(z=>z.id!=='living_river').length, 0, 'no extra authored water hazard; only the shared landscape river');
     assert.equal(waiting.mission.mapTruthVersion, "10.34");
     assert(waiting.mapTruthLandmarks.length >= 4);
     if(level === 53){

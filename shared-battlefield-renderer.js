@@ -1,8 +1,8 @@
 (function(root,factory){
-  const api=factory();
+  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root)root.TigerStrikeBattlefieldRenderer=api;
-})(typeof globalThis!=="undefined"?globalThis:this,function(){
+})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain){
   "use strict";
 
   const VERSION="10.22";
@@ -87,7 +87,21 @@
     '#75518e':'scout','#d4be86':'ancient'
   });
   const NPC_UNIFORMS=Object.freeze({government:Object.freeze({body:'#586c78',light:'#9bacb4',dark:'#273b48',vest:'#314b5a',helmet:'#536b79',trim:'#b8d5df'})});
+  function drawSwimming(ctx,entity,options,paint,animal=false){
+    const x=Number(entity.x)||0,y=Number(entity.y)||0,scale=Number(options.scale)||1,now=Number(options.now??Date.now()),phase=now/230;
+    ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
+    for(let i=0;i<3;i++){
+      ctx.strokeStyle=`rgba(186,235,236,${.55-i*.13})`;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.ellipse(-i*5,3+i*4,(animal?35:21)+i*5,5+i*2,0,0,TAU);ctx.stroke();
+    }
+    // Paddles alternate at the waterline; legs are submerged, not walking.
+    for(const side of [-1,1])line(ctx,animal?'#c78d42':(options.uniformPalette?.body||'#687d53'),animal?4:5,[[side*(animal?20:9),0],[side*(animal?29:20),Math.sin(phase+side)*4+2]]);
+    ctx.restore();ctx.save();ctx.beginPath();ctx.rect(x-130*scale,y-140*scale,260*scale,140*scale);ctx.clip();
+    const drawn=paint(ctx,{...entity,y:y+(animal?5:15)*scale+Math.sin(phase)*.6},{...options,swimming:false,walking:false,running:false,pouncing:false,blend:0});ctx.restore();
+    return {...drawn,x,y,labelY:y-(animal?63:43)*scale,barY:y+28*scale};
+  }
   function drawSoldier(ctx,entity={},options={}){
+    if(options.swimming&&!entity.downed)return drawSwimming(ctx,entity,options,drawSoldier);
     const x=Number(entity.x)||0,y=Number(entity.y)||0,face=Number(entity.face)||0;
     const blend=clamp(options.blend??(options.walking?1:0),0,1),phase=Number(options.phase)||0;
     const downed=!!entity.downed,facing=Math.cos(face)<0?-1:1;
@@ -196,6 +210,7 @@
   }
 
   function drawCivilian(ctx,entity={},options={}){
+    if(options.swimming&&!entity.secured)return drawSwimming(ctx,entity,options,drawCivilian);
     const x=Number(entity.x)||0,y=Number(entity.y)||0,face=Number(options.face??entity.face)||0;
     const phase=Number(options.phase)||0,now=Number(options.now??Date.now());
     const blend=entity.secured?0:clamp(options.blend??(options.walking?1:0),0,1);
@@ -287,6 +302,7 @@
     return {asleep,dead,tagged,slowed,injured,lethal,warning:!!warning,pouncing:!!pouncing,pounceProgress,aggressive,label:labels.join(" • ")};
   }
   function drawTiger(ctx,entity={},options={}){
+    if(options.swimming&&!entity.captured&&!entity.carcass&&Number(entity.hp)>0)return drawSwimming(ctx,entity,options,drawTiger,true);
     const now=Number(options.now??Date.now()),state=tigerVisualState(entity,{...options,now});
     const x=Number(entity.x)||0,y=Number(entity.y)||0,boss=!!entity.boss;
     const scale=clamp(options.scale??(boss?1.28:entity.type==="Armored"?1.08:.98),.2,4);
@@ -510,40 +526,49 @@
     const visible=options.view||{x,y,w,h};
     const fromY=Math.max(y,Number(visible.y)||0),toY=Math.min(y+h,(Number(visible.y)||0)+(Number(visible.h)||h));
     const fromX=Math.max(x,Number(visible.x)||0),toX=Math.min(x+w,(Number(visible.x)||0)+(Number(visible.w)||w));
+    const now=Number(options.now??Date.now()),flow=(now*.025)%120;
     const gap=options.heavy?46:28;
     for(let py=Math.floor(fromY/gap)*gap;py<toY+gap;py+=gap)for(let px=Math.floor(fromX/120)*120;px<toX+120;px+=120){
       const n=seeded(Math.floor(px/120)*37+Math.floor(py/gap)*61,19);
-      line(ctx,n>.5?"rgba(188,233,224,.23)":"rgba(12,68,88,.22)",1,[[px+12,py],[px+38+n*30,py-2],[px+64+n*20,py]]);
+      const sx=px+flow,sy=py+Math.sin(now/900+px*.01)*2;
+      line(ctx,n>.5?"rgba(188,233,224,.23)":"rgba(12,68,88,.22)",1,[[sx+12,sy],[sx+38+n*30,sy-2],[sx+64+n*20,sy]]);
+    }
+    // Small fish schools and drifting highlights stay clipped beneath water.
+    if(options.fish!==false)for(let py=Math.floor(fromY/180)*180;py<toY+180;py+=180)for(let px=Math.floor(fromX/260)*260;px<toX+260;px+=260){
+      const n=seeded(Math.floor(px/260)*13+Math.floor(py/180)*7,38),fx=px+40+((now*.012+n*170)%190),fy=py+70+Math.sin(now/1600+n*6)*12;
+      for(let f=0;f<(options.heavy?1:3);f++){
+        const xx=fx-f*13,yy=fy+f*7;ellipse(ctx,xx,yy,5,1.8,'rgba(13,61,67,.50)');
+        line(ctx,'rgba(113,173,158,.55)',1,[[xx-4,yy],[xx-8,yy-3],[xx-8,yy+3],[xx-4,yy]]);
+      }
     }
     ctx.restore();ctx.restore();
   }
   function drawMapWater(ctx,zone={},options={}){
     const x=Number(zone.x)||0,y=Number(zone.y)||0,rx=Math.max(1,Number(zone.rx)||180),ry=Math.max(1,Number(zone.ry)||90),rot=Number(zone.rot)||0;
-    const trace=c=>{c.beginPath();c.ellipse(x,y,rx,ry,rot,0,TAU);};
-    const ex=Math.hypot(rx*Math.cos(rot),ry*Math.sin(rot)),ey=Math.hypot(rx*Math.sin(rot),ry*Math.cos(rot));
-    // The water fill is exactly the existing collision ellipse. Only the bank is dry decoration.
-    drawMapWaterSurface(ctx,trace,{x:x-ex,y:y-ey,w:ex*2,h:ey*2},options);
+    const ex=Math.hypot(rx*Math.cos(rot),ry*Math.sin(rot)),ey=Math.hypot(rx*Math.sin(rot),ry*Math.cos(rot)),v=options.view;
+    if(v&&(x+ex*1.12<v.x||x-ex*1.12>v.x+v.w||y+ey*1.8<v.y||y-ey*1.8>v.y+v.h))return;
+    const points=waterTerrain.outline({...zone,x,y,rx,ry,rot},options.view);
+    const trace=c=>{c.beginPath();c.moveTo(points[0][0],points[0][1]);for(const p of points.slice(1))c.lineTo(p[0],p[1]);c.closePath();};
+    // Both rendering and swim/depth checks use this same natural shoreline.
+    drawMapWaterSurface(ctx,trace,{x:x-ex*1.12,y:y-ey*1.8,w:ex*2.24,h:ey*3.6},options);
   }
-  function districtShoreY(x){
-    x=clamp(x,0,1200);const first=x<=650;
-    const xs=first?[0,250,430,650]:[650,880,1015,1200],ys=first?[930,865,1035,970]:[970,905,1035,965];
-    const curve=(v,t)=>{const u=1-t;return u*u*u*v[0]+3*u*u*t*v[1]+3*u*t*t*v[2]+t*t*t*v[3];};
-    let lo=0,hi=1;for(let i=0;i<14;i++){const mid=(lo+hi)/2;if(curve(xs,mid)<x)lo=mid;else hi=mid;}
-    return curve(ys,(lo+hi)/2);
-  }
-  function drawDistrictRiver(ctx,ox,oy,options={}){
-    const trace=c=>{c.beginPath();c.moveTo(ox,oy+930);c.bezierCurveTo(ox+250,oy+865,ox+430,oy+1035,ox+650,oy+970);c.bezierCurveTo(ox+880,oy+905,ox+1015,oy+1035,ox+1200,oy+965);c.lineTo(ox+1200,oy+1100);c.lineTo(ox,oy+1100);c.closePath();};
-    drawMapWaterSurface(ctx,trace,{x:ox,y:oy+865,w:1200,h:235},options);
-    ctx.save();
-    for(let i=0;i<10;i++){
-      const px=40+i*120;if(px>515&&px<700)continue;
-      const x=ox+px,y=oy+districtShoreY(px)-5,view=options.view;
-      if(view&&(x<view.x-15||x>view.x+view.w+15||y<view.y-20||y>view.y+view.h+20))continue;
-      ellipse(ctx,x,y+1,4,2,"#8d8964",-.2);
-      line(ctx,"#77985c",1,[[x+5,y+2],[x+6,y-6],[x+9,y-9]]);
-      line(ctx,"#aec28a",.8,[[x+5,y+2],[x+3,y-5]]);
+  function drawWaterBridges(ctx,zones=[],options={}){
+    for(const zone of zones)for(const b of zone.bridges||[]){
+      const v=options.view;if(v&&(b.x+b.w<v.x||b.x>v.x+v.w||b.y+b.h<v.y||b.y>v.y+v.h))continue;
+      ctx.save();ctx.fillStyle='#765a3b';ctx.fillRect(b.x,b.y,b.w,b.h);
+      for(let y=b.y+3;y<b.y+b.h;y+=12){ctx.strokeStyle='#bd945d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(b.x,y);ctx.lineTo(b.x+b.w,y);ctx.stroke();}
+      ctx.strokeStyle='#d7c39a';ctx.lineWidth=5;for(const x of [b.x+3,b.x+b.w-3]){ctx.beginPath();ctx.moveTo(x,b.y-6);ctx.lineTo(x,b.y+b.h+6);ctx.stroke();}ctx.restore();
     }
-    ctx.restore();
+  }
+  function drawRainPuddles(ctx,view={},options={}){
+    if(!['rain','storm'].includes(String(options.weather||'')))return;
+    const now=Number(options.now??Date.now()),zones=options.waterZones||[],blocked=options.blockedRects||[];
+    for(let y=Math.floor(view.y/210)*210;y<view.y+view.h;y+=210)for(let x=Math.floor(view.x/230)*230;x<view.x+view.w;x+=230){
+      const n=seeded(Math.floor(x/230)*19+Math.floor(y/210)*29,83),px=x+50+n*90,py=y+60+n*65,rx=14+n*17,ry=5+n*6;
+      if(zones.some(z=>waterTerrain.overlaps(z,{x:px-rx,y:py-ry,w:rx*2,h:ry*2},8))||blocked.some(b=>px+rx>=b.x&&px-rx<=b.x+b.w&&py+ry>=b.y&&py-ry<=b.y+b.h))continue;
+      const points=waterTerrain.outline({kind:'puddle',x:px,y:py,rx,ry,rot:n});ctx.save();ctx.fillStyle='rgba(129,179,186,.27)';ctx.beginPath();ctx.moveTo(...points[0]);for(const p of points.slice(1))ctx.lineTo(...p);ctx.closePath();ctx.fill();ctx.clip();
+      const r=3+((now/400+n*4)%1)*12;ctx.strokeStyle='rgba(213,238,237,.48)';ctx.lineWidth=.8;ctx.beginPath();ctx.ellipse(px,py,r,r*.3,0,0,TAU);ctx.stroke();ctx.restore();
+    }
   }
 
   function drawMapLighting(ctx,view={}){
@@ -559,17 +584,19 @@
     const visible=(x,y,pad=100)=>x>=view.x-pad&&x<=view.x+view.w+pad&&y>=view.y-pad&&y<=view.y+view.h+pad;
     const roadSegments=[];
     const onRoad=(x,y,pad)=>roadSegments.some(([points,width])=>points.slice(1).some((b,i)=>{const a=points[i],dx=b[0]-a[0],dy=b[1]-a[1],u=clamp(((x-a[0])*dx+(y-a[1])*dy)/(dx*dx+dy*dy||1),0,1);return Math.hypot(x-a[0]-dx*u,y-a[1]-dy*u)<width/2+pad;}));
-    const wet=(x,y,pad)=>(options.waterZones||[]).some(zone=>{const a=Number(zone.rot)||0,dx=x-Number(zone.x),dy=y-Number(zone.y),rx=Math.max(1,Number(zone.rx)||180)+pad,ry=Math.max(1,Number(zone.ry)||90)+pad;return ((dx*Math.cos(a)+dy*Math.sin(a))/rx)**2+((-dx*Math.sin(a)+dy*Math.cos(a))/ry)**2<1;});
+    const wet=(x,y,pad)=>(options.waterZones||[]).some(zone=>waterTerrain.overlaps(zone,{x:x-pad,y:y-pad,w:pad*2,h:pad*2}));
     const path=(points,width,color,edge="rgba(15,23,42,.45)",dash=false)=>{
       roadSegments.push([points,width]);
+      ctx.save();
+      for(const zone of options.waterZones||[]){const bank=waterTerrain.outline(zone,view);ctx.beginPath();ctx.rect(view.x-200,view.y-200,view.w+400,view.h+400);ctx.moveTo(...bank[0]);for(const p of bank.slice(1))ctx.lineTo(...p);ctx.closePath();ctx.clip('evenodd');}
       ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle=edge;ctx.lineWidth=width+14;ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(const p of points.slice(1))ctx.lineTo(p[0],p[1]);ctx.stroke();
       ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(const p of points.slice(1))ctx.lineTo(p[0],p[1]);ctx.stroke();
-      ctx.strokeStyle=family==="forest"?"rgba(214,180,125,.36)":"rgba(250,204,21,.78)";ctx.lineWidth=Math.max(3,width*.055);ctx.setLineDash(dash?[22,24]:[36,30]);ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(const p of points.slice(1))ctx.lineTo(p[0],p[1]);ctx.stroke();ctx.setLineDash([]);
+      ctx.strokeStyle=family==="forest"?"rgba(214,180,125,.36)":"rgba(250,204,21,.78)";ctx.lineWidth=Math.max(3,width*.055);ctx.setLineDash(dash?[22,24]:[36,30]);ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(const p of points.slice(1))ctx.lineTo(p[0],p[1]);ctx.stroke();ctx.setLineDash([]);ctx.restore();
     };
     const tree=(x,y,s=1)=>{if(visible(x,y,58*s)&&!onRoad(x,y,20*s)&&!wet(x,y,16*s))drawMapTree(ctx,x,y,s,{heavy:options.heavy,clearZones:options.clearZones});};
     const house=(x,y,s=1)=>{if(visible(x,y,85*s)&&!onRoad(x,y,43*s)&&!wet(x,y,40*s))drawMapHouse(ctx,x-34*s,y-21*s,68*s,48*s,{roof:'#8f5437',roofRise:27*s,clearZones:options.clearZones});};
     const building=(x,y,w,h)=>{
-      if(!visible(x,y,Math.max(w,h)))return;
+      if(!visible(x,y,Math.max(w,h))||wet(x,y,Math.max(w,h)*.65))return;
       const opacity=sceneryOpacity({x:x-w/2,y:y-h/2,w:w+12,h:h+14},options.clearZones);if(!opacity)return;
       ctx.save();if(opacity<1)ctx.globalAlpha*=opacity;
       ctx.fillStyle="rgba(2,6,23,.35)";rounded(ctx,x-w/2+9,y-h/2+11,w,h,7);ctx.fill();const g=ctx.createLinearGradient(x-w/2,y-h/2,x+w/2,y+h/2);g.addColorStop(0,"#64748b");g.addColorStop(1,"#273449");ctx.fillStyle=g;rounded(ctx,x-w/2,y-h/2,w,h,7);ctx.fill();ctx.strokeStyle="#94a3b8";ctx.lineWidth=2;ctx.stroke();for(let row=0;row<3;row++)for(let col=0;col<3;col++){ctx.fillStyle=(row+col)%2?"#7dd3fc":"#334155";ctx.fillRect(x-w*.31+col*w*.23,y-h*.28+row*h*.22,w*.12,h*.11);}ctx.restore();
@@ -579,6 +606,8 @@
     const colors=palettes[family]||palettes.forest,g=ctx.createLinearGradient(0,0,0,worldH);g.addColorStop(0,colors[0]);g.addColorStop(1,colors[1]);ctx.fillStyle=g;ctx.fillRect(view.x,view.y,view.w,view.h);
     const tile=96,startX=Math.floor(view.x/tile)*tile,startY=Math.floor(view.y/tile)*tile;for(let y=startY;y<view.y+view.h+tile;y+=tile)for(let x=startX;x<view.x+view.w+tile;x+=tile){ctx.fillStyle=(Math.floor(x/tile)+Math.floor(y/tile))%2?"rgba(255,255,255,.025)":"rgba(2,6,23,.035)";ctx.fillRect(x,y,tile,tile);}
     drawGroundTexture(ctx,view,{family,heavy:options.heavy});
+    for(const zone of options.waterZones||[])drawMapWater(ctx,zone,{view,heavy:options.heavy,now:options.now});
+    drawRainPuddles(ctx,view,{weather:options.weather,now:options.now,waterZones:options.waterZones,blockedRects:options.blockedRects});
 
     if(family==="forest"){
       path([[0,worldH*.18],[worldW*.25,worldH*.29],[worldW*.49,worldH*.23],[worldW*.75,worldH*.35],[worldW,worldH*.28]],72,"#665038","rgba(31,41,30,.68)",true);
@@ -599,6 +628,7 @@
       for(let i=0;i<24;i++){const x=worldW*(.08+(i%6)*.17),y=worldH*(.16+Math.floor(i/6)*.22);building(x,y,130+(i%3)*28,88+(i%2)*32);}
       ctx.strokeStyle="rgba(250,204,21,.48)";ctx.lineWidth=7;for(let i=0;i<12;i++){ctx.beginPath();ctx.moveTo(worldW*(.04+i*.08),worldH*.69);ctx.lineTo(worldW*(.09+i*.08),worldH*.79);ctx.stroke();}
     }
+    drawWaterBridges(ctx,options.waterZones,{view});
     return {family};
   }
 
@@ -610,5 +640,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,districtShoreY,drawDistrictRiver,drawMapLighting,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });

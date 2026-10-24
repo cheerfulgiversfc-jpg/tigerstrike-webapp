@@ -20,6 +20,7 @@ test('actual Co-op civilian entry point paints the same model as Solo, not a sim
     let sharedCalls;
     const renderer={...art,drawCivilian:(ctx,e,opts)=>{const before=model.calls.length;const r=art.drawCivilian(ctx,e,opts);sharedCalls=model.calls.slice(before);return r;}};
     const scope={window:{TigerStrikeBattlefieldRenderer:renderer},state:{snapshot:{code:'TEST',startedAt:1,tigers:[]},snapshotReceivedAt:10000,walkVisual:new Map()},performance:{now:()=>10000},viewerId:()=>1};
+    scope.coopSwimmingAt=()=>false;
     vm.runInNewContext(coop.slice(coop.indexOf('function drawStoryCivilian('),coop.indexOf('function drawStoryTiger(')),scope);
     scope.drawStoryCivilian(model.ctx,entity,false);
     civilianAdapter(expected.ctx).drawRealisticCivilianModel(entity,40,60,{blend:0,now:10000});
@@ -41,6 +42,7 @@ test('rescue arrival keeps the shared model and honors fading without changing t
   const entity=Object.freeze({id:7,x:1,y:2,secured:true,followingUserId:22,rescueArrival:{id:'arrival'}}),before=JSON.stringify(entity),c=canvas();
   const seen=[];
   const scope={window:{TigerStrikeBattlefieldRenderer:{drawCivilian:(ctx,e,opts)=>{seen.push({e,opts});return art.drawCivilian(ctx,e,opts);}},TigerCivilianRescue:{arrivalFrame:()=>({x:40,y:20,alpha:.25,done:false}),drawReaction:()=>{}}},state:{snapshot:{code:'TEST',startedAt:1,tigers:[]},snapshotReceivedAt:10000,walkVisual:new Map()},performance:{now:()=>10000},viewerId:()=>1};
+  scope.coopSwimmingAt=()=>false;
   vm.runInNewContext(coop.slice(coop.indexOf('function drawStoryCivilian('),coop.indexOf('function drawStoryTiger(')),scope);scope.drawStoryCivilian(c.ctx,entity,true);
   assert.equal(seen.length,1);assert.equal(seen[0].opts.alpha,.25);assert.equal(seen[0].e.x,40);assert.equal(entity.x,1);assert.equal(JSON.stringify(entity),before);
 });

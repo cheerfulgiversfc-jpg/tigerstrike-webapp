@@ -158,8 +158,8 @@ test("squad response choices create different district consequences",()=>{
 });
 
 test("release labels and cache point at V11.4",()=>{
-  assert(html.includes("V12.9"));
-  assert(html.includes("5243-clear-field"));
-  assert(squad.includes("Tiger Strike V12.9"));
+  assert(html.includes("V12.10"));
+  assert(html.includes("5244-living-water"));
+  assert(squad.includes("Tiger Strike V12.10"));
   assert.equal(/V10\.34/.test(squad),false);
 });

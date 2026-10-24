@@ -59,11 +59,10 @@ test('objective beacons remain readable above scenery and both clients draw them
   assert(game.indexOf('drawSafe("drawFieldObjectiveBeacons"')>game.indexOf('drawSafe("drawSoldier"'));
   assert(coop.indexOf('const drawBeacon=')>coop.indexOf('drawNightVisibilityOverlay(ctx,snap,view)'));
 });
-test('lightweight Solo map paints the actual water ellipses used by movement',()=>{
+test('lightweight Solo map delegates water to the foundation, never overlays scenery',()=>{
   const fast=cut(game,'function drawMapSceneMobileFast(','function drawDynamicObjectiveMarker(');
-  assert(fast.includes('for(const water of __mapWaterZones)'));
-  assert(fast.includes('drawMapWater?.(ctx,water,'));
-  assert(fast.indexOf('ensureMapObstacleCache()')<fast.indexOf('for(const water of __mapWaterZones)'));
+  assert(fast.includes('drawSharedStoryDistrictFoundation('));
+  assert(!fast.includes('drawMapWater?.(ctx,water,'));
 });
 function obstacleScope(mode){
   const scope={S:{mode},window:{},__mapObstacleSig:'',__mapObstacleRects:[],__mapObstacleCircles:[],__mapWaterSig:'',__mapWaterZones:[],__mapDenseLandmarks:[],__mapDenseLandmarksSig:'',__blockedAtCache:new Map(),fast:false,

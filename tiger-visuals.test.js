@@ -80,6 +80,7 @@ test('Co-op smooths tiger artwork between packets without moving authoritative t
   let frameAt=1000;const frames=[],c=canvas();
   const state={walkVisual:new Map(),snapshotReceivedAt:1000,snapshot:{code:'TEST',startedAt:1000,players:[]}};
   const scope={state,performance:{now:()=>frameAt},clamp:(n,a,b)=>Math.max(a,Math.min(b,n)),window:{TigerStrikeBattlefieldRenderer:{drawTiger:(_ctx,t,opts)=>{frames.push({x:t.x,...opts});return {labelY:0,barY:0};}}},roundRect:()=>{}};
+  scope.coopSwimmingAt=()=>false;
   vm.runInNewContext(coop.slice(coop.indexOf('function drawStoryTiger('),coop.indexOf('function drawTigerCarcass(')),scope);
   const target=Object.freeze({...base,hp:100,hpMax:100});scope.drawStoryTiger(c.ctx,target,1000);
   const next=Object.freeze({...target,x:160});frameAt+=16;scope.drawStoryTiger(c.ctx,next,1016);

@@ -13,6 +13,7 @@ const rescueTools = require("../../rescue-tools");
 const escortTeamwork = require("../../escort-teamwork");
 const missionDebrief = require("../../mission-debrief");
 const masteryRewards = require("../../mastery-rewards");
+const waterTerrain = require("../../water-terrain");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -3281,6 +3282,20 @@ async function maybeFinishSession(session, players){
   return session;
 }
 
+function missionSceneWater(mission,session){
+  const w=Number(mission.world?.width||WORLD.width),h=Number(mission.world?.height||WORLD.height);
+  const families=['forest','suburbs','forest','downtown','suburbs','industrial','forest','downtown','suburbs','industrial'];
+  const family=session.launchType==='shared-story'?(families[Math.floor((Number(mission.level||1)-1)/10)]||'forest'):'operations';
+  const xs=waterTerrain.crossings(w,family);
+  if(!mission.waterZones?.length)return [waterTerrain.river(w,h,xs)];
+  return mission.waterZones.map(source=>{
+    let zone=waterTerrain.natural(source);
+    if(zone.kind!=='river')return zone;
+    zone={...zone,x:w/2,rx:w/2}; // A channel continues to the map edges, never a cut-off rectangle in town.
+    return {...zone,bridges:xs.filter(x=>x>zone.x-zone.rx&&x<zone.x+zone.rx).map(x=>{const b=waterTerrain.banks(zone,x);return {x:x-58,y:b.top-22,w:116,h:b.bottom-b.top+44};})};
+  });
+}
+
 async function maybeTransferDisconnectedLeader(session, players, at=nowMs()){
   if(session.memberIds.length !== 2) return session;
   const leader = players.find((player)=>player.userId === session.hostId);
@@ -3396,7 +3411,7 @@ async function buildSnapshot(session, viewerId){
     checkpoints:mission.checkpoints || [],
     mapTruthLandmarks:mission.mapTruthLandmarks || [],
     fireZones:mission.fireZones || [],
-    waterZones:mission.waterZones || [],
+    waterZones:missionSceneWater(mission,session),
     tigers:derived.tigers,
     boss:derived.boss,
     rescuedIds:derived.rescuedIds,
@@ -3947,7 +3962,7 @@ async function applyAction(session, user, action, payload={}){
     if(!Array.isArray(player.capturedIds)) player.capturedIds = [];
     if(!player.capturedIds.includes(target.id)) player.capturedIds.push(target.id);
     if(!player.captureSites || typeof player.captureSites !== "object") player.captureSites = {};
-    player.captureSites[target.id] = { x:Number(target.x), y:Number(target.y), capturedAt:now };
+    player.captureSites[target.id] = { ...waterTerrain.dryPoint(missionSceneWater(missionDefinition(session),session),Number(target.x),Number(target.y)), capturedAt:now };
     player.lastAttackAt = now;
     player.lastSeenAt = now;
     profile.ammo.tranq -= 1;

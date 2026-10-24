@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5243";
+const TS_BUILD = "5244";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -25281,33 +25281,8 @@ function addMapObstacleForLandmark(rects, circles, item){
   pushMapObstacleRect(rects, item.x, item.y, profile.w * scale, profile.h * scale, profile.pad || 0);
 }
 function buildMapWaterZones(mapKey, chapter, w=worldWidth(S), h=worldHeight(S)){
-  const family = mapFamilyKey(mapKey);
-  const defs = MAP_WATER_LAYOUTS[family] || [];
-  const riverChapter = (chapter === 5);
-  const chapterMul = riverChapter ? 1.08 : 1;
-  const cols = clamp(Math.ceil(w / WORLD_BASE_WIDTH), 1, 6);
-  const rows = clamp(Math.ceil(h / WORLD_BASE_HEIGHT), 1, 6);
-  const tileW = w / cols;
-  const tileH = h / rows;
-  const out = [];
-  for(let ty=0; ty<rows; ty++){
-    for(let tx=0; tx<cols; tx++){
-      for(let i=0; i<defs.length; i++){
-        if((tx + ty + i) % 3 === 2 && cols * rows > 2) continue;
-        const def = defs[i];
-        const boost = (riverChapter && def.riverBoost) ? 1.16 : 1;
-        const rx = clamp(Math.round(tileW * def.rx * chapterMul * boost), 18, Math.round(tileW * 0.30));
-        const ry = clamp(Math.round(tileH * def.ry * chapterMul * boost), 12, Math.round(tileH * 0.18));
-        out.push({
-          x: clamp(Math.round((tx * tileW) + (tileW * def.nx)), 24, w - 24),
-          y: clamp(Math.round((ty * tileH) + (tileH * def.ny)), 24, h - 24),
-          rx, ry,
-          rot: Number.isFinite(def.rot) ? def.rot + (((tx + ty) % 2) * 0.08) : 0
-        });
-      }
-    }
-  }
-  return out.slice(0, 34).filter((zone)=>!inMapScenarioKeepout(zone.x, zone.y, Math.max(zone.rx || 0, zone.ry || 0) * 0.55));
+  const water=globalThis.TigerWaterTerrain;
+  return water?[water.river(w,h,water.crossings(w,'district'))]:[];
 }
 function waterZoneRadii(zone){
   const rx = Math.max(2, Number(zone?.rx || zone?.r || 0));
@@ -25961,6 +25936,7 @@ window.runMapExpansionRouteGameplayAudit = ()=>mapExpansionRouteGameplayAudit(S)
 
 function pointInWaterZone(zone, x, y, radius=0){
   if(!zone) return false;
+  if(globalThis.TigerWaterTerrain)return globalThis.TigerWaterTerrain.contains(zone,x,y);
   const pad = Math.max(0, Number(radius) || 0);
   const base = waterZoneRadii(zone);
   const rx = base.rx + pad;
@@ -26068,12 +26044,16 @@ function isPointInWater(x, y, radius=0){
 function waterSpeedMul(entityType, x, y, radius=0){
   if(!isPointInWater(x, y, radius)) return 1;
   const biomeMul = clamp(Number(biomeHazardModifiers(S.mode).waterSpeedMul || 1), 0.75, 1.15);
-  let base = 0.90;
-  if(entityType === "tiger") base = 0.96;
-  else if(entityType === "soldier") base = 0.90;
-  else if(entityType === "support") base = 0.88;
-  else if(entityType === "civilian") base = 0.86;
+  let base = 0.75;
+  if(entityType === "tiger") base = 0.85;
+  else if(entityType === "soldier") base = 0.75;
+  else if(entityType === "support") base = 0.75;
+  else if(entityType === "civilian") base = 0.75;
   return clamp(base * biomeMul, 0.55, 1.15);
+}
+function fieldSwimmingAt(x,y){
+  ensureMapObstacleCache();
+  return !!globalThis.TigerWaterTerrain?.swimming(__mapWaterZones,x,y);
 }
 function blockedByMapObstacle(x, y, radius){
   ensureMapObstacleCache();
@@ -39208,6 +39188,7 @@ function registerTigerCaptureCage(tiger, captor="player"){
   const existing = S.captureCages.find((c)=>String(c?.tigerId) === String(tiger.id));
   if(existing) return existing;
   const cage = captureCageFromTiger(tiger, captor);
+  if(globalThis.TigerWaterTerrain){ensureMapObstacleCache();Object.assign(cage,globalThis.TigerWaterTerrain.dryPoint(__mapWaterZones,cage.x,cage.y));}
   S.captureCages.push(cage);
   if(S.captureCages.length > MAX_PERSIST_CAPTURE_CAGES){
     S.captureCages = S.captureCages.slice(-MAX_PERSIST_CAPTURE_CAGES);
@@ -51814,6 +51795,12 @@ function drawExtractionVehicle(ex, now=Date.now()){
     x += Math.cos(angle) * departPct * 520;
     y += Math.sin(angle) * departPct * 520;
   }
+  if(ex.key==='boat'&&globalThis.TigerWaterTerrain){
+    ensureMapObstacleCache();
+    const start={x:Number(ex.vehicleX||ex.x),y:Number(ex.vehicleY||ex.y)},zone=__mapWaterZones.find(z=>z.kind==='river'&&globalThis.TigerWaterTerrain.contains(z,start.x,start.y));
+    if(zone&&departPct>0){const p=globalThis.TigerWaterTerrain.boatDeparture(zone,start,departPct);x=p.x;y=p.y;angle=p.angle;}
+    if(zone&&globalThis.TigerWaterTerrain.onBridge(zone,x,y))return; // passing under the deck
+  }
   if(ex.key === "helicopter") x += Math.sin(now / 180) * (1 - departPct) * 2;
   drawEvacCinematicWash(x, y, ex.key, angle, departPct, now);
   drawPremiumEvacDepartureBurst(x, y, ex.key, angle, departPct, now);
@@ -54114,7 +54101,7 @@ function shouldUseMobileFastMapRenderer(state=S){
   // Shared Story co-op on every device. Do not let a saved "full" renderer
   // preference or the startup repaint guard silently put Story back on the
   // older, muted road/map renderer.
-  if(normalizeModeName(state?.mode) === "Story") return true;
+  if(["Story","Arcade","Survival"].includes(normalizeModeName(state?.mode))) return true;
   if(!isMobileViewport()) return false;
   if(window.TigerPlayerExperience?.performancePolicy({mobile:true,preference:state.performanceMode,lagTier:frameLagTier()}).fastMap) return true;
   const now = Date.now();
@@ -54202,7 +54189,7 @@ function drawSharedStoryHouse(x, y, width, height, roof="#9a5c38",clearZones=[])
   ctx.restore();
 }
 
-function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=null,clearZones=[]){
+function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=null,clearZones=[],waterZones=[]){
   // These are the same fixed measurements used by Shared Story co-op. Story's
   // world can be larger than a co-op room, so repeat the district instead of
   // stretching houses and trees into oversized obstacles.
@@ -54213,6 +54200,7 @@ function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=
   ];
   for(const [x,y,width,height,roof] of houses){
     if(view&&(offsetX+x+width+20<view.x||offsetX+x-20>view.x+view.w||offsetY+y+height+30<view.y||offsetY+y-60>view.y+view.h))continue;
+    if(waterZones.some(z=>globalThis.TigerWaterTerrain?.overlaps(z,{x:offsetX+x-12,y:offsetY+y-30,w:width+26,h:height+45},12)))continue;
     drawSharedStoryHouse(offsetX + x, offsetY + y, width, height, roof,clearZones);
   }
   const treeCount = heavy ? 26 : 48;
@@ -54220,14 +54208,14 @@ function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=
     const x = (i * 173 + 51) % 1160 + 20;
     const y = (i * 113 + 37) % 1040 + 22;
     if((x>515&&x<700)||(y>440&&y<630)||((x>40&&x<255)&&(y>45&&y<210))||((x>900&&x<1165)&&(y>45&&y<220))||((x>55&&x<265)&&(y>620&&y<790))||((x>700&&x<900)&&(y>670&&y<825))||((x>950&&y>820))) continue;
-    const shore=globalThis.TigerStrikeBattlefieldRenderer?.districtShoreY?.(x);
-    if(Number.isFinite(shore)&&y+25>shore)continue; // Cosmetic trees need dry ground.
+    if(waterZones.some(z=>globalThis.TigerWaterTerrain?.overlaps(z,{x:offsetX+x-35,y:offsetY+y-45,w:70,h:75},8)))continue;
     if(view&&(offsetX+x<view.x-75||offsetX+x>view.x+view.w+75||offsetY+y<view.y-75||offsetY+y>view.y+view.h+75))continue;
     drawSharedStoryTree(offsetX + x, offsetY + y, .72 + (i % 4) * .1,clearZones);
   }
 }
 
-function drawSharedStoryDistrictFoundation(w, h, heavy=false, view={x:0,y:0,w,h},clearZones=[]){
+function drawSharedStoryDistrictFoundation(w, h, heavy=false, view={x:0,y:0,w,h},clearZones=[],terrainOptions={}){
+  const water=globalThis.TigerWaterTerrain,waterZones=water?[water.river(w,h,water.crossings(w,'district'))]:[];
   const terrain = ctx.createLinearGradient(0, 0, 0, h);
   terrain.addColorStop(0, "#376b43");
   terrain.addColorStop(0.52, "#2b5b3b");
@@ -54244,20 +54232,6 @@ function drawSharedStoryDistrictFoundation(w, h, heavy=false, view={x:0,y:0,w,h}
 
   for(let oy=Math.max(0,Math.floor((view.y-160)/1100)*1100); oy<Math.min(h,view.y+view.h+160); oy+=1100){
     for(let ox=Math.max(0,Math.floor((view.x-180)/1200)*1200); ox<Math.min(w,view.x+view.w+180); ox+=1200){
-      if(globalThis.TigerStrikeBattlefieldRenderer?.drawDistrictRiver){
-        globalThis.TigerStrikeBattlefieldRenderer.drawDistrictRiver(ctx,ox,oy,{heavy,view});
-      }else{
-      ctx.fillStyle = "rgba(39,112,137,.68)";
-      ctx.beginPath();
-      ctx.moveTo(ox, oy + 930);
-      ctx.bezierCurveTo(ox + 250, oy + 865, ox + 430, oy + 1035, ox + 650, oy + 970);
-      ctx.bezierCurveTo(ox + 880, oy + 905, ox + 1015, oy + 1035, ox + 1200, oy + 965);
-      ctx.lineTo(ox + 1200, oy + 1100);
-      ctx.lineTo(ox, oy + 1100);
-      ctx.closePath();
-      ctx.fill();
-      }
-
       ctx.fillStyle = "#4b5563";
       ctx.fillRect(ox, oy + 470, 1200, 132);
       ctx.fillRect(ox + 540, oy, 132, 1100);
@@ -54282,19 +54256,17 @@ function drawSharedStoryDistrictFoundation(w, h, heavy=false, view={x:0,y:0,w,h}
       ctx.moveTo(ox + 654, oy); ctx.lineTo(ox + 654, oy + 1100);
       ctx.stroke();
 
-      ctx.fillStyle = "#765a3b";
-      ctx.fillRect(ox + 530, oy + 900, 152, 58);
-      ctx.strokeStyle = "#e0bc73";
-      ctx.lineWidth = 6;
-      for(let x=542; x<675; x+=22){
-        ctx.beginPath();
-        ctx.moveTo(ox + x, oy + 892);
-        ctx.lineTo(ox + x, oy + 967);
-        ctx.stroke();
-      }
-      drawSharedStoryDistrictScenery(ox, oy, heavy, view,clearZones);
     }
   }
+  // One continuous river is drawn before scenery; bridges alone cover water.
+  for(const zone of waterZones)globalThis.TigerStrikeBattlefieldRenderer?.drawMapWater?.(ctx,zone,{heavy,view,now:terrainOptions.now});
+  globalThis.TigerStrikeBattlefieldRenderer?.drawWaterBridges?.(ctx,waterZones,{view});
+  const houseRects=[];
+  for(let oy=Math.max(0,Math.floor((view.y-160)/1100)*1100);oy<Math.min(h,view.y+view.h+160);oy+=1100)for(let ox=Math.max(0,Math.floor((view.x-180)/1200)*1200);ox<Math.min(w,view.x+view.w+180);ox+=1200){
+    for(const [x,y,ww,hh] of [[68,86,150,94],[930,82,165,100],[82,650,154,102],[735,700,142,94],[980,855,156,104],[335,730,138,90]])houseRects.push({x:ox+x-12,y:oy+y-30,w:ww+26,h:hh+45});
+  }
+  globalThis.TigerStrikeBattlefieldRenderer?.drawRainPuddles?.(ctx,view,{weather:terrainOptions.weather,now:terrainOptions.now,waterZones,blockedRects:houseRects});
+  for(let oy=Math.max(0,Math.floor((view.y-160)/1100)*1100);oy<Math.min(h,view.y+view.h+160);oy+=1100)for(let ox=Math.max(0,Math.floor((view.x-180)/1200)*1200);ox<Math.min(w,view.x+view.w+180);ox+=1200)drawSharedStoryDistrictScenery(ox,oy,heavy,view,clearZones,waterZones);
   globalThis.TigerStrikeBattlefieldRenderer?.drawMapLighting?.(ctx,view);
 }
 
@@ -54408,12 +54380,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   const drawX = Number.isFinite(camX) ? Number(camX) : 0;
   const drawY = Number.isFinite(camY) ? Number(camY) : 0;
   const zone = missionEvacZoneSafe(S);
-  drawSharedStoryDistrictFoundation(w, h, heavy,{x:drawX,y:drawY,w:drawW,h:drawH},mapSceneryClearZones(S));
-  // The lightweight map used to omit these real slowing surfaces entirely.
-  // Paint the very same rotated ellipses used by isPointInWater(), not an
-  // approximate pool elsewhere in the district.
-  ensureMapObstacleCache();
-  for(const water of __mapWaterZones)globalThis.TigerStrikeBattlefieldRenderer?.drawMapWater?.(ctx,water,{view:{x:drawX,y:drawY,w:drawW,h:drawH},heavy});
+  drawSharedStoryDistrictFoundation(w, h, heavy,{x:drawX,y:drawY,w:drawW,h:drawH},mapSceneryClearZones(S),{now:frameNow,weather:lightingAtmosphereMood(frameNow).weatherFx});
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -58986,7 +58953,7 @@ function drawRealisticCivilianModel(entity,x,y,opts={}){
   return renderer.drawCivilian(ctx,{...entity,x,y},{
     blend:clamp(Number(opts.blend??premiumGaitBlend(entity,opts.topSpeed||1.8)),0,1),
     face:opts.face??entity.face,phase:(Number(entity.step)||0)*3.1+Number(opts.phase||0),
-    scale:opts.scale||1,now:opts.now
+    scale:opts.scale||1,now:opts.now,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y)
   });
 }
 
@@ -59007,7 +58974,7 @@ function drawSoldierModelOnContext(ctx,entity,x,y,opts={}){
   return renderer.drawSoldier(ctx,{...entity,x,y,face:opts.face??entity.face,role:opts.role||entity.role},{
     blend,phase:(Number(entity.step)||0)*3.25+Number(opts.phase||0),
     scale:opts.scale||1,mine:true,showMarker:opts.role==="player",
-    uniformPalette:opts.uniformPalette,shotKick:opts.shotKick
+    uniformPalette:opts.uniformPalette,shotKick:opts.shotKick,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y)
   });
 }
 
@@ -61721,7 +61688,7 @@ function drawSharedMissionTiger(t,x,y,scale,colors,behavior={},now=Date.now()){
   const speed=Math.hypot(Number(t.vx)||0,Number(t.vy)||0);
   const facing=Number.isFinite(t.drawDir)?(t.drawDir<0?-1:1):(Math.cos(t.heading||0)<0?-1:1);
   return globalThis.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{...t,x,y,boss:isBossTiger(t)},{
-    facing,scale,palette:colors,now,walking:speed>.15,
+    facing,scale,palette:colors,now,walking:speed>.15,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
     running:speed>2.1,gait:t.gaitState,phase:(Number(t.step)||0)*2.18,
     pouncing:!!behavior.pounce,crouching:!!behavior.crouch,roaring:!!behavior.roaring
   });

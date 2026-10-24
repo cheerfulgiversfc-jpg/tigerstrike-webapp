@@ -2,16 +2,17 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const geometry = require("./extraction-geometry.js");
+const waterTerrain = require('./water-terrain');
 
 const river = geometry.sharedStoryRiverPlacement(2400, 2200, { x:180, y:180 });
 assert.equal(river.sharedStoryRiver, true);
-assert.equal(river.y % 1100, 990, "Story boat pickup is inside the visible river band");
+assert(waterTerrain.contains(waterTerrain.river(2400,2200,waterTerrain.crossings(2400,'district')),river.x,river.y), "Story boat pickup is inside its real continuous river");
 assert.notEqual(river.y % 1100, 536, "Story boat pickup is never placed on the road centerline");
 assert.ok(Math.abs(river.shoreY - river.y) <= 74, "soldier can board from the riverbank without walking on water");
 
 const partialRiver = geometry.sharedStoryRiverPlacement(4228, 2800, { x:180, y:180 });
 const partialRiverLocalX = partialRiver.x % 1200;
-assert.ok(partialRiverLocalX === 1010 || partialRiverLocalX === 190, `partial district must keep a real river lane, received local x ${partialRiverLocalX}`);
+assert(waterTerrain.contains(waterTerrain.river(4228,2800,waterTerrain.crossings(4228,'district')),partialRiver.x,partialRiver.y), 'partial world keeps boat in real water');
 assert.ok(partialRiverLocalX < 540 || partialRiverLocalX > 672, "partial district must not clamp a river pickup onto the vertical road");
 
 const road = geometry.sharedStoryRoadPlacement(2400, 2200, { x:180, y:180 });

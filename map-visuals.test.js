@@ -1,11 +1,12 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto');
 const art=require('./shared-battlefield-renderer');
+const waterTerrain=require('./water-terrain');
 const game=fs.readFileSync('game.js','utf8'),coop=fs.readFileSync('squad-coop.js','utf8');
 function canvas(){
   const calls=[];const ctx=new Proxy({}, {get:(_,key)=>/create.*Gradient/.test(key)?(...args)=>{calls.push([key,...args]);return {addColorStop:(...values)=>calls.push(['colorStop',...values])};}:(...args)=>calls.push([key,...args]),set:()=>true});
   return {ctx,calls};
 }
-function solo(ctx,renderer=art){const scope={ctx,TigerStrikeBattlefieldRenderer:renderer};vm.runInNewContext(game.slice(game.indexOf('function drawSharedStoryTree('),game.indexOf('function drawMissionMapTruthOverlay(')),scope);return scope;}
+function solo(ctx,renderer=art){const scope={ctx,TigerWaterTerrain:waterTerrain,TigerStrikeBattlefieldRenderer:renderer};vm.runInNewContext(game.slice(game.indexOf('function drawSharedStoryTree('),game.indexOf('function drawMissionMapTruthOverlay(')),scope);return scope;}
 test('ground texture is deterministic, world anchored and input-only',()=>{
   const view=Object.freeze({x:250,y:340,w:900,h:700}),options=Object.freeze({family:'forest'}),a=canvas(),b=canvas();
   art.drawGroundTexture(a.ctx,view,options);art.drawGroundTexture(b.ctx,view,options);
@@ -21,19 +22,17 @@ test('shared scenery has finite geometry, isolated canvas state and lighter phon
   const full=canvas(),phone=canvas();art.drawMapTree(full.ctx,0,0,1);art.drawMapTree(phone.ctx,0,0,1,{heavy:true});
   assert(phone.calls.length<full.calls.length);assert(full.calls.some(c=>c[0]==='createRadialGradient'));
 });
-test('water rendering preserves the exact water ellipse instead of painting water on land',()=>{
+test('water rendering clips animation to a natural shoreline, not an oval stamp',()=>{
   const zone=Object.freeze({x:400,y:500,rx:185,ry:82,rot:.75}),view=Object.freeze({x:0,y:0,w:900,h:700}),c=canvas();
   art.drawMapWater(c.ctx,zone,{view});
-  const ellipses=c.calls.filter(row=>row[0]==='ellipse');assert(ellipses.length>=4);
-  for(const e of ellipses)assert.deepEqual(e.slice(1,6),[400,500,185,82,.75]);
+  const first=waterTerrain.outline(zone)[0];assert(c.calls.some(row=>row[0]==='moveTo'&&row[1]===first[0]&&row[2]===first[1]));
+  assert(!c.calls.some(row=>row[0]==='ellipse'&&row[3]===185&&row[4]===82));
   assert(c.calls.some(row=>row[0]==='clip'),'reflections must be clipped to actual water');
 });
-test('Solo river keeps both original shoreline curves and bridge clearance',()=>{
-  const c=canvas();art.drawDistrictRiver(c.ctx,1200,2200,{view:{x:1200,y:3000,w:1200,h:350}});
-  const curves=[...new Set(c.calls.filter(row=>row[0]==='bezierCurveTo').map(row=>JSON.stringify(row.slice(1))))];
-  assert.deepEqual(curves,[JSON.stringify([1450,3065,1630,3235,1850,3170]),JSON.stringify([2080,3105,2215,3235,2400,3165])]);
-  assert(Math.abs(art.districtShoreY(0)-930)<.02);assert(Math.abs(art.districtShoreY(650)-970)<.02);assert(Math.abs(art.districtShoreY(1200)-965)<.02);
-  const reeds=c.calls.filter(row=>row[0]==='ellipse');assert(reeds.every(row=>row[1]-1200<515||row[1]-1200>700));
+test('Solo draws one continuous river and its matching bridge decks',()=>{
+  const calls=[],spy={...art,drawMapWater:(_c,z)=>calls.push(z),drawWaterBridges:(_c,z)=>assert.equal(z.length,1)};
+  solo(canvas().ctx,spy).drawSharedStoryDistrictFoundation(2400,2200,false,{x:0,y:1500,w:2400,h:700});
+  assert.equal(calls.length,1);assert.equal(calls[0].kind,'river');assert.equal(calls[0].bridges.length,2);
 });
 test('large Solo worlds draw only visible district scenery and avoid decorative trees in water',()=>{
   const view={x:400,y:500,w:900,h:700},small=canvas(),large=canvas();
@@ -42,7 +41,8 @@ test('large Solo worlds draw only visible district scenery and avoid decorative 
   assert.equal(large.calls.length,small.calls.length,'world size must not multiply per-frame scenery work');
   const trees=[],spy={...art,drawMapTree:(_ctx,x,y)=>trees.push({x,y})};
   solo(canvas().ctx,spy).drawSharedStoryDistrictFoundation(2400,2200,false,{x:0,y:0,w:1200,h:1100});
-  assert(trees.length>0);assert(trees.every(p=>p.y%1100+25<=art.districtShoreY(p.x%1200)));
+  const water=waterTerrain.river(2400,2200,waterTerrain.crossings(2400,'district'));
+  assert(trees.length>0);assert(trees.every(p=>!waterTerrain.overlaps(water,{x:p.x-35,y:p.y-45,w:70,h:75},8)));
 });
 test('Solo and Co-op call shared map art while keeping exact water geometry',()=>{
   for(const helper of ['drawMapTree','drawMapHouse','drawGroundTexture','drawMapWater']){
@@ -50,8 +50,8 @@ test('Solo and Co-op call shared map art while keeping exact water geometry',()=
   }
   const cut=(a,b)=>game.slice(game.indexOf(a),game.indexOf(b));
   const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
-  assert.equal(hash(cut('function buildMapWaterZones(','function waterZoneRadii(')),'3bd66a74afe6c136f0318d79b2efcb88ca6053414ecdb809c085dfabe9187c72');
-  // V12.9 intentionally repairs collider invalidation and boundary checks;
+  assert(cut('function buildMapWaterZones(','function waterZoneRadii(').includes("water.river(w,h,water.crossings(w,'district'))"));
+  // V12.10 intentionally repairs collider invalidation and boundary checks;
   // clear-gameplay.test.js verifies both renderer transitions at runtime.
   assert(game.includes("sharedPremiumDistrict ? 'district' : 'detailed'"));
 });
