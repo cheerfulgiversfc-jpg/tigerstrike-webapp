@@ -44,14 +44,16 @@ test('large Solo worlds draw only visible district scenery and avoid decorative 
   solo(canvas().ctx,spy).drawSharedStoryDistrictFoundation(2400,2200,false,{x:0,y:0,w:1200,h:1100});
   assert(trees.length>0);assert(trees.every(p=>p.y%1100+25<=art.districtShoreY(p.x%1200)));
 });
-test('Solo and Co-op call the shared map art without replacing gameplay geometry',()=>{
+test('Solo and Co-op call shared map art while keeping exact water geometry',()=>{
   for(const helper of ['drawMapTree','drawMapHouse','drawGroundTexture','drawMapWater']){
     assert(game.includes(`BattlefieldRenderer.${helper}`));assert(coop.includes(`BattlefieldRenderer.${helper}`));
   }
   const cut=(a,b)=>game.slice(game.indexOf(a),game.indexOf(b));
   const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
   assert.equal(hash(cut('function buildMapWaterZones(','function waterZoneRadii(')),'3bd66a74afe6c136f0318d79b2efcb88ca6053414ecdb809c085dfabe9187c72');
-  assert.equal(hash(cut('function ensureMapObstacleCache(','function mobileControlKeepoutZones(')),'f453561289105139cc6b43efeb34697d57686a5f8f22f4df94126cc629f2d6af');
+  // V12.9 intentionally repairs collider invalidation and boundary checks;
+  // clear-gameplay.test.js verifies both renderer transitions at runtime.
+  assert(game.includes("sharedPremiumDistrict ? 'district' : 'detailed'"));
 });
 test('all Co-op map families retain their roads while using the richer shared assets',()=>{
   for(const family of ['forest','suburbs','downtown','industrial']){

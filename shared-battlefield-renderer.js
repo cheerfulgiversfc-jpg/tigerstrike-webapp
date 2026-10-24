@@ -9,6 +9,64 @@
   const TAU=Math.PI*2;
   const clamp=(value,min,max)=>Math.max(min,Math.min(max,Number(value)||0));
 
+  // Presentation-only clearance. Objectives reserve their whole marker/label
+  // area; actors use a cutaway so walk-through background art cannot hide them.
+  function sceneryOpacity(bounds,zones=[]){
+    let alpha=1;
+    for(const p of zones){
+      if(!Number.isFinite(p?.x)||!Number.isFinite(p?.y))continue;
+      const r=Math.max(0,Number(p.r)||0);
+      if(p.x+r<bounds.x||p.x-r>bounds.x+bounds.w||p.y+r<bounds.y||p.y-r>bounds.y+bounds.h)continue;
+      if(p.objective)return 0;
+      alpha=.18;
+    }
+    return alpha;
+  }
+
+  // The same route shapes are consumed by Solo collision and its boundary art.
+  // Water is a slowing surface, not a hard blocker, except an active flood.
+  function routeBlockers(state={},now=Date.now()){
+    const out=[],tw=state.missionTwists||{};
+    const add=(p,r,label)=>{if(Number.isFinite(p?.x)&&Number.isFinite(p?.y))out.push({x:p.x,y:p.y,r:Math.max(0,Number(r)||0),label});};
+    if(tw.bridge?.active&&now<Number(tw.bridge.until||0))add(tw.bridge,tw.bridge.r,'BRIDGE CLOSED');
+    for(const it of state.mapInteractables||[]){
+      if(it?.routeOpen===false&&(it.kind==='bridge'||it.kind==='gate'))add(it,it.kind==='bridge'?62:48,it.kind==='bridge'?'REPAIR BRIDGE':'OPEN GATE');
+    }
+    const flood=tw.worldEvent;
+    if(flood?.active&&flood.type==='flooded_route'&&now<Number(flood.until||0))add(flood,flood.r,'FLOODED • ROUTE CLOSED');
+    return out;
+  }
+
+  function drawCollisionBoundary(ctx,shape,options={}){
+    const circle=Number.isFinite(shape.r),x=Number(shape.x),y=Number(shape.y);
+    const w=circle?shape.r*2:Number(shape.w),h=circle?shape.r*2:Number(shape.h),view=options.view;
+    if(!Number.isFinite(x+y+w+h)||w<=0||h<=0)return;
+    const left=circle?x-shape.r:x,top=circle?y-shape.r:y;
+    if(view&&(left+w<view.x-70||top+h<view.y-70||left>view.x+view.w+70||top>view.y+view.h+70))return;
+    ctx.save();ctx.globalAlpha=1;
+    ctx.fillStyle=shape.label?'rgba(127,29,29,.24)':'rgba(18,28,35,.22)';
+    ctx.strokeStyle=shape.label?'#fb923c':'#b3b8a6';ctx.lineWidth=2;
+    ctx.beginPath();if(circle)ctx.arc(x,y,shape.r,0,TAU);else ctx.rect(x,y,w,h);ctx.fill();ctx.stroke();
+    if(shape.label){
+      ctx.save();ctx.clip();ctx.strokeStyle='rgba(251,146,60,.42)';ctx.lineWidth=3;
+      for(let offset=-h;offset<w;offset+=18){ctx.beginPath();ctx.moveTo(left+offset,top+h);ctx.lineTo(left+offset+h,top);ctx.stroke();}ctx.restore();
+      const label=String(shape.label),width=Math.min(230,Math.max(112,label.length*6.8));
+      ctx.fillStyle='#17202b';rounded(ctx,left+w/2-width/2,top-26,width,22,5);ctx.fill();
+      ctx.fillStyle='#ffdfb1';ctx.font='900 10px system-ui';ctx.textAlign='center';ctx.fillText(label,left+w/2,top-11);
+    }
+    ctx.restore();
+  }
+
+  function drawObjectiveBeacon(ctx,point,view){
+    const x=Number(point?.x),y=Number(point?.y);if(!Number.isFinite(x)||!Number.isFinite(y))return;
+    if(view&&(x<view.x-80||y<view.y-80||x>view.x+view.w+80||y>view.y+view.h+100))return;
+    const label=String(point.label||'OBJECTIVE'),width=Math.min(230,Math.max(96,label.length*6.5));
+    ctx.save();ctx.globalAlpha=1;ctx.strokeStyle=point.color||'#67e8f9';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x,y-8);ctx.lineTo(x,y-34);ctx.stroke();
+    ctx.fillStyle='#101e2b';rounded(ctx,x-width/2,y-58,width,23,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#f0fdfa';ctx.font='900 10px system-ui';ctx.textAlign='center';ctx.fillText(label,x,y-42);ctx.restore();
+  }
+
   function rounded(ctx,x,y,w,h,r=8){
     const q=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+q,y);ctx.arcTo(x+w,y,x+w,y+h,q);ctx.arcTo(x+w,y+h,x,y+h,q);ctx.arcTo(x,y+h,x,y,q);ctx.arcTo(x,y,x+w,y,q);ctx.closePath();
   }
@@ -378,7 +436,10 @@
   }
   function drawMapTree(ctx,x,y,size=1,options={}){
     const s=clamp(size,.25,3),heavy=!!options.heavy;
+    const opacity=sceneryOpacity({x:x-38*s,y:y-47*s,w:80*s,h:76*s},options.clearZones);
+    if(!opacity)return;
     ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+    if(opacity<1)ctx.globalAlpha*=opacity;
     // One consistent top-left sun; cast shadows always fall down and right.
     ellipse(ctx,12,19,30,9,"rgba(5,24,22,.24)",.3);
     ellipse(ctx,4,22,12,4,"rgba(2,15,19,.25)");
@@ -400,7 +461,10 @@
   }
   function drawMapHouse(ctx,x,y,w,h,options={}){
     const roof=String(options.roof||"#965a3e"),rise=Number(options.roofRise??28),s=clamp(w/150,.4,2.5);
+    const opacity=sceneryOpacity({x:x-8*s,y:y-rise,w:w+22*s,h:h+rise+14*s},options.clearZones);
+    if(!opacity)return;
     ctx.save();
+    if(opacity<1)ctx.globalAlpha*=opacity;
     ctx.fillStyle="rgba(5,23,25,.25)";ctx.beginPath();ctx.moveTo(x+7,y+4);ctx.lineTo(x+w+13,y+16);ctx.lineTo(x+w+13,y+h+13);ctx.lineTo(x+8,y+h+8);ctx.closePath();ctx.fill();
     const wall=ctx.createLinearGradient(x,y,x+w,y+h);wall.addColorStop(0,"#eddfba");wall.addColorStop(.55,"#d3c09a");wall.addColorStop(1,"#a99476");
     ctx.fillStyle=wall;rounded(ctx,x,y,w,h,5*s);ctx.fill();
@@ -502,9 +566,14 @@
       ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(const p of points.slice(1))ctx.lineTo(p[0],p[1]);ctx.stroke();
       ctx.strokeStyle=family==="forest"?"rgba(214,180,125,.36)":"rgba(250,204,21,.78)";ctx.lineWidth=Math.max(3,width*.055);ctx.setLineDash(dash?[22,24]:[36,30]);ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(const p of points.slice(1))ctx.lineTo(p[0],p[1]);ctx.stroke();ctx.setLineDash([]);
     };
-    const tree=(x,y,s=1)=>{if(visible(x,y,58*s)&&!onRoad(x,y,20*s)&&!wet(x,y,16*s))drawMapTree(ctx,x,y,s,{heavy:options.heavy});};
-    const house=(x,y,s=1)=>{if(visible(x,y,85*s)&&!onRoad(x,y,43*s)&&!wet(x,y,40*s))drawMapHouse(ctx,x-34*s,y-21*s,68*s,48*s,{roof:'#8f5437',roofRise:27*s});};
-    const building=(x,y,w,h)=>{if(!visible(x,y,Math.max(w,h)))return;ctx.fillStyle="rgba(2,6,23,.35)";rounded(ctx,x-w/2+9,y-h/2+11,w,h,7);ctx.fill();const g=ctx.createLinearGradient(x-w/2,y-h/2,x+w/2,y+h/2);g.addColorStop(0,"#64748b");g.addColorStop(1,"#273449");ctx.fillStyle=g;rounded(ctx,x-w/2,y-h/2,w,h,7);ctx.fill();ctx.strokeStyle="#94a3b8";ctx.lineWidth=2;ctx.stroke();for(let row=0;row<3;row++)for(let col=0;col<3;col++){ctx.fillStyle=(row+col)%2?"#7dd3fc":"#334155";ctx.fillRect(x-w*.31+col*w*.23,y-h*.28+row*h*.22,w*.12,h*.11);}};
+    const tree=(x,y,s=1)=>{if(visible(x,y,58*s)&&!onRoad(x,y,20*s)&&!wet(x,y,16*s))drawMapTree(ctx,x,y,s,{heavy:options.heavy,clearZones:options.clearZones});};
+    const house=(x,y,s=1)=>{if(visible(x,y,85*s)&&!onRoad(x,y,43*s)&&!wet(x,y,40*s))drawMapHouse(ctx,x-34*s,y-21*s,68*s,48*s,{roof:'#8f5437',roofRise:27*s,clearZones:options.clearZones});};
+    const building=(x,y,w,h)=>{
+      if(!visible(x,y,Math.max(w,h)))return;
+      const opacity=sceneryOpacity({x:x-w/2,y:y-h/2,w:w+12,h:h+14},options.clearZones);if(!opacity)return;
+      ctx.save();if(opacity<1)ctx.globalAlpha*=opacity;
+      ctx.fillStyle="rgba(2,6,23,.35)";rounded(ctx,x-w/2+9,y-h/2+11,w,h,7);ctx.fill();const g=ctx.createLinearGradient(x-w/2,y-h/2,x+w/2,y+h/2);g.addColorStop(0,"#64748b");g.addColorStop(1,"#273449");ctx.fillStyle=g;rounded(ctx,x-w/2,y-h/2,w,h,7);ctx.fill();ctx.strokeStyle="#94a3b8";ctx.lineWidth=2;ctx.stroke();for(let row=0;row<3;row++)for(let col=0;col<3;col++){ctx.fillStyle=(row+col)%2?"#7dd3fc":"#334155";ctx.fillRect(x-w*.31+col*w*.23,y-h*.28+row*h*.22,w*.12,h*.11);}ctx.restore();
+    };
 
     const palettes={forest:["#17492e","#0f2f20"],suburbs:["#276641","#174b31"],downtown:["#26394a","#172534"],industrial:["#4a463d","#292b2d"]};
     const colors=palettes[family]||palettes.forest,g=ctx.createLinearGradient(0,0,0,worldH);g.addColorStop(0,colors[0]);g.addColorStop(1,colors[1]);ctx.fillStyle=g;ctx.fillRect(view.x,view.y,view.w,view.h);
@@ -541,5 +610,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,districtShoreY,drawDistrictRiver,drawMapLighting,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,districtShoreY,drawDistrictRiver,drawMapLighting,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });

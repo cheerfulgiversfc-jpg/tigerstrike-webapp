@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V12.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V12.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.8 • Character Art Parity");
+      ? `Tiger Strike V12.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V12.9 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.9 • Clear Field Boundaries");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -790,7 +790,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.8 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.9 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -1971,8 +1971,19 @@
     const radius=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+radius,y);ctx.arcTo(x+w,y,x+w,y+h,radius);ctx.arcTo(x+w,y+h,x,y+h,radius);ctx.arcTo(x,y+h,x,y,radius);ctx.arcTo(x,y,x+w,y,radius);ctx.closePath();
   }
 
+  let sceneryClearZones=[];
+  function coopSceneryClearZones(snap){
+    const zones=[];
+    for(const p of [snap.rescueHouse,snap.extraction,...(snap.checkpoints||[]),...(snap.mapTruthLandmarks||[])]){
+      if(p&&Number.isFinite(p.x)&&Number.isFinite(p.y))zones.push({x:p.x,y:p.y,r:Math.max(86,Number(p.r||0)+30),objective:true});
+    }
+    for(const p of [...(snap.players||[]),...(snap.civilians||[]),...(snap.tigers||[])]){
+      if(p&&!p.defeated&&!p.secured&&Number.isFinite(p.x)&&Number.isFinite(p.y))zones.push({x:p.x,y:p.y,r:44});
+    }
+    return zones;
+  }
   function drawStoryTree(ctx,x,y,size=1){
-    if(window.TigerStrikeBattlefieldRenderer?.drawMapTree)return window.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y,size);
+    if(window.TigerStrikeBattlefieldRenderer?.drawMapTree)return window.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y,size,{clearZones:sceneryClearZones});
     ctx.save();
     ctx.fillStyle="rgba(2,6,23,.34)";ctx.beginPath();ctx.ellipse(x+7*size,y+18*size,30*size,10*size,-.08,0,Math.PI*2);ctx.fill();
     const trunk=ctx.createLinearGradient(x-6*size,y,x+8*size,y);trunk.addColorStop(0,"#3f2b20");trunk.addColorStop(.5,"#8b5a32");trunk.addColorStop(1,"#4a2f22");ctx.fillStyle=trunk;roundRect(ctx,x-6*size,y-7*size,12*size,32*size,3*size);ctx.fill();
@@ -1980,8 +1991,9 @@
     ctx.fillStyle="rgba(187,247,208,.25)";ctx.beginPath();ctx.ellipse(x-10*size,y-24*size,10*size,6*size,-.4,0,Math.PI*2);ctx.fill();ctx.restore();
   }
 
-  function drawStoryBuilding(ctx,x,y,w,h,roof="#9a5c38"){
-    if(window.TigerStrikeBattlefieldRenderer?.drawMapHouse)return window.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x,y,w,h,{roof});
+  function drawStoryBuilding(ctx,x,y,w,h,roof="#9a5c38",decorative=false){
+    // Authored mission buildings are objectives, not clutter to clear away.
+    if(window.TigerStrikeBattlefieldRenderer?.drawMapHouse)return window.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x,y,w,h,{roof,clearZones:decorative?sceneryClearZones:[]});
     ctx.save();ctx.fillStyle="rgba(2,6,23,.34)";roundRect(ctx,x+11,y+13,w,h,9);ctx.fill();
     const wall=ctx.createLinearGradient(x,y,x,y+h);wall.addColorStop(0,"#ead9b8");wall.addColorStop(1,"#ae9875");ctx.fillStyle=wall;roundRect(ctx,x,y,w,h,8);ctx.fill();ctx.strokeStyle="rgba(255,248,220,.44)";ctx.lineWidth=3;ctx.stroke();
     ctx.fillStyle=roof;ctx.beginPath();ctx.moveTo(x-8,y+6);ctx.lineTo(x+w*.5,y-28);ctx.lineTo(x+w+8,y+6);ctx.closePath();ctx.fill();
@@ -2321,6 +2333,7 @@
   }
 
   function drawExpandedDistrict(ctx, snap, view){
+    sceneryClearZones=coopSceneryClearZones(snap);
     const worldW = Math.max(view.w, Number(snap.world?.width || view.w));
     const worldH = Math.max(view.h, Number(snap.world?.height || view.h));
     const denAssault = snap.launchType === "tiger-den";
@@ -2421,11 +2434,11 @@
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
       if(!visible(x,y,210)||nearRoad(x+80,y+52,125)||inWaterZone(x+80,y+52,110)) continue;
-      drawStoryBuilding(ctx,x,y,142+(i%3)*14,88+(i%2)*12,roofColors[i%roofColors.length]);
+      drawStoryBuilding(ctx,x,y,142+(i%3)*14,88+(i%2)*12,roofColors[i%roofColors.length],true);
     }
     if(sharedStoryFoundation){
       const family=window.TigerStrikeBattlefieldRenderer.storyFamilyForLevel(storyLevel);
-      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones});
+      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,clearZones:sceneryClearZones});
       const chapterTint=bloodChapter?"rgba(127,29,29,.09)":(deepJungleChapter?"rgba(34,197,94,.07)":(abandonedVillageChapter?"rgba(148,163,184,.08)":(riverTerritoryChapter?"rgba(6,182,212,.08)":(mountainEdgeChapter?"rgba(148,163,184,.12)":(tigerTerritoryChapter?"rgba(6,78,59,.14)":(tigerKingChapter?"rgba(120,53,15,.12)":(hiddenJungleChapter?"rgba(20,83,45,.16)":(ancientGuardianChapter?"rgba(250,204,21,.05)":"rgba(0,0,0,0)"))))))));
       ctx.fillStyle=chapterTint;ctx.fillRect(view.x,view.y,view.w,view.h);
       // Shared foundation textures the ground before roads and buildings.
@@ -2988,6 +3001,14 @@
     for(const tiger of (snap.tigers||[]))for(const warning of (tiger.attackWarnings||[]))window.TigerEncounters?.drawWarning(ctx,tiger,warning,now);
     drawSnowstormOverlay(ctx,snap,view,now);
     drawNightVisibilityOverlay(ctx,snap,view);
+    // Known mission destinations stay above decorative art and visibility FX.
+    const drawBeacon=window.TigerStrikeBattlefieldRenderer?.drawObjectiveBeacon;
+    if(drawBeacon){
+      const completed=new Set((snap.checkpointCompletedIds||[]).map(String));
+      for(const point of snap.checkpoints||[])if(!completed.has(String(point.id)))drawBeacon(ctx,{...point,label:point.label||'MISSION CHECKPOINT'},view);
+      if(snap.rescueHouse)drawBeacon(ctx,{...snap.rescueHouse,label:'RESCUE SAFE HOUSE',color:'#86efac'},view);
+      if(snap.extraction)drawBeacon(ctx,{...snap.extraction,label:'SQUAD EXTRACTION',color:'#86efac'},view);
+    }
     ctx.restore();
     const grade=ctx.createLinearGradient(0,0,0,h);grade.addColorStop(0,"rgba(186,230,253,.055)");grade.addColorStop(.58,"rgba(255,255,255,0)");grade.addColorStop(1,"rgba(2,6,23,.18)");ctx.fillStyle=grade;ctx.fillRect(0,0,w,h);
     const vignette=ctx.createRadialGradient(w*.5,h*.46,Math.min(w,h)*.22,w*.5,h*.46,Math.max(w,h)*.72);vignette.addColorStop(.62,"rgba(2,6,23,0)");vignette.addColorStop(1,"rgba(2,6,23,.28)");ctx.fillStyle=vignette;ctx.fillRect(0,0,w,h);

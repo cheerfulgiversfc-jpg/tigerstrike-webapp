@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5242";
+const TS_BUILD = "5243";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -25982,8 +25982,12 @@ function ensureMapObstacleCache(){
   const chapter = chapterIndexForMode(S.mode);
   const w = worldWidth(S);
   const h = worldHeight(S);
-  const sig = [S.mode, key, chapter, w, h, window.__TUTORIAL_MODE__ ? 1 : 0].join("|");
+  const sharedPremiumDistrict = ["Story", "Arcade", "Survival"].includes(normalizeModeName(S.mode)) && shouldUseMobileFastMapRenderer(S);
+  const sig = [S.mode, key, chapter, w, h, window.__TUTORIAL_MODE__ ? 1 : 0, sharedPremiumDistrict ? 'district' : 'detailed'].join("|");
   if(sig === __mapObstacleSig) return;
+  // Rendering can switch quality without changing the mission. Never reuse
+  // colliders belonging to scenery that the current renderer does not draw.
+  __blockedAtCache.clear();
 
   const rects = [];
   const circles = [];
@@ -25993,7 +25997,6 @@ function ensureMapObstacleCache(){
   // legacy landmark colliders belong to a different hidden layout and were the
   // source of the invisible walls seen on phones. Explicit closed route gates
   // still block through blockedAt(); decorative scenery stays freely walkable.
-  const sharedPremiumDistrict = ["Story", "Arcade", "Survival"].includes(normalizeModeName(S.mode)) && shouldUseMobileFastMapRenderer(S);
   const denseLandmarks = sharedPremiumDistrict ? [] : buildDenseLandmarks(key, chapter, w, h);
   const family = mapFamilyKey(key);
   const sx = (v)=> v * (w / 960);
@@ -26158,52 +26161,22 @@ function inMapScenarioKeepout(x, y, radius=0){
   return inMobileNoBuildZone(x, y, radius) || inMobileUiScenarioZone(x, y, radius) || worldEventKeepoutContains(x, y, radius, Date.now());
 }
 function blockedCacheKey(x, y, radius=0){
-  const q = BLOCKED_CACHE_QUANT;
-  return `${Math.round(x / q)}|${Math.round(y / q)}|${Math.round((radius || 0) / q)}`;
+  // Rounding used to share a blocked result with a nearby open point at edges.
+  return `${x}|${y}|${radius || 0}`;
 }
 function blockedAt(x, y, radius){
+  ensureMapObstacleCache();
   const key = blockedCacheKey(x, y, radius);
   if(__blockedAtCache.has(key)) return __blockedAtCache.get(key);
-  const tw = S?.missionTwists;
-  const bridge = tw?.bridge;
-  if(
-    bridge &&
-    bridge.active &&
-    Date.now() < (bridge.until || 0) &&
-    dist(x, y, bridge.x || 0, bridge.y || 0) <= ((bridge.r || 0) + Math.max(2, Number(radius || 0)))
-  ){
-    __blockedAtCache.set(key, true);
-    return true;
-  }
-  for(const it of (S.mapInteractables || [])){
-    if(!interactiveObjectBlocksRoute(it)) continue;
-    const blockR = it.kind === "bridge" ? 62 : 48;
-    if(dist(x, y, it.x, it.y) <= blockR + Math.max(2, Number(radius || 0))){
+  for(const blocker of (globalThis.TigerStrikeBattlefieldRenderer?.routeBlockers(S,Date.now()) || [])){
+    if(dist(x,y,blocker.x,blocker.y)<=blocker.r+Math.max(2,Number(radius||0))){
       __blockedAtCache.set(key, true);
       return true;
     }
   }
-  const we = tw?.worldEvent;
-  if(
-    we &&
-    we.active &&
-    we.type === "flooded_route" &&
-    Date.now() < (we.until || 0) &&
-    dist(x, y, we.x || 0, we.y || 0) <= ((we.r || 0) + Math.max(2, Number(radius || 0)))
-  ){
-    __blockedAtCache.set(key, true);
-    return true;
-  }
-  let blocked = false;
-  if(inMapScenarioKeepout(x, y, radius + 10)){
-    __blockedAtCache.set(key, false);
-    return false;
-  }
-  // Blood pools are visual hazards; they should never hard-block movement.
-  const sp = worldToScreenPoint(x, y, S);
-  if(!(isMobileViewport() && sp.x > (cv.width * 0.66) && sp.y > (cv.height * 0.70))){
-    blocked = blockedByMapObstacle(x, y, radius);
-  }
+  // World collision must not change when the camera moves a wall beneath a
+  // screen-space joystick or action button. Blood pools remain pass-through.
+  const blocked = blockedByMapObstacle(x, y, radius);
   __blockedAtCache.set(key, blocked);
   if(__blockedAtCache.size > 1200){
     __blockedAtCache.clear();
@@ -54152,8 +54125,45 @@ function shouldUseMobileFastMapRenderer(state=S){
   return pref === "fast";
 }
 
-function drawSharedStoryTree(x, y, size=1){
-  if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapTree) return globalThis.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y,size);
+function mapSceneryClearZones(state=S){
+  const zones=[];
+  const objective=(p)=>{if(p&&Number.isFinite(p.x)&&Number.isFinite(p.y))zones.push({x:p.x,y:p.y,r:Math.max(86,Number(p.r||0)+30),objective:true});};
+  for(const p of [...(state.mapInteractables||[]),...(state.rescueSites||[]),...(state.investigationClues||[])])objective(p);
+  if(state.mode==='Story'&&typeof missionMapTruthScaled==='function')for(const p of missionMapTruthScaled(state)?.landmarks||[])objective(p);
+  if(state.mode!=='Survival'){objective(state.evacZone);objective(state.evacRoute?.active?state.evacRoute:null);}
+  for(const p of [state.me,...(state.civilians||[]),...(state.supportUnits||[]),...(state.tigers||[])]){
+    if(p&&p.alive!==false&&!p.evac&&Number.isFinite(p.x)&&Number.isFinite(p.y))zones.push({x:p.x,y:p.y,r:44});
+  }
+  return zones;
+}
+
+function visibleGameplayObjects(list,pad=130){
+  // Count caps are fine for decorative particles, not for an interactable or a
+  // closed route that is actually on the screen. Keep viewport culling only.
+  return (Array.isArray(list)?list:[]).filter(p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&pointInViewportPad(p.x,p.y,pad));
+}
+
+function drawMapCollisionBoundaries(){
+  const renderer=globalThis.TigerStrikeBattlefieldRenderer;
+  if(!renderer?.drawCollisionBoundary)return;
+  ensureMapObstacleCache();
+  const cam=cameraOffsetSnapshot(S),view={x:cam.x,y:cam.y,w:cv.width,h:cv.height};
+  // Not subject to prop-count limits or cached map frames: a physical blocker
+  // must always remain visible, even in Performance mode and on slow frames.
+  for(const shape of [...__mapObstacleRects,...__mapObstacleCircles,...renderer.routeBlockers(S,Date.now())])renderer.drawCollisionBoundary(ctx,shape,{view});
+}
+
+function drawFieldObjectiveBeacons(){
+  const renderer=globalThis.TigerStrikeBattlefieldRenderer;if(!renderer?.drawObjectiveBeacon)return;
+  const cam=cameraOffsetSnapshot(S),view={x:cam.x,y:cam.y,w:cv.width,h:cv.height};
+  for(const it of S.mapInteractables||[]){
+    if(it.missionTruth&&!it.missionTruthEngaged)renderer.drawObjectiveBeacon(ctx,{x:it.x,y:it.y,label:it.label||'MISSION OBJECTIVE'},view);
+  }
+  if(S.mode!=='Survival'&&S.evacZone)renderer.drawObjectiveBeacon(ctx,{...S.evacZone,label:S.evacRoute?.active?'EXTRACTION':'RESCUE SAFE HOUSE',color:'#86efac'},view);
+}
+
+function drawSharedStoryTree(x, y, size=1,clearZones=[]){
+  if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapTree) return globalThis.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y,size,{clearZones});
   ctx.save();
   ctx.globalAlpha = 0.94;
   ctx.fillStyle = "rgba(2,6,23,.24)";
@@ -54171,8 +54181,8 @@ function drawSharedStoryTree(x, y, size=1){
   ctx.restore();
 }
 
-function drawSharedStoryHouse(x, y, width, height, roof="#9a5c38"){
-  if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapHouse) return globalThis.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x,y,width,height,{roof,roofRise:25});
+function drawSharedStoryHouse(x, y, width, height, roof="#9a5c38",clearZones=[]){
+  if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapHouse) return globalThis.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x,y,width,height,{roof,roofRise:25,clearZones});
   ctx.save();
   ctx.globalAlpha = 0.96;
   rounded(x + 7, y + 9, width, height, 8, "rgba(2,6,23,.24)");
@@ -54192,7 +54202,7 @@ function drawSharedStoryHouse(x, y, width, height, roof="#9a5c38"){
   ctx.restore();
 }
 
-function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=null){
+function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=null,clearZones=[]){
   // These are the same fixed measurements used by Shared Story co-op. Story's
   // world can be larger than a co-op room, so repeat the district instead of
   // stretching houses and trees into oversized obstacles.
@@ -54203,7 +54213,7 @@ function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=
   ];
   for(const [x,y,width,height,roof] of houses){
     if(view&&(offsetX+x+width+20<view.x||offsetX+x-20>view.x+view.w||offsetY+y+height+30<view.y||offsetY+y-60>view.y+view.h))continue;
-    drawSharedStoryHouse(offsetX + x, offsetY + y, width, height, roof);
+    drawSharedStoryHouse(offsetX + x, offsetY + y, width, height, roof,clearZones);
   }
   const treeCount = heavy ? 26 : 48;
   for(let i=0; i<treeCount; i++){
@@ -54213,11 +54223,11 @@ function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false, view=
     const shore=globalThis.TigerStrikeBattlefieldRenderer?.districtShoreY?.(x);
     if(Number.isFinite(shore)&&y+25>shore)continue; // Cosmetic trees need dry ground.
     if(view&&(offsetX+x<view.x-75||offsetX+x>view.x+view.w+75||offsetY+y<view.y-75||offsetY+y>view.y+view.h+75))continue;
-    drawSharedStoryTree(offsetX + x, offsetY + y, .72 + (i % 4) * .1);
+    drawSharedStoryTree(offsetX + x, offsetY + y, .72 + (i % 4) * .1,clearZones);
   }
 }
 
-function drawSharedStoryDistrictFoundation(w, h, heavy=false, view={x:0,y:0,w,h}){
+function drawSharedStoryDistrictFoundation(w, h, heavy=false, view={x:0,y:0,w,h},clearZones=[]){
   const terrain = ctx.createLinearGradient(0, 0, 0, h);
   terrain.addColorStop(0, "#376b43");
   terrain.addColorStop(0.52, "#2b5b3b");
@@ -54282,7 +54292,7 @@ function drawSharedStoryDistrictFoundation(w, h, heavy=false, view={x:0,y:0,w,h}
         ctx.lineTo(ox + x, oy + 967);
         ctx.stroke();
       }
-      drawSharedStoryDistrictScenery(ox, oy, heavy, view);
+      drawSharedStoryDistrictScenery(ox, oy, heavy, view,clearZones);
     }
   }
   globalThis.TigerStrikeBattlefieldRenderer?.drawMapLighting?.(ctx,view);
@@ -54398,7 +54408,12 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   const drawX = Number.isFinite(camX) ? Number(camX) : 0;
   const drawY = Number.isFinite(camY) ? Number(camY) : 0;
   const zone = missionEvacZoneSafe(S);
-  drawSharedStoryDistrictFoundation(w, h, heavy,{x:drawX,y:drawY,w:drawW,h:drawH});
+  drawSharedStoryDistrictFoundation(w, h, heavy,{x:drawX,y:drawY,w:drawW,h:drawH},mapSceneryClearZones(S));
+  // The lightweight map used to omit these real slowing surfaces entirely.
+  // Paint the very same rotated ellipses used by isPointInWater(), not an
+  // approximate pool elsewhere in the district.
+  ensureMapObstacleCache();
+  for(const water of __mapWaterZones)globalThis.TigerStrikeBattlefieldRenderer?.drawMapWater?.(ctx,water,{view:{x:drawX,y:drawY,w:drawW,h:drawH},heavy});
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -54565,6 +54580,7 @@ function drawDynamicObjectiveMarker(now=Date.now()){
 
 function drawMapScene(){
   const frameNow = Date.now();
+  const clearZones=mapSceneryClearZones(S);
   const viewportW = cv.width;
   const viewportH = cv.height;
   const w = Math.max(viewportW, worldWidth(S));
@@ -54829,7 +54845,7 @@ function drawMapScene(){
     ctx.setLineDash([]);
   }
   function treeDot(x,y,size=8){
-    if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapTree)return globalThis.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y+size*.5,size/24);
+    if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapTree)return globalThis.TigerStrikeBattlefieldRenderer.drawMapTree(ctx,x,y+size*.5,size/24,{clearZones});
     ctx.globalAlpha=0.25;
     ctx.fillStyle="#05070b";
     ctx.beginPath(); ctx.ellipse(x, y + (size * 0.85), size * 1.05, size * 0.45, 0, 0, Math.PI*2); ctx.fill();
@@ -54847,7 +54863,7 @@ function drawMapScene(){
     rounded(x-ww/2,y-hh/2,ww,hh,10,"rgba(55,70,95,.85)","rgba(18,24,38,.9)");
   }
   function houseBlock(x,y){
-    if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapHouse)return globalThis.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x-18,y-12,36,24,{roofRise:9});
+    if(globalThis.TigerStrikeBattlefieldRenderer?.drawMapHouse)return globalThis.TigerStrikeBattlefieldRenderer.drawMapHouse(ctx,x-18,y-12,36,24,{roofRise:9,clearZones:clearZones.filter(p=>!p.objective)});
     ctx.globalAlpha=0.2;
     rounded(x-16,y-9,36,24,8,"rgba(0,0,0,.3)");
     ctx.globalAlpha=1;
@@ -62553,8 +62569,6 @@ function drawEntitiesLite(){
   const civMax = mobile ? (lagTier >= 2 ? 10 : (lagTier >= 1 ? 14 : 20)) : 24;
   const supportMax = mobile ? (lagTier >= 2 ? 4 : 6) : 10;
   const tigerMax = mobile ? (lagTier >= 2 ? 8 : (lagTier >= 1 ? 12 : 18)) : 26;
-  const interactableMax = mobile ? (lagTier >= 2 ? 4 : 6) : 10;
-  const rescueSiteMax = mobile ? (lagTier >= 2 ? 3 : 5) : 8;
   const pickupPad = tight ? 70 : 120;
   const actorPad = tight ? 120 : 180;
   const pickupsDraw = viewportCullEntities(S.pickups || [], { pad:pickupPad, max:pickupMax });
@@ -62566,9 +62580,9 @@ function drawEntitiesLite(){
     max:tigerMax,
     pin:(t)=>t?.id === S.activeTigerId || t?.id === S.lockedTigerId || isBossTiger(t)
   });
-  const interactablesDraw = viewportCullEntities(S.mapInteractables || [], { pad:pickupPad, max:interactableMax });
-  const rescueSitesDraw = viewportCullEntities(S.rescueSites || [], { pad:pickupPad, max:rescueSiteMax });
-  const investigationDraw = viewportCullEntities(S.investigationClues || [], { pad:pickupPad, max:8 });
+  const interactablesDraw = visibleGameplayObjects(S.mapInteractables,pickupPad);
+  const rescueSitesDraw = visibleGameplayObjects(S.rescueSites,pickupPad);
+  const investigationDraw = visibleGameplayObjects(S.investigationClues,pickupPad);
 
   ctx.fillStyle = "rgba(77,47,33,.64)";
   const carcassesLite = viewportCullEntities(S.carcasses || [], {
@@ -62821,26 +62835,18 @@ function drawEntities(){
     pad:propsPad,
     max: mobile ? (lagTier >= 2 ? 12 : (lagTier >= 1 ? 16 : 22)) : 32
   });
-  const drawInteractables = viewportCullEntities(S.mapInteractables || [], {
-    pad:propsPad,
-    max: mobile ? (lagTier >= 2 ? 5 : 8) : 12
-  });
-  const drawRescueSites = viewportCullEntities(S.rescueSites || [], {
-    pad:propsPad,
-    max: mobile ? (lagTier >= 2 ? 4 : 6) : 10
-  });
-  const drawInvestigationClues = viewportCullEntities(S.investigationClues || [], {
-    pad:propsPad,
-    max: mobile ? (lagTier >= 2 ? 5 : 8) : 12
-  });
+  const drawInteractables = visibleGameplayObjects(S.mapInteractables,propsPad);
+  const drawRescueSites = visibleGameplayObjects(S.rescueSites,propsPad);
+  const drawInvestigationClues = visibleGameplayObjects(S.investigationClues,propsPad);
 
   drawSafe("drawTigerEcosystemTerritories", drawTigerEcosystemTerritories);
+  drawSafe("drawMapCollisionBoundaries",drawMapCollisionBoundaries);
   drawSafe("drawPlayerCosmeticTrail", drawPlayerCosmeticTrail);
   drawSafe("drawRealEvacRoute", ()=>drawRealEvacRoute(Date.now()));
   if(liteRender){
     drawSafe("drawEntitiesLite", drawEntitiesLite);
   } else {
-    // carcasses block movement
+    // Persistent bodies and blood scent are visible, pass-through hazards.
     const drawCarcasses = viewportCullEntities(S.carcasses || [], {
       pad:propsPad,
       max: mobile ? (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 24)) : 34
@@ -62932,6 +62938,7 @@ function drawEntities(){
   drawSafe("drawBossArenaMoments", ()=>drawBossArenaMoments(Date.now()));
   drawSafe("drawPhase18CinematicEvents", ()=>drawPhase18CinematicEvents(Date.now()));
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
+  drawSafe("drawFieldObjectiveBeacons",drawFieldObjectiveBeacons);
   drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
   const iphoneStability = iphoneStabilityModeActive();
   const iphoneLiteFeedback = iphoneLiteCombatFeedbackEnabled();
