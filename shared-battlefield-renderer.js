@@ -28,12 +28,13 @@
     '#218d92':'river','#b8c8d1':'mountain','#9e3745':'warden','#b28b27':'royal',
     '#75518e':'scout','#d4be86':'ancient'
   });
+  const NPC_UNIFORMS=Object.freeze({government:Object.freeze({body:'#586c78',light:'#9bacb4',dark:'#273b48',vest:'#314b5a',helmet:'#536b79',trim:'#b8d5df'})});
   function drawSoldier(ctx,entity={},options={}){
     const x=Number(entity.x)||0,y=Number(entity.y)||0,face=Number(entity.face)||0;
     const blend=clamp(options.blend??(options.walking?1:0),0,1),phase=Number(options.phase)||0;
     const downed=!!entity.downed,facing=Math.cos(face)<0?-1:1;
     const mine=!!options.mine,accent=downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");
-    const role=String(entity.role||"support"),cloth=options.uniformPalette||{};
+    const role=String(entity.role||"support"),cloth=options.uniformPalette||NPC_UNIFORMS[role]||{};
     const body=cloth.body||"#456b48",light=cloth.light||"#83a66b",dark=cloth.dark||"#263d32";
     const vest=cloth.vest||"#293e3a",helmet=cloth.helmet||"#567b49",trim=cloth.trim||"#c6d49b";
     const tailoring=SOLDIER_TAILORING[body]||"ranger";
@@ -137,23 +138,72 @@
   }
 
   function drawCivilian(ctx,entity={},options={}){
-    const x=Number(entity.x)||0,y=Number(entity.y)||0,phase=Number(options.phase)||0;
-    const walking=!!options.walking&&!entity.secured,stride=walking?Math.sin(phase)*7:0,bob=walking?Math.abs(Math.sin(phase))*1.5:0;
-    const palette={field:["#f59e0b","#334155"],medic:["#f8fafc","#b91c1c"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"],soldier:["#4d7c0f","#1f2937"],child:["#e879f9","#334155"],doctor:["#f8fafc","#475569"]};
-    const colors=palette[String(entity.look||"")]||palette.field,shirt=colors[0],pants=colors[1];
-    const skin=String(entity.skin||"#d7a47f");
-    ctx.save();ctx.translate(x,y-bob);ctx.globalAlpha=entity.secured?.44:1;
-    ellipse(ctx,2,25+bob,21,7,"rgba(2,6,23,.38)");
-    line(ctx,pants,7,[[-5,8],[-9-stride*.5,24]]);line(ctx,pants,7,[[5,8],[10+stride*.5,24]]);
-    ellipse(ctx,-10-stride*.5,26,6,2.8,"#111827");ellipse(ctx,11+stride*.5,26,6,2.8,"#111827");
-    ctx.fillStyle=shirt;rounded(ctx,-11,-7,22,22,5);ctx.fill();ctx.strokeStyle="rgba(255,255,255,.34)";ctx.lineWidth=1.5;ctx.stroke();
-    line(ctx,shirt,7,[[-8,-2],[-16,9+stride*.22]]);line(ctx,shirt,7,[[8,-2],[16,8-stride*.22]]);
-    ellipse(ctx,-16,10+stride*.22,3.5,4,skin);ellipse(ctx,16,9-stride*.22,3.5,4,skin);
-    ellipse(ctx,0,-16,9,10,skin);ctx.fillStyle="#3f2d22";ctx.beginPath();ctx.arc(0,-19,9,Math.PI,TAU);ctx.fill();ctx.fillRect(-8,-21,16,4);
-    ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-3,-16.8,1.2,0,TAU);ctx.arc(3,-16.8,1.2,0,TAU);ctx.fill();ctx.strokeStyle=entity.injured?"#991b1b":"#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.arc(0,-12.6,3,entity.injured?Math.PI*1.15:.12*Math.PI,entity.injured?Math.PI*1.85:.88*Math.PI);ctx.stroke();
-    if(entity.injured){ctx.strokeStyle="#f8fafc";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-11,2);ctx.lineTo(8,12);ctx.stroke();ctx.fillStyle="#ef4444";ctx.fillRect(-4,5,6,6);}
+    const x=Number(entity.x)||0,y=Number(entity.y)||0,face=Number(options.face??entity.face)||0;
+    const phase=Number(options.phase)||0,now=Number(options.now??Date.now());
+    const blend=entity.secured?0:clamp(options.blend??(options.walking?1:0),0,1);
+    const child=entity.child===true||entity.look==="child",scale=clamp(options.scale??1,.25,4)*(child?.76:1);
+    const look=String(entity.look||"field"),palette={field:["#bd913f","#384c50"],medic:["#ebeee0","#53646b"],doctor:["#ebeee0","#53646b"],scout:["#508b91","#3a4d57"],driver:["#c38343","#38464d"],soldier:["#627d48","#38483a"],child:["#b987a6","#3e4d59"]};
+    const colors=palette[look]||palette.field,shirt=entity.shirt||colors[0],pants=entity.pants||colors[1],skin=entity.skin||"#d8a47d";
+    const injured=!!entity.injured||entity.aiState==="injured",panic=!!entity.panic||["critical","threatened"].includes(entity.riskState)||now<Number(entity._panicUntil||0);
+    const stride=Math.sin(phase)*5*blend,bob=Math.abs(Math.cos(phase))*.8*blend;
+    const hair=Number(entity.hair)||0,facing=Math.cos(face)<0?-1:1;
+    const box=(x,y,w,h,color,r=2)=>{ctx.fillStyle=color;rounded(ctx,x,y,w,h,r);ctx.fill();};
+    ctx.save();ctx.translate(x,y);ctx.scale(facing*scale,scale);
+    if(Number.isFinite(options.alpha))ctx.globalAlpha=clamp(options.alpha,0,1);
+    else if(entity.secured)ctx.globalAlpha=.44;
+    ellipse(ctx,2,27,17,4.5,"rgba(2,6,23,.32)");
+    ctx.translate(0,-bob);
+    for(const side of [-1,1]){
+      const swing=side*stride*(injured&&side<0?.5:1),foot=side*5+swing;
+      const lift=Math.max(0,Math.cos(phase+(side<0?Math.PI:0)))*2.5*blend;
+      line(ctx,"#23343a",6,[[side*5,8],[side*5+swing*.4,17],[foot,25-lift]]);
+      line(ctx,pants,4.5,[[side*5,8],[side*5+swing*.4,17],[foot,24-lift]]);
+      box(foot-3,24-lift,8,3.8,"#1b282d");
+      line(ctx,"#7c8781",.7,[[foot-1,27-lift],[foot+4,27-lift]]);
+    }
+    box(-10,-14,20,28,shirt,4);
+    box(-9,-11,3,17,"rgba(255,244,215,.14)",1);
+    box(6,-10,3,21,"rgba(9,29,37,.18)",1);
+    line(ctx,"rgba(28,45,49,.38)",1,[[0,-11],[0,10]]);
+    line(ctx,"rgba(243,232,204,.5)",1,[[-5,-13],[0,-8],[5,-13]]);
+    box(-7,-5,5,6,"rgba(29,45,47,.20)",1);box(-8,10,16,3,pants,1);
+    // Civilian sleeves, natural arm swing and hands use the soldier's detail level.
+    for(const side of [-1,1]){
+      const elbow=side*(12+Math.abs(stride)*.12),handY=5+side*stride*.35;
+      line(ctx,"rgba(27,40,44,.55)",5.8,[[side*9,-10],[elbow,-2],[side*12,handY]]);
+      line(ctx,shirt,4.5,[[side*9,-10],[elbow,-2],[side*12,handY]]);
+      ellipse(ctx,side*12,handY+1,2.5,3,skin);
+    }
+    if(look==="medic"||look==="doctor"){
+      box(-8,-12,16,24,shirt,2);line(ctx,"#a0b4a6",1,[[-5,-11],[0,-5],[5,-11]]);
+      box(4,-4,4,6,"#a5bfb1",1);box(5,-3,2,4,"#e4eddd",.5);
+      if(entity.vip){line(ctx,"#4d6869",1.3,[[-5,-9],[-5,-1],[1,2],[5,-2],[5,-9]]);ellipse(ctx,1,2,2,2,"#5d7575");}
+    }else if(look==="driver"){
+      for(const px of [-7,5])box(px,-12,2,21,"#e2c67a",.5);
+    }else if(look==="scout"){
+      line(ctx,"#547167",2,[[-8,-12],[8,8]]);box(7,4,5,8,"#3b5750",1);
+    }
+    if(injured){
+      line(ctx,"#e8e6d6",3,[[-8,-8],[8,7]]);
+      box(-5,-2,5,5,"#efeddf",1);line(ctx,"#ac7266",1,[[-4,0],[-1,2]]);
+    }
+    // Same readable eyes, brows, nose and jaw treatment as the shared soldier.
+    ellipse(ctx,-7.2,-22,2,3,skin);ellipse(ctx,7.2,-22,2,3,skin);
+    ellipse(ctx,0,-23,7.7,8.7,skin);ellipse(ctx,-1,-25,4.8,3,"rgba(255,229,193,.18)",-.2);
+    const hairColor=hair===1?"#604333":hair===2?"#263137":"#3b342c";
+    ctx.fillStyle=hairColor;ctx.beginPath();ctx.ellipse(0,-28,8,5,0,Math.PI,TAU);ctx.fill();
+    box(-8,-29,16,hair===1?5:3,hairColor,2);
+    if(hair===2){ellipse(ctx,-7,-23,2.5,6,hairColor);ellipse(ctx,7,-23,2.5,6,hairColor);}
+    if(hair===3)box(-7,-32,12,3,hairColor,1);
+    const gaze=Math.abs(Math.cos(face))*.65;
+    line(ctx,"#584435",.8,[[-5,-25],[-2,-25.3]]);line(ctx,"#584435",.8,[[2,-25.3],[5,-25]]);
+    ellipse(ctx,-3+gaze,-23,1,1.2,"#243238");ellipse(ctx,3+gaze,-23,1,1.2,"#243238");
+    ellipse(ctx,-2.7+gaze,-23.4,.3,.35,"#fff0d5");ellipse(ctx,3.3+gaze,-23.4,.3,.35,"#fff0d5");
+    line(ctx,"rgba(139,89,64,.6)",.8,[[0,-22],[.7,-20],[-.4,-20]]);
+    if(panic){ellipse(ctx,0,-17.5,1.8,2,"#785848");}
+    else line(ctx,injured?"#946c61":"#79543f",.8,[[-2,-17],[0,injured?-17.7:-16.5],[2,-17]]);
     ctx.restore();
-    return {x,y,labelY:y-42};
+    return {x,y,labelY:y-42*scale,barY:y+33*scale};
   }
 
   // Derive presentation from real state only; never alter damage, capture or AI.

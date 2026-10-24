@@ -366,8 +366,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V12.7 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V12.7 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.7 • Shared Map Visuals");
+      ? `Tiger Strike V12.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V12.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.8 • Character Art Parity");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -790,7 +790,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.7 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.8 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -2121,10 +2121,17 @@
       state.civilianDraw.set(key,prior);civ={...civ,x:prior.x,y:prior.y};
     }
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"],soldier:["#4d7c0f","#1f2937"]};
-    const [shirt,pants]=colors[civ.look]||colors.field;const key=`civ:${civ.id}`;const prior=state.walkVisual.get(key)||{x:Number(civ.x),y:Number(civ.y),phase:0};const moved=Math.hypot(Number(civ.x)-prior.x,Number(civ.y)-prior.y);const walking=moved>.12&&!civ.secured;prior.phase=walking?prior.phase+Math.min(1,moved*.26):prior.phase*.9;prior.x=Number(civ.x);prior.y=Number(civ.y);state.walkVisual.set(key,prior);const stride=walking?Math.sin(prior.phase)*6:0;const bob=walking?Math.abs(Math.sin(prior.phase))*1.6:0;ctx.save();ctx.translate(civ.x,civ.y-bob);ctx.globalAlpha=civ.secured?.42:1;
+    const [shirt,pants]=colors[civ.look]||colors.field;
+    const key=`civ:${state.snapshot?.code}:${state.snapshot?.startedAt}:${civ.id}`;
+    const prior=state.walkVisual.get(key)||{x:Number(civ.x),y:Number(civ.y),phase:0,face:Number(civ.face)||0};
+    const dx=Number(civ.x)-prior.x,dy=Number(civ.y)-prior.y,moved=Math.hypot(dx,dy),walking=moved>.12&&!civ.secured;
+    if(walking){prior.phase+=Math.min(1,moved*.26);prior.face=Math.atan2(dy,dx);}
+    prior.x=Number(civ.x);prior.y=Number(civ.y);state.walkVisual.set(key,prior);
+    const stride=walking?Math.sin(prior.phase)*6:0,bob=walking?Math.abs(Math.sin(prior.phase))*1.6:0;
+    ctx.save();ctx.translate(civ.x,civ.y-bob);ctx.globalAlpha=civ.secured?.42:1;
     if(window.TigerStrikeBattlefieldRenderer?.drawCivilian){
       ctx.restore();
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawCivilian(ctx,civ,{walking,phase:prior.phase,rescued});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawCivilian(ctx,civ,{walking,phase:prior.phase,rescued,face:prior.face,now:renderNow,alpha:arrival?.alpha??1});
       if(arrival){window.TigerCivilianRescue?.drawReaction(ctx,{...civ,secured:true},[],renderNow);ctx.fillStyle='#bbf7d0';ctx.font='900 12px system-ui';ctx.textAlign='center';ctx.fillText('Thank you! • Entering safety',drawn.x,drawn.labelY);return;}
       window.TigerCivilianRescue?.drawReaction(ctx,civ,state.snapshot?.tigers||[],renderNow);
       ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(`${window.TigerFieldRadio?.civilianStatus(civ,viewerId())||'RESCUE'} • ${civ.name}`,drawn.x,drawn.labelY);
@@ -2143,6 +2150,16 @@
     if(tiger?.faction === "government"){
       if(tiger.defeated) return;
       const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);
+      if(window.TigerStrikeBattlefieldRenderer?.drawSoldier){
+        const key=`gov:${state.snapshot?.code}:${state.snapshot?.startedAt}:${tiger.id}`;
+        const previous=state.walkVisual.get(key)||{x:tiger.x,y:tiger.y,phase:0,face:Number(tiger.face)||0};
+        const dx=tiger.x-previous.x,dy=tiger.y-previous.y,moved=Math.hypot(dx,dy),walking=moved>.14;
+        if(walking){previous.face=Math.atan2(dy,dx);previous.phase+=Math.min(1.1,moved*.24);}
+        previous.x=tiger.x;previous.y=tiger.y;state.walkVisual.set(key,previous);
+        const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...tiger,face:previous.face,role:'government'},{walking,phase:previous.phase,showMarker:false});
+        ctx.fillStyle='rgba(2,6,23,.86)';roundRect(ctx,tiger.x-26,drawn.barY,52,7,3);ctx.fill();ctx.fillStyle='#ef4444';ctx.fillRect(tiger.x-25,drawn.barY+1,50*pct,5);
+        ctx.fillStyle='#fee2e2';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText('GOV RESPONSE',tiger.x,drawn.labelY);return;
+      }
       ctx.save();ctx.translate(tiger.x,tiger.y);ctx.fillStyle="rgba(2,6,23,.35)";ctx.beginPath();ctx.ellipse(2,22,22,8,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#334155";ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(0,15);ctx.moveTo(-2,1);ctx.lineTo(-15,9);ctx.moveTo(2,1);ctx.lineTo(15,7);ctx.stroke();ctx.strokeStyle="#111827";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(-4,14);ctx.lineTo(-8,28);ctx.moveTo(4,14);ctx.lineTo(9,28);ctx.stroke();ctx.fillStyle="#d7a47f";ctx.beginPath();ctx.arc(0,-17,9,0,Math.PI*2);ctx.fill();ctx.fillStyle="#475569";ctx.beginPath();ctx.arc(0,-20,10,Math.PI,Math.PI*2);ctx.fill();ctx.strokeStyle="#94a3b8";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(10,3);ctx.lineTo(28,-2);ctx.stroke();ctx.fillStyle="rgba(2,6,23,.86)";roundRect(ctx,-48,-54,96,10,5);ctx.fill();ctx.fillStyle="#ef4444";roundRect(ctx,-46,-52,92*pct,6,3);ctx.fill();ctx.fillStyle="#fee2e2";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText("GOV RESPONSE",0,-61);ctx.restore();return;
     }
     if(tiger.defeated) return;const alpha=!!tiger.boss;const tigerId=String(tiger.id||"");const ghost=tigerId==="ghoststripe_alpha"||tigerId==="s83_shadeclaw"||tigerId==="s90_phantom_tiger";const blood=tigerId==="s20_blood_tiger"||tigerId==="s70_legendary_blood_tiger";const ancient=tigerId==="s100_ancient_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":(ancient?"#facc15":"#f59e0b"));const ear=blood?"#fb7185":(ghost?"#e2e8f0":(ancient?"#fef08a":"#fbbf24"));const leg=blood?"#7f1d1d":(ghost?"#94a3b8":(ancient?"#a16207":"#d97706"));const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const nearest=(state.snapshot?.players||[]).slice().sort((a,b)=>distance(a,tiger)-distance(b,tiger))[0];const facing=nearest?(Number(nearest.x)>=Number(tiger.x)?1:-1):1;
@@ -2193,8 +2210,13 @@
     const radius=clamp(Number(tiger.bloodScentRadius||360),220,430),pulse=.5+Math.sin(now/480+String(tiger.id||"").length)*.5;
     ctx.save();ctx.translate(tiger.x,tiger.y);
     ctx.strokeStyle=`rgba(251,113,133,${.14+pulse*.12})`;ctx.lineWidth=3;ctx.setLineDash([14,16]);ctx.beginPath();ctx.arc(0,0,radius,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle="rgba(69,10,10,.30)";ctx.beginPath();ctx.ellipse(0,12,48,19,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#b45309";ctx.beginPath();ctx.ellipse(0,1,38,18,-.12,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(31,-5,14,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="rgba(69,10,10,.30)";ctx.beginPath();ctx.ellipse(0,12,48,19,0,0,Math.PI*2);ctx.fill();
+    if(window.TigerStrikeBattlefieldRenderer?.drawTiger){
+      window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{...tiger,x:0,y:0,hp:0,carcass:true,captured:false},{scale:1,facing:1,showState:false,now});
+    }else{
+    ctx.fillStyle="#b45309";ctx.beginPath();ctx.ellipse(0,1,38,18,-.12,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(31,-5,14,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const stripeX of [-23,-10,3,16]){ctx.beginPath();ctx.moveTo(stripeX,-13);ctx.lineTo(stripeX+8,12);ctx.stroke();}
+    }
     ctx.fillStyle="rgba(190,24,93,.78)";ctx.beginPath();ctx.ellipse(3,15,27,7,.08,0,Math.PI*2);ctx.fill();
     ctx.fillStyle="rgba(15,23,42,.90)";roundRect(ctx,-78,-55,156,28,9);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#ffe4e6";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("BODY • BLOOD SCENT",0,-36);ctx.restore();
   }
@@ -2205,7 +2227,7 @@
     ctx.save();ctx.translate(tiger.x,tiger.y);
     ctx.fillStyle="rgba(2,6,23,.38)";ctx.beginPath();ctx.ellipse(0,20,48,14,0,0,Math.PI*2);ctx.fill();
     if(window.TigerStrikeBattlefieldRenderer?.drawTiger){
-      window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{...tiger,x:0,y:0,captured:true},{scale:.6,facing:1,showState:false,now});
+      window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{...tiger,x:0,y:0,captured:true},{scale:.56,facing:1,showState:false,now});
     }else{
       ctx.fillStyle="#d97706";ctx.beginPath();ctx.ellipse(0,3,29,13,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(25,-2,10,0,Math.PI*2);ctx.fill();
       ctx.strokeStyle="#111827";ctx.lineWidth=3;for(const sx of [-18,-7,5,16]){ctx.beginPath();ctx.moveTo(sx,-8);ctx.lineTo(sx+6,12);ctx.stroke();}

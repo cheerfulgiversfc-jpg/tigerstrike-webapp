@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5241";
+const TS_BUILD = "5242";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -56560,12 +56560,16 @@ function drawCarcass(x,y,carcass=null){
   ctx.beginPath();ctx.ellipse(0,0,radius*.34,radius*.18,0,0,Math.PI*2);ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle="rgba(69,10,10,.28)";ctx.beginPath();ctx.ellipse(0,8,37,16,0,0,Math.PI*2);ctx.fill();
+  if(globalThis.TigerStrikeBattlefieldRenderer?.drawTiger){
+    globalThis.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{id:carcass?.tigerId,name:carcass?.tigerName||carcass?.name,type:carcass?.tigerType,x:0,y:0,hp:0,carcass:true},{scale:1,facing:1,showState:false,now});
+  }else{
   ctx.fillStyle="#b45309";ctx.beginPath();ctx.ellipse(0,0,34,17,-.08,0,Math.PI*2);ctx.fill();
   ctx.beginPath();ctx.arc(29,-5,13,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle="#1f2937";ctx.lineWidth=4;
   for(const stripeX of [-20,-8,5,17]){ctx.beginPath();ctx.moveTo(stripeX,-13);ctx.lineTo(stripeX+7,11);ctx.stroke();}
   ctx.strokeStyle="#92400e";ctx.lineWidth=7;ctx.lineCap="round";
   ctx.beginPath();ctx.moveTo(-18,10);ctx.lineTo(-27,18);ctx.moveTo(8,11);ctx.lineTo(20,17);ctx.stroke();
+  }
   ctx.fillStyle="rgba(190,24,93,.72)";ctx.beginPath();ctx.ellipse(4,13,24,7,.08,0,Math.PI*2);ctx.fill();
   ctx.rotate(-Number(carcass?.facing || 0));
   ctx.fillStyle="rgba(15,23,42,.88)";roundedRectFill(-58,-52,116,25,9);
@@ -58959,152 +58963,15 @@ function drawPremium2DArtPhase7BipedPremiumInk(entity, x, y, opts={}){
   ctx.restore();
 }
 
-function drawRealisticCivilianModel(entity, x, y, opts={}){
-  if(!ctx || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
-  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 1.8)), 0, 1);
-  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
-  const dir = Math.cos(face) >= 0 ? 1 : -1;
-  const step = Number(entity.step || 0) + Number(opts.phase || 0);
-  const scale = Number(opts.scale || 1);
-  const stride = Math.sin(step * 3.1) * (3.6 + blend * 5.4);
-  const lift = Math.abs(Math.sin(step * 3.1)) * (1.2 + blend * 2.5);
-  const shirt = entity.shirt || "rgba(59,130,246,.96)";
-  const pants = entity.pants || "rgba(31,41,55,.96)";
-  const skin = entity.skin || "rgba(222,170,126,.96)";
-  const hairStyle = Number(entity.hair || 0);
-  const civilianStyle = Math.abs(Math.floor(Number(entity.id || 0))) % 6;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(dir * scale, scale);
-  ctx.rotate(animLean(entity, 0.018) * dir);
-
-  ctx.globalAlpha = 0.38;
-  ctx.fillStyle = "rgba(0,0,0,.84)";
-  ctx.beginPath();
-  ctx.ellipse(0, 26.2, 18, 4.9, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  ctx.fillStyle = pants;
-  roundedRectFill(-7.5 + stride * 0.16, 9, 6.4, 15 - lift * 0.15, 3);
-  roundedRectFill(1.1 - stride * 0.16, 9, 6.4, 15 - lift * 0.15, 3);
-  ctx.fillStyle = "rgba(21,27,38,.98)";
-  roundedRectFill(-8 + stride * 0.45, 22.5 - lift, 8.5, 3.8, 2);
-  roundedRectFill(0.5 - stride * 0.45, 22.5 - lift, 8.5, 3.8, 2);
-
-  ctx.strokeStyle = "rgba(12,16,24,.62)";
-  ctx.lineWidth = 1.2;
-  ctx.fillStyle = shirt;
-  ctx.beginPath();
-  ctx.moveTo(-9.5, -13);
-  ctx.quadraticCurveTo(0, -17.5, 9.5, -13);
-  ctx.lineTo(8, 10);
-  ctx.quadraticCurveTo(0, 14.5, -8, 10);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,.20)";
-  roundedRectFill(-6.4, -11, 12.8, 4.4, 2);
-  ctx.fillStyle = "rgba(15,23,42,.30)";
-  roundedRectFill(-1, -12.5, 2, 23, 1);
-  if(civilianStyle === 1){
-    ctx.fillStyle = "rgba(248,250,252,.82)";
-    roundedRectFill(-7.3, -14.5, 14.6, 4.8, 2.4);
-    ctx.fillStyle = "rgba(17,24,39,.22)";
-    roundedRectFill(-5.8, -12.6, 11.6, 2.0, 1);
-  } else if(civilianStyle === 2){
-    ctx.strokeStyle = "rgba(250,204,21,.88)";
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(-5.6, -9);
-    ctx.lineTo(0, -2.5);
-    ctx.lineTo(5.6, -9);
-    ctx.stroke();
-  } else if(civilianStyle === 3){
-    ctx.fillStyle = "rgba(168,85,247,.76)";
-    roundedRectFill(-9.2, -12.5, 18.4, 4.0, 2);
-  } else if(civilianStyle === 4){
-    ctx.strokeStyle = "rgba(15,23,42,.46)";
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.moveTo(-7.0, -8.8);
-    ctx.lineTo(7.0, 5.8);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = shirt;
-  roundedRectFill(-13.2, -10.5 + stride * 0.08, 4.8, 14.5, 2.4);
-  roundedRectFill(8.4, -10.5 - stride * 0.08, 4.8, 14.5, 2.4);
-  ctx.fillStyle = skin;
-  ctx.beginPath(); ctx.arc(-11.2, 4.8 + stride * 0.08, 2.7, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(11.2, 4.8 - stride * 0.08, 2.7, 0, Math.PI * 2); ctx.fill();
-
-  if(Number(entity.id || 0) % 3 === 0){
-    ctx.fillStyle = "rgba(30,41,59,.82)";
-    roundedRectFill(7.4, -6, 5.3, 12, 2.5);
-  } else if(Number(entity.id || 0) % 4 === 0){
-    ctx.strokeStyle = "rgba(71,85,105,.74)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-7, -10);
-    ctx.quadraticCurveTo(0, -2, 7, -10);
-    ctx.stroke();
-  }
-  if(civilianStyle === 5){
-    ctx.fillStyle = "rgba(234,179,8,.92)";
-    roundedRectFill(-12.6, -5, 4.7, 10.5, 2);
-    ctx.fillStyle = "rgba(15,23,42,.28)";
-    roundedRectFill(-11.5, -2.8, 2.5, 5.5, 1.2);
-  }
-
-  ctx.fillStyle = skin;
-  ctx.beginPath();
-  ctx.ellipse(0, -21.1, 7.8, 8.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "rgba(255,232,210,.24)";
-  ctx.beginPath();
-  ctx.ellipse(-2.2, -23.1, 3.4, 2.2, -0.25, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = hairStyle === 1 ? "rgba(58,37,28,.96)" : (hairStyle === 2 ? "rgba(21,24,30,.96)" : "rgba(35,27,24,.96)");
-  if(hairStyle === 1){
-    roundedRectFill(-7.8, -29.2, 15.6, 7.0, 3.5);
-  } else if(hairStyle === 2){
-    ctx.beginPath(); ctx.ellipse(0, -27, 8.4, 5.6, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(6.6, -22.5, 3.6, 7.2, 0.1, 0, Math.PI * 2); ctx.fill();
-  } else {
-    ctx.beginPath(); ctx.arc(0, -24.2, 7.6, Math.PI, Math.PI * 2); ctx.fill();
-  }
-  ctx.fillStyle = "rgba(15,23,42,.96)";
-  ctx.beginPath(); ctx.arc(-2.8, -21.7, 0.9, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(2.8, -21.7, 0.9, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = "rgba(92,52,38,.72)";
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(-2.4, -17.2); ctx.quadraticCurveTo(0, -16.2, 2.4, -17.2); ctx.stroke();
-  if(entity.injured || entity.panic || entity._panicUntil > Date.now()){
-    ctx.strokeStyle = "rgba(248,113,113,.88)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-4.7, -31.8);
-    ctx.lineTo(-2.9, -36.8);
-    ctx.moveTo(4.7, -31.8);
-    ctx.lineTo(2.9, -36.8);
-    ctx.stroke();
-  }
-
-  if(blend > 0.12){
-    ctx.globalAlpha = clamp(0.20 + blend * 0.18, 0.20, 0.38);
-    ctx.strokeStyle = entity.following ? "rgba(110,231,183,.76)" : "rgba(226,232,240,.50)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(-7 + stride * 0.4, 25);
-    ctx.lineTo(-20 - stride * 0.8, 30);
-    ctx.moveTo(7 - stride * 0.4, 25);
-    ctx.lineTo(20 + stride * 0.8, 30);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-  ctx.restore();
+function drawRealisticCivilianModel(entity,x,y,opts={}){
+  if(!ctx||!entity||!Number.isFinite(x)||!Number.isFinite(y))return;
+  const renderer=globalThis.TigerStrikeBattlefieldRenderer;
+  if(!renderer?.drawCivilian)return;
+  return renderer.drawCivilian(ctx,{...entity,x,y},{
+    blend:clamp(Number(opts.blend??premiumGaitBlend(entity,opts.topSpeed||1.8)),0,1),
+    face:opts.face??entity.face,phase:(Number(entity.step)||0)*3.1+Number(opts.phase||0),
+    scale:opts.scale||1,now:opts.now
+  });
 }
 
 function drawRealisticSoldierModel(entity, x, y, opts={}){
@@ -59390,7 +59257,7 @@ function drawCivilian(c){
   if(c.evac && arrival){
     if(arrival.done)return;
     ctx.save();ctx.globalAlpha=arrival.alpha;
-    drawRealisticCivilianModel(c,arrival.x,arrival.y,{blend:1,topSpeed:2.1,face:-Math.PI/2,phase:nowMs*.008,scale:.96});
+    drawRealisticCivilianModel(c,arrival.x,arrival.y,{blend:1,topSpeed:2.1,face:-Math.PI/2,phase:nowMs*.008,scale:1});
     window.TigerCivilianRescue?.drawReaction(ctx,{...c,x:arrival.x,y:arrival.y},[],nowMs);
     ctx.fillStyle='#bbf7d0';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText('Thank you! • Entering safety',arrival.x,arrival.y-48);ctx.restore();return;
   }
@@ -59461,6 +59328,8 @@ function drawCivilian(c){
   const riskState = String(c.riskState || "");
   const atRisk = (S.dangerCivId===c.id) || riskState === "threatened" || riskState === "critical";
 
+  // Shared civilians replace, rather than cover, the old Solo underpainting.
+  if(!globalThis.TigerStrikeBattlefieldRenderer?.drawCivilian){
   ctx.save();
   ctx.translate(bx, by);
   ctx.scale(dir, 1);
@@ -59549,6 +59418,7 @@ function drawCivilian(c){
   roundedRectFill(2, 12, 7, 2.6, 1.2);
 
   ctx.restore();
+  }
   if(LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED){
     drawPremiumBipedArtShell(c, bx, by, {
       blend:moveBlend, topSpeed:c.following ? 2.1 : 1.4, face, phase:(c.id || 0) * 0.31,
@@ -59585,7 +59455,7 @@ function drawCivilian(c){
     topSpeed:c.following ? 2.1 : 1.4,
     face,
     phase:(c.id || 0) * 0.31,
-    scale:0.96
+    scale:1
   });
   window.TigerCivilianRescue?.drawReaction(ctx,{...c,x:bx,y:by},S.tigers||[],nowMs);
 
@@ -60184,7 +60054,7 @@ function drawSoldier(){
     topSpeed:3.0,
     face:ang,
     phase:0.15,
-    scale:1.05,
+    scale:1,
     role:"player",
     accent:palette.trim,
     shotKick
@@ -60325,7 +60195,11 @@ function drawSupportUnit(unit){
   const shotKickLeft = Math.max(0, Number(unit.shotKickUntil || 0) - Date.now());
   const shotKick = shotKickLeft > 0 ? Math.sin((1 - clamp(shotKickLeft / 130, 0, 1)) * Math.PI) : 0;
   const hpRatio = clamp(Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1)), 0, 1);
+  const uniformBody = squadProfile?.uniform === "Legend Black"
+    ? "rgba(20,24,32,.98)"
+    : (squadProfile?.uniform === "Elite Gold" ? "rgba(146,103,22,.98)" : (attacker ? "rgba(114,44,26,.95)" : "rgba(30,68,92,.95)"));
 
+  if(!globalThis.TigerStrikeBattlefieldRenderer?.drawSoldier){
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(dir, 1);
@@ -60359,9 +60233,6 @@ function drawSupportUnit(unit){
   roundedRectFill(-8 + (stride * 0.35), 16, 6, 4, 2);
   roundedRectFill(2 - (stride * 0.35), 16, 6, 4, 2);
 
-  const uniformBody = squadProfile?.uniform === "Legend Black"
-    ? "rgba(20,24,32,.98)"
-    : (squadProfile?.uniform === "Elite Gold" ? "rgba(146,103,22,.98)" : (attacker ? "rgba(114,44,26,.95)" : "rgba(30,68,92,.95)"));
   ctx.fillStyle = uniformBody;
   roundedRectFill(-9, -15, 18, 24, 6);
   ctx.strokeStyle = "rgba(8,12,18,.40)";
@@ -60380,6 +60251,7 @@ function drawSupportUnit(unit){
   roundedRectFill(-12, -12, 4, 12, 2);
   roundedRectFill(8, -12, 4, 12, 2);
   ctx.restore();
+  }
   if(LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED){
     drawPremiumBipedArtShell(unit, x, y, {
       blend:moveBlend,
@@ -60451,6 +60323,7 @@ function drawSupportUnit(unit){
     });
   }
   safeCanvasLayer("drawRealisticSoldierModel.support", ()=>drawRealisticSoldierModel(unit, x, y, {
+    uniformPalette:{body:uniformBody,light:attacker?'#b57c55':'#548994',dark:'#273b40',vest:attacker?'#66483d':'#315861',helmet:'#3c5355',trim:attacker?'#e9b96b':'#96d4c9'},
     blend:moveBlend,
     topSpeed:2.5,
     face:ang,
@@ -60461,6 +60334,7 @@ function drawSupportUnit(unit){
     shotKick
   }));
 
+  if(!globalThis.TigerStrikeBattlefieldRenderer?.drawSoldier){
   ctx.strokeStyle = attacker ? "rgba(255,214,170,.9)" : "rgba(210,240,255,.88)";
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -60470,6 +60344,7 @@ function drawSupportUnit(unit){
     y + Math.sin(ang) * 11 - (shotKick * 0.95)
   );
   ctx.stroke();
+  }
   if(shotKick > 0 && animationPassQuality() !== "lite"){
     ctx.save();
     ctx.globalAlpha = clamp(shotKick * 0.48, 0, 0.52);
@@ -60485,27 +60360,27 @@ function drawSupportUnit(unit){
   ctx.fillStyle = attacker ? "rgba(255,233,205,.86)" : "rgba(245,247,255,.78)";
   ctx.font = "900 10px system-ui";
   const label = `${unit.name || (attacker ? "Tiger Specialist" : "Rescue Specialist")} Lv${unit.squadLevel || 1}`;
-  ctx.fillText(label, x - Math.min(26, label.length * 2.2), y - 28);
+  ctx.fillText(label, x - Math.min(26, label.length * 2.2), y - 46);
   if(squadProfile && frameLagTier() < 2){
     const trait = squadProfileTrait(squadProfile);
     const badge = `${trait.label} • Bond ${Math.round(Number(squadProfile.bond || 0))}%`;
     ctx.fillStyle = attacker ? "rgba(255,210,160,.72)" : "rgba(180,238,255,.72)";
     ctx.font = "800 8px system-ui";
-    ctx.fillText(badge, x - Math.min(30, badge.length * 1.7), y - 36);
+    ctx.fillText(badge, x - Math.min(30, badge.length * 1.7), y - 56);
   }
   if(unit.activeOrder && frameLagTier() < 2){
     const queued = Array.isArray(unit.commandQueue) ? unit.commandQueue.length : 0;
     ctx.fillStyle = "rgba(147,197,253,.90)";
     ctx.font = "900 8px system-ui";
-    ctx.fillText(`${squadCommandShortLabel(unit.activeOrder.command)}${queued ? ` +${queued}` : ""} • ${squadEquipmentForUnit(unit).label}`, x - 30, y - 44);
+    ctx.fillText(`${squadCommandShortLabel(unit.activeOrder.command)}${queued ? ` +${queued}` : ""} • ${squadEquipmentForUnit(unit).label}`, x - 30, y - 66);
   }
   ctx.fillStyle = "rgba(11,13,18,.84)";
-  ctx.fillRect(x - 18, y - 22, 36, 4);
+  ctx.fillRect(x - 18, y + 34, 36, 4);
   ctx.fillStyle = hpRatio > 0.5 ? "#4ade80" : (hpRatio > 0.25 ? "#f59e0b" : "#fb7185");
-  ctx.fillRect(x - 18, y - 22, 36 * hpRatio, 4);
+  ctx.fillRect(x - 18, y + 34, 36 * hpRatio, 4);
   ctx.strokeStyle = "rgba(241,245,249,.62)";
   ctx.lineWidth = 1;
-  ctx.strokeRect(x - 18, y - 22, 36, 4);
+  ctx.strokeRect(x - 18, y + 34, 36, 4);
 }
 
 function drawRivalHunter(unit){
@@ -60550,6 +60425,13 @@ function drawRivalHunter(unit){
   ctx.stroke();
   ctx.restore();
 
+  if(globalThis.TigerStrikeBattlefieldRenderer?.drawSoldier){
+    drawRealisticSoldierModel(unit,x,y,{
+      blend:animMoveBlend(unit,2.5),face:ang,phase:(Number(unit.id)||0)*.19,
+      role:faction.government?'government':'rival',scale:1,
+      uniformPalette:faction.government?undefined:{body:faction.color||'#986a4c',light:'#b79370',dark:'#383e3b',vest:'#4d4840',helmet:'#655c4e',trim:faction.accent||'#deb779'}
+    });
+  }else{
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(dir, 1);
@@ -60602,24 +60484,26 @@ function drawRivalHunter(unit){
   ctx.lineTo(x + Math.cos(ang) * 10, y + Math.sin(ang) * 10);
   ctx.stroke();
 
+  }
+
   const hpPct = clamp((unit.hp || 0) / Math.max(1, unit.hpMax || 1), 0, 1);
   ctx.fillStyle = "rgba(9,12,18,.84)";
-  ctx.fillRect(x - 16, y - 18, 32, 4);
+  ctx.fillRect(x - 16, y + 34, 32, 4);
   ctx.fillStyle = hpPct > 0.5 ? "#4ade80" : (hpPct > 0.2 ? "#f59e0b" : "#fb7185");
-  ctx.fillRect(x - 16, y - 18, 32 * hpPct, 4);
+  ctx.fillRect(x - 16, y + 34, 32 * hpPct, 4);
   ctx.save();
   ctx.fillStyle = "rgba(124,45,18,.94)";
-  roundedRectFill(x - 28, y - 44, 56, 16, 8);
+  roundedRectFill(x - 28, y - 56, 56, 16, 8);
   ctx.strokeStyle = "rgba(251,146,60,.88)";
-  ctx.strokeRect(x - 27.5, y - 43.5, 55, 15);
+  ctx.strokeRect(x - 27.5, y - 55.5, 55, 15);
   ctx.fillStyle = "rgba(255,247,237,.98)";
   ctx.font = "900 8px system-ui";
   ctx.textAlign = "center";
-  ctx.fillText(S.lockedRivalId === unit.id ? "RIVAL LOCK" : "RIVAL", x, y - 33);
+  ctx.fillText(S.lockedRivalId === unit.id ? "RIVAL LOCK" : "RIVAL", x, y - 45);
   ctx.restore();
   ctx.fillStyle = "rgba(245,247,255,.90)";
   ctx.font = "800 9px system-ui";
-  ctx.fillText(unit.callsign || "Rival", x - 16, y - 24);
+  ctx.fillText(unit.callsign || "Rival", x - 16, y - 62);
 }
 
 const TIGER_VISUAL_PALETTES = Object.freeze([
