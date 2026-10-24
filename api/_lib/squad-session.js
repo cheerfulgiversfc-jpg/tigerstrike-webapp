@@ -2730,6 +2730,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     combatEvents:(Array.isArray(src.combatEvents)?src.combatEvents:[]).slice(-8).map(combatFeel.event).filter(Boolean),
     radioSignal:src.radioSignal && fieldRadio.SIGNALS[src.radioSignal.kind] ? src.radioSignal : null,
     pendingTigerAttack:src.pendingTigerAttack || null,
+    lastEvasion:src.lastEvasion?.kind==='dodged'?{id:cleanText(src.lastEvasion.id,140),kind:'dodged',at:Math.max(0,Number(src.lastEvasion.at)||0),x:clamp(src.lastEvasion.x,0,MAX_COOP_WORLD.width),y:clamp(src.lastEvasion.y,0,MAX_COOP_WORLD.height)}:null,
     lastHitTigerId:cleanText(src.lastHitTigerId,80),
     lastHitKind:['rubber','tranq'].includes(src.lastHitKind)?src.lastHitKind:'real',
     lastNoiseAt:Math.max(0, Number(src.lastNoiseAt || 0)),
@@ -3504,6 +3505,7 @@ async function updateOwnPresence(session, user, patch={}){
       if(resolution!=='warning'){
         attackHit=resolution==='hit'&&attacker&&distance(player,attacker)<=huntRange;
         if(attackHit)threat=attacker;
+        if(resolution==='dodged')player.lastEvasion={id:`${attackRun}:${player.userId}:evade:${pending.startedAt}`,kind:'dodged',at:now,x:Number(player.x),y:Number(player.y)};
         player.pendingTigerAttack=null;player.lastHazardAt=now;
       }
     }else if(threat&&threat.faction!=='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown){

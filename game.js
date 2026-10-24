@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5246";
+const TS_BUILD = "5247";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -10,9 +10,21 @@ const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 let __livingTigerNoise = null;
 let __soloCombatPresentation=null;
 let __soloCombatReceipt=0;
+let __soloReactionPresentation=null;
+let __soloReactionRun=0;
+function soloCombatReactions(){
+  if(!__soloReactionPresentation)__soloReactionPresentation=window.TigerCombatReactions?.create();
+  return __soloReactionPresentation;
+}
+function observeSoloCombatReactions(){
+  const now=Date.now();
+  soloCombatReactions()?.observe({code:'solo',startedAt:__soloReactionRun,serverNow:now,status:S.gameOver?'failed':'active',paused:S.paused,
+    players:[{userId:'solo',hp:S.hp,armor:S.armor,x:S.me.x,y:S.me.y},...(S.supportUnits||[]).map(p=>({...p,userId:`support:${p.id}`}))],
+    tigers:(S.tigers||[]).filter(t=>isBossTiger(t)).map(t=>({...t,boss:true})),civilians:S.civilians,securedCivilianIds:(S.civilians||[]).filter(c=>c.evac).map(c=>c.id)},now);
+}
 function combatComfortSettings(){return window.TigerCombatFeel?.settings()||{vibration:false,reducedFlashes:false,shake:25};}
 function soloCombatPresentation(){
-  if(!__soloCombatPresentation)__soloCombatPresentation=window.TigerCombatFeel?.create(e=>{sfx(`weapon-${e.mode}`);if(!e.captured)hapticImpact('light');queueCameraShake(e.mode==='real'?.22:.12,100);});
+  if(!__soloCombatPresentation)__soloCombatPresentation=window.TigerCombatFeel?.create(e=>{soloCombatReactions()?.shot(e,Date.now());sfx(`weapon-${e.mode}`);if(!e.captured)hapticImpact('light');queueCameraShake(e.mode==='real'?.22:.12,100);});
   return __soloCombatPresentation;
 }
 function recordWeaponImpact(target,mode,extra={}){
@@ -43026,6 +43038,7 @@ function deploy(opts={}){
     return;
   }
   __deployInProgress = true;
+  __soloReactionRun++;soloCombatReactions()?.reset(`solo:${__soloReactionRun}`,true);
   if(__startupComplete && !window.__TUTORIAL_MODE__) __gameplayLoadingGuardArmed = true;
   beginMissionTransitionGuard("deploy-begin", 2200);
   try{
@@ -58985,7 +58998,8 @@ function drawRealisticCivilianModel(entity,x,y,opts={}){
   return renderer.drawCivilian(ctx,{...entity,x,y},{
     blend:clamp(Number(opts.blend??premiumGaitBlend(entity,opts.topSpeed||1.8)),0,1),
     face:opts.face??entity.face,phase:(Number(entity.step)||0)*3.1+Number(opts.phase||0),
-    scale:opts.scale||1,now:opts.now,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y)
+    scale:opts.scale||1,now:opts.now,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
+    celebration:globalThis.TigerCombatReactions?.celebration(entity,opts.now??Date.now())||0
   });
 }
 
@@ -59006,7 +59020,8 @@ function drawSoldierModelOnContext(ctx,entity,x,y,opts={}){
   return renderer.drawSoldier(ctx,{...entity,x,y,face:opts.face??entity.face,role:opts.role||entity.role},{
     blend,phase:(Number(entity.step)||0)*3.25+Number(opts.phase||0),
     scale:opts.scale||1,mine:true,showMarker:opts.role==="player",
-    uniformPalette:opts.uniformPalette,shotKick:opts.shotKick,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y)
+    uniformPalette:opts.uniformPalette,shotKick:opts.shotKick,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
+    reaction:typeof soloCombatReactions==='function'?soloCombatReactions()?.pose('soldier',opts.role==='player'?'solo':`support:${entity.id}`,Date.now(),combatComfortSettings())||0:0
   });
 }
 
@@ -60806,6 +60821,7 @@ function triggerCombatInteraction(kind, opts={}){
     return;
   }
   if(kind === "dodge"){
+    soloCombatReactions()?.moment('escape',`solo:${__soloReactionRun}:dodge:${now}`,{x,y},now);
     emitCombatParticles("dodge", x, y, { sourceX:t?.x, sourceY:t?.y });
     queueImpactPulse(x, y, "dodge");
     emitDamagePopup(x, y - 42, label || "DODGE", "dodge");
@@ -61722,7 +61738,8 @@ function drawSharedMissionTiger(t,x,y,scale,colors,behavior={},now=Date.now()){
   return globalThis.TigerStrikeBattlefieldRenderer.drawTiger(ctx,{...t,x,y,boss:isBossTiger(t)},{
     facing,scale,palette:colors,now,walking:speed>.15,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
     running:speed>2.1,gait:t.gaitState,phase:(Number(t.step)||0)*2.18,
-    pouncing:!!behavior.pounce,crouching:!!behavior.crouch,roaring:!!behavior.roaring
+    pouncing:!!behavior.pounce,crouching:!!behavior.crouch,roaring:!!behavior.roaring,
+    reaction:typeof soloCombatReactions==='function'?soloCombatReactions()?.pose('tiger',String(t.id),now,combatComfortSettings())||0:0
   });
 }
 function drawRealisticTigerModel(t, s, c, visual, behaviorAnim={}, now=Date.now(), headReach=0, headBob=0){
@@ -62796,6 +62813,7 @@ function drawTigerEcosystemTerritories(){
   }
 }
 function drawEntities(){
+  observeSoloCombatReactions();
   const drawSafe = (label, fn)=>{
     try{ fn(); }catch(err){ reportTickError(label, err); }
   };
@@ -62939,6 +62957,7 @@ function drawEntities(){
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
   drawSafe("drawFieldObjectiveBeacons",drawFieldObjectiveBeacons);
   drawSafe('drawSharedWeaponImpacts',()=>soloCombatPresentation()?.draw(ctx,Date.now(),combatComfortSettings()));
+  drawSafe('drawSharedActionMoments',()=>soloCombatReactions()?.draw(ctx,Date.now(),combatComfortSettings(),{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height}));
   drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
   const iphoneStability = iphoneStabilityModeActive();
   const iphoneLiteFeedback = iphoneLiteCombatFeedbackEnabled();

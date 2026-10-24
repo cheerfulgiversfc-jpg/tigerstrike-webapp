@@ -35,10 +35,12 @@ test('actual co-op presence warns before damage, then resolves a hit or dodge',a
   await store.setState(key,{...player,pendingTigerAttack:{...player.pendingTigerAttack,resolveAt:Date.now()-1}});
   await squad.updateOwnPresence(session,host,{});player=await store.getState(key);
   assert(player.hp<100||player.armor<100);
+  assert(!player.lastEvasion,'an actual hit must not invent an escape receipt');
   const hp=player.hp,armor=player.armor;
   const pending=encounters.beginAttack(tiger,player,Date.now()-1200,false,`${session.code}:${session.startedAt}`);
   pending.x=player.x+200;pending.resolveAt=Date.now()-1;
   await store.setState(key,{...player,pendingTigerAttack:pending});
   await squad.updateOwnPresence(session,host,{});player=await store.getState(key);
   assert.equal(player.hp,hp);assert.equal(player.armor,armor);assert.equal(player.pendingTigerAttack,null);
+  assert.equal(player.lastEvasion.kind,'dodged');assert.equal(player.lastEvasion.x,player.x);assert(player.lastEvasion.id.includes('evade:'));
 });

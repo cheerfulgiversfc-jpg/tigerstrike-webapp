@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V13.0 (Combat Feel & Impact)</title>
+  <title>Tiger Strike 🐅 — V13.0 (Combat Feel & Impact — Part 2)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5246-combat-feel">
+  <link rel="stylesheet" href="./squad-coop.css?v=5247-combat-reactions">
 
   <style>
     :root{
@@ -2576,9 +2576,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V13.0</span> <span class="tag">Combat Feel & Impact</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V13.0 • Part 2</span> <span class="tag">Combat Feel & Impact</span></div>
       <div class="sub">
-        V13.0 — Combat Feel &amp; Impact, Part 1: confirmed player shots now use shared muzzle flashes, controlled visual recoil, ammunition-specific impacts and short Real/Rubber/Tranq sound effects in Solo and Co-op. Real impacts distinguish lethal injury from an actual kill; Rubber identifies nonlethal hits; Tranq identifies a real tag or successful capture without inventing a sedation meter. Co-op effect receipts prevent polling or reconnects from replaying old shots. Combat Comfort offers optional vibration, reduced weapon/hit flashes and adjustable screen shake on this device. Music, ammunition costs, damage, capture requirements, mission difficulty and progression are unchanged. Expanded character reactions, civilian celebrations and new boss/escape moments are later parts of this upgrade—not included in this first release.<br>
+        V13.0 — Combat Feel &amp; Impact, Part 2: Solo and Co-op soldiers now visibly flinch on confirmed health or armor loss. Tigers have cosmetic hit-stagger and more articulated pounce poses, while civilians briefly wave when actually arriving in safety. Short local cues mark a nearby boss encounter, a confirmed capture, a completed civilian rescue and an attack genuinely evaded. Duplicate snapshots, old reconnect data and new mission runs do not replay old reactions. These are canvas effects only: no new modal, pause, input lock, damage, stun, capture requirement or difficulty increase. Part 1 weapon feedback and Combat Comfort remain; reduced flashes soften reactions and remove extra cue accents, and your music is unchanged.<br>
         Chapter Map Lock remains: each ten-mission Story chapter shares one 4800 × 2800 base map in Solo and Co-op, including its roads, living water, homes, trees and bridges. Objectives and weather can vary without moving the base geography.<br>
         Settlement Siege, Escaped Alpha Transport, and Government Response Raid are real playable Solo crises with their own enemies, civilians, objectives, rewards, completion receipts, and safe return to the command network.<br>
         All 100 Story missions now share one authored map-truth system across Solo and Shared Story. Every future mission batch includes Mission Map Truth &amp; Parity in the same update—not as a later visual patch.<br>
@@ -3621,34 +3621,35 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5246-combat-feel"></script>
-  <script src="./combat-feel.js?v=5246-combat-feel"></script>
-  <script src="./chapter-maps.js?v=5246-combat-feel"></script>
-  <script src="./extraction-geometry.js?v=5246-combat-feel"></script>
-  <script src="./ammo-modes.js?v=5246-combat-feel"></script>
-  <script src="./government-policy.js?v=5246-combat-feel"></script>
-  <script src="./tiger-intelligence.js?v=5246-combat-feel"></script>
-  <script src="./tiger-encounters.js?v=5246-combat-feel"></script>
-  <script src="./living-world.js?v=5246-combat-feel"></script>
-  <script src="./mission-map-truth.js?v=5246-combat-feel"></script>
-  <script src="./post-campaign.js?v=5246-combat-feel"></script>
-  <script src="./sanctuary.js?v=5246-combat-feel"></script>
-  <script src="./player-experience.js?v=5246-combat-feel"></script>
-  <script src="./field-radio.js?v=5246-combat-feel"></script>
-  <script src="./civilian-rescue.js?v=5246-combat-feel"></script>
-  <script src="./rescue-tools.js?v=5246-combat-feel"></script>
-  <script src="./escort-teamwork.js?v=5246-combat-feel"></script>
-  <script src="./chapter-milestones.js?v=5246-combat-feel"></script>
-  <script src="./mission-debrief.js?v=5246-combat-feel"></script>
-  <script src="./mastery-rewards.js?v=5246-combat-feel"></script>
-  <script src="./shared-battlefield-renderer.js?v=5246-combat-feel"></script>
-  <script src="./game.js?v=5246-combat-feel"></script>
-  <script src="./story-cinematics.js?v=5246-combat-feel"></script>
-  <script src="./field-systems.js?v=5246-combat-feel"></script>
-  <script src="./tutorial.js?v=5246-combat-feel"></script>
-  <script src="./squad-motion.js?v=5246-combat-feel"></script>
-  <script src="./squad-coop.js?v=5246-combat-feel"></script>
-  <script src="./extraction-qa.js?v=5246-combat-feel"></script>
+  <script src="./water-terrain.js?v=5247-combat-reactions"></script>
+  <script src="./combat-feel.js?v=5247-combat-reactions"></script>
+  <script src="./combat-reactions.js?v=5247-combat-reactions"></script>
+  <script src="./chapter-maps.js?v=5247-combat-reactions"></script>
+  <script src="./extraction-geometry.js?v=5247-combat-reactions"></script>
+  <script src="./ammo-modes.js?v=5247-combat-reactions"></script>
+  <script src="./government-policy.js?v=5247-combat-reactions"></script>
+  <script src="./tiger-intelligence.js?v=5247-combat-reactions"></script>
+  <script src="./tiger-encounters.js?v=5247-combat-reactions"></script>
+  <script src="./living-world.js?v=5247-combat-reactions"></script>
+  <script src="./mission-map-truth.js?v=5247-combat-reactions"></script>
+  <script src="./post-campaign.js?v=5247-combat-reactions"></script>
+  <script src="./sanctuary.js?v=5247-combat-reactions"></script>
+  <script src="./player-experience.js?v=5247-combat-reactions"></script>
+  <script src="./field-radio.js?v=5247-combat-reactions"></script>
+  <script src="./civilian-rescue.js?v=5247-combat-reactions"></script>
+  <script src="./rescue-tools.js?v=5247-combat-reactions"></script>
+  <script src="./escort-teamwork.js?v=5247-combat-reactions"></script>
+  <script src="./chapter-milestones.js?v=5247-combat-reactions"></script>
+  <script src="./mission-debrief.js?v=5247-combat-reactions"></script>
+  <script src="./mastery-rewards.js?v=5247-combat-reactions"></script>
+  <script src="./shared-battlefield-renderer.js?v=5247-combat-reactions"></script>
+  <script src="./game.js?v=5247-combat-reactions"></script>
+  <script src="./story-cinematics.js?v=5247-combat-reactions"></script>
+  <script src="./field-systems.js?v=5247-combat-reactions"></script>
+  <script src="./tutorial.js?v=5247-combat-reactions"></script>
+  <script src="./squad-motion.js?v=5247-combat-reactions"></script>
+  <script src="./squad-coop.js?v=5247-combat-reactions"></script>
+  <script src="./extraction-qa.js?v=5247-combat-reactions"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

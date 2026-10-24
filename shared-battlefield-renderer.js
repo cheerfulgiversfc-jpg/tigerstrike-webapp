@@ -105,6 +105,7 @@
     const x=Number(entity.x)||0,y=Number(entity.y)||0,face=Number(entity.face)||0;
     const blend=clamp(options.blend??(options.walking?1:0),0,1),phase=Number(options.phase)||0;
     const downed=!!entity.downed,facing=Math.cos(face)<0?-1:1;
+    const reaction=downed?0:clamp(options.reaction,0,1);
     const mine=!!options.mine,accent=downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");
     const role=String(entity.role||"support"),cloth=options.uniformPalette||NPC_UNIFORMS[role]||{};
     const body=cloth.body||"#456b48",light=cloth.light||"#83a66b",dark=cloth.dark||"#263d32";
@@ -116,6 +117,7 @@
     ctx.save();ctx.translate(x,y);ctx.scale(facing*scale,scale);
     ellipse(ctx,0,27,20,5,"rgba(2,6,23,.38)");
     ctx.translate(0,-bob+(downed?8:0));
+    if(reaction>0){ctx.translate(-reaction*1.8,reaction*1.5);ctx.rotate(-reaction*.085);}
     // Independent articulated legs keep the character upright while walking.
     for(const side of [-1,1]){
       const swing=side*stride,hip=side*5.5,knee=hip+swing*.4,foot=hip+swing;
@@ -190,7 +192,7 @@
     // Mirroring handles left-facing aim; only the two-arm weapon rig pitches.
     const aim=Math.atan2(Math.sin(face),Math.abs(Math.cos(face)));
     const recoil=clamp(options.shotKick,0,1)*2;
-    ctx.save();ctx.translate(0,-5);ctx.rotate(aim);ctx.translate(-recoil,0);
+    ctx.save();ctx.translate(0,-5);ctx.rotate(aim+reaction*.14);ctx.translate(-recoil,0);
     line(ctx,dark,6,[[-9,-4],[-11,3],[3,3]]);
     line(ctx,body,4,[[-9,-4],[-11,3],[3,3]]);
     line(ctx,dark,6,[[9,-4],[14,2],[18,-1]]);
@@ -218,6 +220,7 @@
     const look=String(entity.look||"field"),palette={field:["#bd913f","#384c50"],medic:["#ebeee0","#53646b"],doctor:["#ebeee0","#53646b"],scout:["#508b91","#3a4d57"],driver:["#c38343","#38464d"],soldier:["#627d48","#38483a"],child:["#b987a6","#3e4d59"]};
     const colors=palette[look]||palette.field,shirt=entity.shirt||colors[0],pants=entity.pants||colors[1],skin=entity.skin||"#d8a47d";
     const injured=!!entity.injured||entity.aiState==="injured",panic=!!entity.panic||["critical","threatened"].includes(entity.riskState)||now<Number(entity._panicUntil||0);
+    const cheer=clamp(options.celebration,0,1);
     const stride=Math.sin(phase)*5*blend,bob=Math.abs(Math.cos(phase))*.8*blend;
     const hair=Number(entity.hair)||0,facing=Math.cos(face)<0?-1:1;
     const box=(x,y,w,h,color,r=2)=>{ctx.fillStyle=color;rounded(ctx,x,y,w,h,r);ctx.fill();};
@@ -242,9 +245,10 @@
     box(-7,-5,5,6,"rgba(29,45,47,.20)",1);box(-8,10,16,3,pants,1);
     // Civilian sleeves, natural arm swing and hands use the soldier's detail level.
     for(const side of [-1,1]){
-      const elbow=side*(12+Math.abs(stride)*.12),handY=5+side*stride*.35;
-      line(ctx,"rgba(27,40,44,.55)",5.8,[[side*9,-10],[elbow,-2],[side*12,handY]]);
-      line(ctx,shirt,4.5,[[side*9,-10],[elbow,-2],[side*12,handY]]);
+      const wave=injured&&side<0?0:cheer;
+      const elbow=side*(12+Math.abs(stride)*.12),handY=5+side*stride*.35-wave*35;
+      line(ctx,"rgba(27,40,44,.55)",5.8,[[side*9,-10],[elbow,-2-wave*16],[side*12,handY]]);
+      line(ctx,shirt,4.5,[[side*9,-10],[elbow,-2-wave*16],[side*12,handY]]);
       ellipse(ctx,side*12,handY+1,2.5,3,skin);
     }
     if(look==="medic"||look==="doctor"){
@@ -314,6 +318,10 @@
     const crouch=state.warning?5:options.crouching?2:0;
     const bob=moving?Math.abs(Math.sin(phase))*(running?2.2:.7):0;
     const rest=state.asleep||state.dead;
+    const motion=globalThis.TigerCombatFeel?.settings().reducedFlashes ? .3 : 1;
+    const hitLeft=Number(entity.hitFlashUntil||entity.hitUntil||0)-now;
+    const hitReaction=hitLeft>0&&hitLeft<400?Math.sin(Math.PI*clamp(hitLeft/320,0,1))*motion:0;
+    const reaction=rest?0:Math.max(clamp(options.reaction,0,1),hitReaction);
     const identity=String(entity.id||"")+" "+String(entity.name||entity.alias||"");
     const ghost=/ghost|shade|phantom/i.test(identity),blood=/blood/i.test(identity),ancient=/ancient/i.test(identity);
     const colors=options.palette||{};
@@ -326,6 +334,7 @@
     ctx.save();ctx.translate(x,y);ctx.scale(facing*scale,scale);
     ellipse(ctx,-2,28,39-leap*4,5-leap,"rgba(2,6,23,.32)");
     ctx.translate(0,crouch-bob-leap*9+(rest?13:0));
+    if(reaction>0||leap>0){ctx.rotate(-reaction*.10-leap*.12*motion);ctx.translate(-reaction*2,reaction*2);}
     // Tail, body and chest silhouette: a flexible spine, not a sliding oval.
     const tailWave=moving?Math.sin(phase-.7)*(running?7:3):0;
     line(ctx,dark,6,[[-29,-3],[-45,-8+tailWave],[-57,-17+tailWave*.5],[-62,-15+tailWave*.4]]);

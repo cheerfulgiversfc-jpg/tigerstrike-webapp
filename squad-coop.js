@@ -5,7 +5,9 @@
   const ACTIVE_ROOM_MAX_AGE_MS = 3 * 60 * 60 * 1000;
   const tgApp = window.Telegram?.WebApp || null;
   const squadMotion = window.TigerStrikeSquadMotion;
+  const reactionPresentation=window.TigerCombatReactions?.create();
   const combatPresentation=window.TigerCombatFeel?.create(e=>{
+    reactionPresentation?.shot(e,Date.now());
     window.sfx?.(`weapon-${e.mode}`);
     if(e.actorId===String(viewerId())&&window.TigerCombatFeel.settings().vibration){try{tgApp?.HapticFeedback?.impactOccurred?.('light');}catch(_){} }
   });
@@ -430,6 +432,7 @@
       state.remoteDraw.set(player.userId, squadMotion.accept(state.remoteDraw.get(player.userId), player, receivedAt, snapshot.world));
     }
     state.snapshot = snapshot;
+    reactionPresentation?.observe(snapshot,Date.now());
     combatPresentation?.ingest(snapshot,Date.now());
     state.snapshotReceivedAt = receivedAt;
     if(snapshot.viewerProfile) state.profile = snapshot.viewerProfile;
@@ -1771,6 +1774,7 @@
   }
 
   function resetRoomState(){
+    reactionPresentation?.reset();
     combatPresentation?.clear();
     state.roomEpoch += 1;
     state.pending.clear();
@@ -2126,6 +2130,7 @@
   function drawStoryCivilian(ctx,civ,rescued){
     const renderNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
     const arrival=window.TigerCivilianRescue?.arrivalFrame(civ.rescueArrival,renderNow);
+    const celebration=window.TigerCombatReactions?.celebration(civ,renderNow)||0;
     if(civ.secured){
       if(!arrival || arrival.done)return;
       civ={...civ,x:arrival.x,y:arrival.y,secured:false};
@@ -2148,7 +2153,7 @@
     ctx.save();ctx.translate(civ.x,civ.y-bob);ctx.globalAlpha=civ.secured?.42:1;
     if(window.TigerStrikeBattlefieldRenderer?.drawCivilian){
       ctx.restore();
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawCivilian(ctx,civ,{walking,phase:prior.phase,rescued,face:prior.face,now:renderNow,alpha:arrival?.alpha??1,swimming:coopSwimmingAt(civ.x,civ.y)});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawCivilian(ctx,civ,{walking,phase:prior.phase,rescued,face:prior.face,now:renderNow,alpha:arrival?.alpha??1,swimming:coopSwimmingAt(civ.x,civ.y),celebration});
       if(arrival){window.TigerCivilianRescue?.drawReaction(ctx,{...civ,secured:true},[],renderNow);ctx.fillStyle='#bbf7d0';ctx.font='900 12px system-ui';ctx.textAlign='center';ctx.fillText('Thank you! • Entering safety',drawn.x,drawn.labelY);return;}
       window.TigerCivilianRescue?.drawReaction(ctx,civ,state.snapshot?.tigers||[],renderNow);
       ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(`${window.TigerFieldRadio?.civilianStatus(civ,viewerId())||'RESCUE'} • ${civ.name}`,drawn.x,drawn.labelY);
@@ -2201,7 +2206,7 @@
       const warning=(tiger.attackWarnings||[]).find(a=>now<Number(a.resolveAt));
       if(warning)prior.attack={...warning};
       if(prior.attack&&(now>Number(prior.attack.resolveAt)+420||Number(tiger.lastRubberHitAt||0)>Number(prior.attack.startedAt||0)))prior.attack=null;
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,tiger,{facing:visualFacing,walking:walking&&!tiger.attackWarnings?.length,running:moved>.8,phase:prior.phase,scale:s,now,attack:prior.attack,swimming:coopSwimmingAt(tiger.x,tiger.y)});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,tiger,{facing:visualFacing,walking:walking&&!tiger.attackWarnings?.length,running:moved>.8,phase:prior.phase,scale:s,now,attack:prior.attack,swimming:coopSwimmingAt(tiger.x,tiger.y),reaction:typeof reactionPresentation==='object'?reactionPresentation?.pose('tiger',String(tiger.id),Date.now(),window.TigerCombatFeel?.settings())||0:0});
       const encounter=window.TigerEncounters?.posture(tiger,now);
       if(encounter){ctx.fillStyle=encounter.warning?'#ffe4e6':'#fef3c7';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText(encounter.label,tiger.x,drawn.labelY-16);}
       const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1),barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,drawn.barY,barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,drawn.barY+2,(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(`${tiger.awarenessIcon||"🟢"} ${alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase()} • ${String(tiger.awarenessLabel||"Calm").toUpperCase()}`,tiger.x,drawn.labelY);
@@ -2280,7 +2285,7 @@
       const renderNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
       const shotAge=renderNow-Number(p.lastAttackAt||0);
       const shotKick=impactPose?.kick??(shotAge>=0&&shotAge<140?Math.sin(shotAge/140*Math.PI):0);
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow,reaction:reactionPresentation?.pose('soldier',String(p.userId),Date.now(),window.TigerCombatFeel?.settings())||0});
       const recovery=respawnSeconds(p),downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=drawn.accent;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,drawn.labelY);
       drawMasteryIdentity(ctx,p,draw.x,drawn.labelY-16);
       ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-28,drawn.barY,56,8,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-27,drawn.barY+1,54*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),6,3);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,drawn.barY+22);
@@ -2950,7 +2955,7 @@
   function drawArena(dt=.016){
     const canvas=$("squadArena"),snap=state.snapshot;if(!canvas||!snap)return;
     sizeArenaCanvas(canvas);
-    const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,now=Number(snap.serverNow||Date.now());
+    const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,now=Number(snap.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
     const worldW=Math.max(w,Number(snap.world?.width||w)),worldH=Math.max(h,Number(snap.world?.height||h));
     const focus=state.local||localSnapshotPlayer()||{x:worldW*.5,y:worldH*.5};
@@ -2985,6 +2990,7 @@
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
     combatPresentation?.draw(ctx,Date.now());
+    reactionPresentation?.draw(ctx,Date.now(),window.TigerCombatFeel?.settings(),view);
     drawFieldRadio(ctx);
     if(Date.now()<rescueToolPreviewUntil){const mine=localSnapshotPlayer();window.TigerRescueTools?.drawPreview(ctx,window.TigerRescueTools?.preview(mine?.rescueTool,snap.players||[],snap.civilians||[],state.local||mine));}
     for(const player of (snap.players||[])){
