@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5245";
+const TS_BUILD = "5246";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -8,6 +8,16 @@ const PREMIUM_2D_GRAPHICS_VERSION = 13;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 let __livingTigerNoise = null;
+let __soloCombatPresentation=null;
+let __soloCombatReceipt=0;
+function combatComfortSettings(){return window.TigerCombatFeel?.settings()||{vibration:false,reducedFlashes:false,shake:25};}
+function soloCombatPresentation(){
+  if(!__soloCombatPresentation)__soloCombatPresentation=window.TigerCombatFeel?.create(e=>{sfx(`weapon-${e.mode}`);if(!e.captured)hapticImpact('light');queueCameraShake(e.mode==='real'?.22:.12,100);});
+  return __soloCombatPresentation;
+}
+function recordWeaponImpact(target,mode,extra={}){
+  return soloCombatPresentation()?.emit({id:`solo:${++__soloCombatReceipt}`,at:Date.now(),mode,actorId:'solo',targetId:String(target?.id||''),x1:Number(S.me.x),y1:Number(S.me.y),x2:Number(target?.x),y2:Number(target?.y),...extra});
+}
 function livingTigerBalance(target=null){
   const level = Math.max(1, typeof currentCampaignLevel === "function" ? currentCampaignLevel() : Number(S?.storyLevel || 1));
   return window.TigerLivingIntelligence?.balanceFor?.({ playerCount:1, mode:S?.mode || "Story", level, target }) || {
@@ -35,6 +45,7 @@ if(tg){
 
 // ===================== TELEGRAM HAPTICS (safe fallback) =====================
 function hapticImpact(style="light"){
+  if(!combatComfortSettings().vibration)return;
   try{
     const h = tg?.HapticFeedback;
     if(h?.impactOccurred) h.impactOccurred(style);
@@ -42,6 +53,7 @@ function hapticImpact(style="light"){
   }catch(e){}
 }
 function hapticNotif(type="success"){
+  if(!combatComfortSettings().vibration)return;
   try{
     const h = tg?.HapticFeedback;
     if(h?.notificationOccurred) h.notificationOccurred(type);
@@ -20506,6 +20518,18 @@ function sfxGate(name, minMs=36){
 }
 function sfx(name){
   if(!S.soundOn) return;
+  if(/^weapon-(real|rubber|tranq)$/.test(name)){
+    if(!sfxGate(name,45))return;
+    const mode=name.slice(7);
+    try{
+      ensureAudio();if(!AC||!__audioMasterGain)return;
+      const duration=mode==='real'?.065:mode==='rubber'?.085:.055,buffer=AC.createBuffer(1,Math.ceil(AC.sampleRate*duration),AC.sampleRate),data=buffer.getChannelData(0);
+      for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,2);
+      const source=AC.createBufferSource(),filter=AC.createBiquadFilter(),gain=AC.createGain();source.buffer=buffer;filter.type='bandpass';filter.frequency.value=mode==='real'?1600:mode==='rubber'?380:2400;filter.Q.value=.7;gain.gain.value=mode==='real'?.09:mode==='rubber'?.08:.045;source.connect(filter);filter.connect(gain);gain.connect(__audioMasterGain);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};source.start();source.stop(AC.currentTime+duration+.01);
+      beep(mode==='real'?140:mode==='rubber'?95:620,mode==='tranq'?35:45,mode==='real'?'sawtooth':'sine',.018);
+    }catch(_){}
+    return;
+  }
   if(name==="audioReady"){
     if(!sfxGate("audioReady", 900)) return;
     beep(330,70,"triangle",0.055);
@@ -42995,6 +43019,7 @@ function ensureSurvivalDeploymentKit(){
 let __deployInProgress = false;
 let __queuedDeployOpts = null;
 function deploy(opts={}){
+  __soloCombatPresentation?.clear();
   if(!opts.governmentBypass && !window.__TUTORIAL_MODE__ && guardGovernmentDeployment()) return;
   if(__deployInProgress){
     __queuedDeployOpts = { ...(opts || {}) };
@@ -44189,6 +44214,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
+  if(document.getElementById('combatComfortDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
   const key = e.key.toLowerCase();
@@ -45022,10 +45048,8 @@ function playerAttackLockedRival(){
   dmg = Math.max(5, Math.round(dmg * weaponDistanceMul(w, targetDist) * 0.72));
   unit.hostileUntil = Date.now() + 24000;
   const defeated = damageRivalHunter(unit, dmg);
-  emitCombatFx(S.me.x, S.me.y - 5, unit.x, unit.y, "rgba(248,113,113,.96)", 3, "hit");
+  recordWeaponImpact(unit,ammoModeForId(shotAmmoId),{civilian:true});
   emitDamagePopup(unit.x, unit.y - 40, `-${dmg}`, "hit");
-  sfx("hit");
-  hapticImpact("light");
   if(defeated) defeatRivalHunter(unit);
   save();
   return true;
@@ -48638,7 +48662,8 @@ function drawCinematicCameraOverlay(now=Date.now()){
 
 function queueCameraShake(power=1, durationMs=120){
   if(!ENABLE_SCREEN_SHAKE) return;
-  const base = clamp(Number(power || 0), 0, 2);
+  const comfort=combatComfortSettings();
+  const base = comfort.reducedFlashes?0:clamp(Number(power || 0), 0, 2)*comfort.shake/100;
   if(base <= 0) return;
   const modeScale = performanceMode() === "PERFORMANCE" ? 0.44 : (frameIsSlow() ? 0.62 : 1);
   const scaled = base * modeScale;
@@ -48648,6 +48673,7 @@ function queueCameraShake(power=1, durationMs=120){
 }
 
 function sampleCameraShake(){
+  if(!combatComfortSettings().shake||combatComfortSettings().reducedFlashes)return {x:0,y:0,active:false};
   if(iphoneStabilityModeActive()){
     CAMERA_SHAKE.power = 0;
     CAMERA_SHAKE.until = 0;
@@ -48673,6 +48699,7 @@ function sampleCameraShake(){
 }
 
 function queueImpactPulse(x, y, kind="hit"){
+  if(combatComfortSettings().reducedFlashes)return;
   const iphoneLite = iphoneLiteCombatFeedbackEnabled();
   if(iphoneStabilityModeActive() && !iphoneLite) return;
   if(!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -48784,6 +48811,7 @@ function combatVfxStyle(kind="hit"){
 }
 
 function emitCombatParticles(kind, x, y, opts={}){
+  if(combatComfortSettings().reducedFlashes)return;
   if(!Number.isFinite(x) || !Number.isFinite(y)) return;
   const scale = combatVfxBudgetScale();
   if(scale <= 0.02) return;
@@ -48886,6 +48914,7 @@ function tickImpactPulses(){
 }
 
 function drawCombatFx(){
+  if(combatComfortSettings().reducedFlashes)return;
   if(iphoneStabilityModeActive()) return;
   const heavy = visualEffectsHeavyMode();
   const lagTier = frameLagTier();
@@ -48960,6 +48989,7 @@ function drawCombatFx(){
 }
 
 function drawCombatParticles(){
+  if(combatComfortSettings().reducedFlashes)return;
   if(iphoneStabilityModeActive() && !iphoneLiteCombatFeedbackEnabled()) return;
   const lagTier = frameLagTier();
   const maxDrawRaw = iphoneLiteCombatFeedbackEnabled()
@@ -49022,6 +49052,7 @@ function drawCombatParticles(){
 }
 
 function drawImpactPulses(){
+  if(combatComfortSettings().reducedFlashes)return;
   const iphoneLite = iphoneLiteCombatFeedbackEnabled();
   if(iphoneStabilityModeActive() && !iphoneLite) return;
   const lagTier = frameLagTier();
@@ -50262,7 +50293,7 @@ function playerAction(action){
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
     S.aggro=clamp(S.aggro+pay.aggro,0,100);
-    emitCombatFx(S.me.x, S.me.y - 6, t.x, t.y, "rgba(74,222,128,.98)", 4.2, "capture");
+    recordWeaponImpact(t,'tranq',{captured:true,tagged:true});
     queueImpactPulse(t.x, t.y - 8, "capture");
     emitDamagePopup(t.x, t.y - 44, "CAPTURE", "capture");
     interactionFeedback(`Tiger captured: #${t.id} (${t.type}).`, { success:true, seconds:3 });
@@ -50381,9 +50412,6 @@ function playerAction(action){
     if(w.type==="tranq"){
       t.tranqTagged = true;
       dmg = Math.round(dmg * eff.tranq * build.tranqMul * liveOpsMissionModifierValue("tranqDamageMul", 1, S));
-      sfx("tranq");
-    } else {
-      sfx("hit");
     }
 
     const victim = findFriendlyFireVictim(t);
@@ -50405,9 +50433,8 @@ function playerAction(action){
     if(victim){
       const civDmg = Math.max(4, Math.round(dmg * 0.7));
       victim.hp = clamp(victim.hp - civDmg, 0, victim.hpMax);
-      emitCombatFx(S.me.x, S.me.y - 6, victim.x, victim.y, "rgba(251,191,36,.95)", 3, "civilian");
+      recordWeaponImpact(victim,w.type==='tranq'?'tranq':shotMode,{civilian:true});
       emitDamagePopup(victim.x, victim.y - 42, `-${civDmg}`, "civilian");
-      hapticImpact("medium");
       setBattleMsg(`Friendly fire! Civilian #${victim.id} took ${civDmg}.`);
     } else {
       if(shotMode === "real"){
@@ -50429,15 +50456,9 @@ function playerAction(action){
         : (forgeTrail?.color || "rgba(245,247,255,.96)");
       const trailColor = crit ? (forgeTrail?.critColor || trailBaseColor) : trailBaseColor;
       const trailWidth = clamp((crit ? 4 : 3) + Math.max(0, Number((forgeTrail?.width || 3) - 3)), 2, 6);
-      emitCombatFx(
-        S.me.x, S.me.y - 6, t.x, t.y,
-        trailColor,
-        trailWidth,
-        (crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"))
-      );
+      recordWeaponImpact(t,w.type==='tranq'?'tranq':shotMode,{killed:shotMode==='real'&&t.hp<=0,tagged:w.type==='tranq',accent:trailColor,width:trailWidth});
       addWeaponMasteryXp(w.id, 2);
       emitDamagePopup(t.x, t.y - 44, `-${tigerHit.dealt}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
-      hapticImpact(crit ? "heavy" : "light");
       setBattleMsg(rubberShot
         ? `Rubber hit for ${tigerHit.dealt}. Tiger slowed—switch to Tranq and Capture at 30% HP.`
         : `${crit?'CRIT! ':''}Hit for ${tigerHit.dealt}. ${w.type==='tranq'?'(tranq applied)':(shotMode === 'real' ? '(lethal injury: capture blocked)' : '')}`);
@@ -59846,7 +59867,7 @@ function drawSoldier(){
     ctx.stroke();
   }
   ctx.restore();
-  const meHitFlashLeft = Math.max(0, (S.meHitFlashUntil || 0) - now);
+  const meHitFlashLeft = combatComfortSettings().reducedFlashes?0:Math.max(0, (S.meHitFlashUntil || 0) - now);
   const meHitFlashAlpha = meHitFlashLeft > 0
     ? clamp((meHitFlashLeft / 190) * (Number(S.meHitFlashPower) || 0.7), 0.12, 0.86)
     : 0;
@@ -59874,7 +59895,7 @@ function drawSoldier(){
     ctx.stroke();
     ctx.restore();
   }
-  const ang = S.me.face || 0;
+  const ang = soloCombatPresentation()?.pose('solo',now)?.face??(S.me.face||0);
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
   const stride = rolling ? 0 : (Math.sin(step * 1.9) * (0.95 + (1.55 * moveBlend)));
   const shoulderShift = rolling ? 0 : (Math.sin(step * 2.1) * 0.7);
@@ -61977,7 +61998,7 @@ function drawTiger(t){
   const headBob = Math.sin((t.step||0)*2.4 + 0.7) * (gaitState==="sprint" ? 1.7 : (gaitState==="run" ? 1.25 : 0.7));
   const shoulderRoll = Math.sin((t.step||0)*1.3) * (gaitState==="sprint" ? 0.06 : 0.04);
   const hitFlashLeft = Math.max(0, (t.hitFlashUntil || 0) - now);
-  const hitFlashAlpha = hitFlashLeft > 0 ? clamp(hitFlashLeft / 190, 0.12, 0.78) : 0;
+  const hitFlashAlpha = !combatComfortSettings().reducedFlashes&&hitFlashLeft > 0 ? clamp(hitFlashLeft / 190, 0.12, 0.78) : 0;
   const hitFlashColor = t.hitFlashKind === "tranq"
     ? "rgba(125,211,252,.95)"
     : (t.hitFlashKind === "crit" ? "rgba(252,211,77,.98)" : "rgba(248,113,113,.96)");
@@ -62917,6 +62938,7 @@ function drawEntities(){
   drawSafe("drawPhase18CinematicEvents", ()=>drawPhase18CinematicEvents(Date.now()));
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
   drawSafe("drawFieldObjectiveBeacons",drawFieldObjectiveBeacons);
+  drawSafe('drawSharedWeaponImpacts',()=>soloCombatPresentation()?.draw(ctx,Date.now(),combatComfortSettings()));
   drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
   const iphoneStability = iphoneStabilityModeActive();
   const iphoneLiteFeedback = iphoneLiteCombatFeedbackEnabled();

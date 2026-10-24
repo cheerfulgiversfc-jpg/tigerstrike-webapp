@@ -5,6 +5,10 @@
   const ACTIVE_ROOM_MAX_AGE_MS = 3 * 60 * 60 * 1000;
   const tgApp = window.Telegram?.WebApp || null;
   const squadMotion = window.TigerStrikeSquadMotion;
+  const combatPresentation=window.TigerCombatFeel?.create(e=>{
+    window.sfx?.(`weapon-${e.mode}`);
+    if(e.actorId===String(viewerId())&&window.TigerCombatFeel.settings().vibration){try{tgApp?.HapticFeedback?.impactOccurred?.('light');}catch(_){} }
+  });
   const state = {
     open:false,
     code:"",
@@ -290,6 +294,7 @@
       <div><b>🎒 Squad Gear</b><small>${active ? "Opening gear pauses the shared mission for both players." : "Buy supplies or arrange your loadout before deployment."}</small></div>
       <button type="button" class="squadBtn" data-squad-command="shop">🛒 Shop</button>
       <button type="button" class="squadBtn" data-squad-command="inventory">🎒 Inventory</button>
+      <button type="button" class="squadBtn" data-squad-command="combat-comfort">Combat Comfort</button>
     </div>`;
   }
 
@@ -366,8 +371,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V12.11 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V12.11 • ${selectedOperation().mapLabel}` : "Tiger Strike V12.11 • Chapter Map Lock");
+      ? `Tiger Strike V13.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V13.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V13.0 • Combat Feel & Impact");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -425,6 +430,7 @@
       state.remoteDraw.set(player.userId, squadMotion.accept(state.remoteDraw.get(player.userId), player, receivedAt, snapshot.world));
     }
     state.snapshot = snapshot;
+    combatPresentation?.ingest(snapshot,Date.now());
     state.snapshotReceivedAt = receivedAt;
     if(snapshot.viewerProfile) state.profile = snapshot.viewerProfile;
     if(Array.isArray(snapshot.gearCatalog)) state.gearCatalog = snapshot.gearCatalog;
@@ -790,7 +796,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V12.11 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V13.0 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Shared Story results remain separate from Solo across all thirty districts and all 100 missions. Post-campaign crisis outcomes update this server-owned co-op district record, while event rewards and each player's claim remain protected from duplicates.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -1231,6 +1237,7 @@
       action:()=>action(actionName),
       shop:()=>openEquipment("shop"),
       inventory:()=>openEquipment("inventory"),
+      'combat-comfort':()=>window.TigerCombatFeel?.openComfort(),
       "gear-back":()=>returnFromEquipment(),
       "gear-tab":()=>{ state.equipmentOpen = button?.dataset?.squadEquipment === "inventory" ? "inventory" : "shop"; render(); },
       "gear-buy":()=>gearCommand("gear-buy", button?.dataset?.squadItem),
@@ -1764,6 +1771,7 @@
   }
 
   function resetRoomState(){
+    combatPresentation?.clear();
     state.roomEpoch += 1;
     state.pending.clear();
     state.code = "";
@@ -1834,7 +1842,7 @@
   }
 
   function copyFeedback(text){
-    try{ tgApp?.HapticFeedback?.notificationOccurred?.("success"); }catch(error){}
+    try{ if(window.TigerCombatFeel?.settings().vibration)tgApp?.HapticFeedback?.notificationOccurred?.("success"); }catch(error){}
     setMessage(text);
   }
 
@@ -2264,13 +2272,14 @@
 
   function drawStorySoldier(ctx,p,source,draw,mine){
     const cloth=window.TigerMasteryRewards?.uniformPalette(p.masteryIdentity?.uniform?.id);
-    const body=cloth?.body||"#64734b";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=Number(source.face||0);
+    const impactPose=combatPresentation?.pose(String(p.userId),Date.now());
+    const body=cloth?.body||"#64734b";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=impactPose?.face??Number(source.face||0);
     const key=String(p.userId);const prior=state.walkVisual.get(key)||{x:Number(draw.x),y:Number(draw.y),phase:0};const moved=Math.hypot(Number(draw.x)-prior.x,Number(draw.y)-prior.y);const walking=moved>.18&&!p.downed;prior.phase=walking?prior.phase+Math.min(1.1,moved*.24):prior.phase*.88;prior.x=Number(draw.x);prior.y=Number(draw.y);state.walkVisual.set(key,prior);
     const stride=walking?Math.sin(prior.phase)*7:0;const bob=walking?Math.abs(Math.sin(prior.phase))*2:0;const lookX=Math.cos(face)*1.5,lookY=Math.sin(face)*.7;
     if(window.TigerStrikeBattlefieldRenderer?.drawSoldier){
       const renderNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
       const shotAge=renderNow-Number(p.lastAttackAt||0);
-      const shotKick=shotAge>=0&&shotAge<140?Math.sin(shotAge/140*Math.PI):0;
+      const shotKick=impactPose?.kick??(shotAge>=0&&shotAge<140?Math.sin(shotAge/140*Math.PI):0);
       const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow});
       const recovery=respawnSeconds(p),downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=drawn.accent;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,drawn.labelY);
       drawMasteryIdentity(ctx,p,draw.x,drawn.labelY-16);
@@ -2948,7 +2957,7 @@
     const targetX=clamp(Number(focus.x)-w*.5,0,Math.max(0,worldW-w)),targetY=clamp(Number(focus.y)-h*.5,0,Math.max(0,worldH-h));
     if(!state.camera.ready){state.camera.x=targetX;state.camera.y=targetY;state.camera.ready=true;}
     else{state.camera.x+=(targetX-state.camera.x)*.16;state.camera.y+=(targetY-state.camera.y)*.16;}
-    const view={x:state.camera.x,y:state.camera.y,w,h};ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(-view.x,-view.y);
+    const view={x:state.camera.x,y:state.camera.y,w,h};ctx.clearRect(0,0,w,h);ctx.save();const impactShake=combatPresentation?.shake(Date.now())||{x:0,y:0};ctx.translate(-view.x+impactShake.x,-view.y+impactShake.y);
     drawExpandedDistrict(ctx,snap,view);
     if(snap.rescueHouse && (snap.securedCivilianIds||[]).length){
       ctx.fillStyle='#bbf7d0';ctx.font='900 13px system-ui';ctx.textAlign='center';
@@ -2975,6 +2984,7 @@
       }
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
+    combatPresentation?.draw(ctx,Date.now());
     drawFieldRadio(ctx);
     if(Date.now()<rescueToolPreviewUntil){const mine=localSnapshotPlayer();window.TigerRescueTools?.drawPreview(ctx,window.TigerRescueTools?.preview(mine?.rescueTool,snap.players||[],snap.civilians||[],state.local||mine));}
     for(const player of (snap.players||[])){
@@ -3039,7 +3049,8 @@
 
 
   const isTypingTarget = (target)=>!!target?.closest?.("input,textarea,select,[contenteditable='true']");
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener('combat-comfort-open',()=>{state.keys.clear();Object.keys(state.move).forEach(key=>{state.move[key]=false;});state.joystick={active:false,pointerId:null,x:0,y:0};});
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('combatComfortDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });

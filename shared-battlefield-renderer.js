@@ -320,7 +320,7 @@
     const coat=colors.body||(blood?"#b9432f":ghost?"#dbe6ed":ancient?"#eabd48":"#e89432");
     const dark=blood?"#682c26":ghost?"#91a6b3":ancient?"#9d7024":"#a85520";
     const stripe=colors.stripe||"#242b2b",cream=colors.belly||(ghost?"#f4f8fa":"#ffedc9");
-    const hit=now<Number(entity.hitFlashUntil||entity.hitUntil||0);
+    const hit=!globalThis.TigerCombatFeel?.settings().reducedFlashes&&now<Number(entity.hitFlashUntil||entity.hitUntil||0);
     const legBase=rest?17:26;
     const box=(x,y,w,h,color,r=2)=>{ctx.fillStyle=color;rounded(ctx,x,y,w,h,r);ctx.fill();};
     ctx.save();ctx.translate(x,y);ctx.scale(facing*scale,scale);

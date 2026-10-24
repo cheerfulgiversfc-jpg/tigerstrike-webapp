@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V12.11 (Chapter Map Lock)</title>
+  <title>Tiger Strike 🐅 — V13.0 (Combat Feel & Impact)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5245-chapter-maps">
+  <link rel="stylesheet" href="./squad-coop.css?v=5246-combat-feel">
 
   <style>
     :root{
@@ -2576,9 +2576,10 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V12.11</span> <span class="tag">Chapter Map Lock</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V13.0</span> <span class="tag">Combat Feel & Impact</span></div>
       <div class="sub">
-        V12.11 locks Story Missions 1–100 into ten permanent chapter maps: 1–10 share a map, 11–20 share the next, and so on. Solo and Shared Story use the same 4800 × 2800 chapter bounds, base roads, riverbanks, bridge decks, decorative homes, trees and chapter colors. Exploration and phone orientation no longer resize Story geography. River Territory keeps the same river and capture pool throughout Missions 41–50. Mission objectives, active landmarks, enemies, civilians, hazards and weather still vary. Living water, swimming, animated fish and rain-only puddles remain. Arcade, Survival and the tutorial retain their existing layouts; combat, rewards and unlock requirements are unchanged.<br>
+        V13.0 — Combat Feel &amp; Impact, Part 1: confirmed player shots now use shared muzzle flashes, controlled visual recoil, ammunition-specific impacts and short Real/Rubber/Tranq sound effects in Solo and Co-op. Real impacts distinguish lethal injury from an actual kill; Rubber identifies nonlethal hits; Tranq identifies a real tag or successful capture without inventing a sedation meter. Co-op effect receipts prevent polling or reconnects from replaying old shots. Combat Comfort offers optional vibration, reduced weapon/hit flashes and adjustable screen shake on this device. Music, ammunition costs, damage, capture requirements, mission difficulty and progression are unchanged. Expanded character reactions, civilian celebrations and new boss/escape moments are later parts of this upgrade—not included in this first release.<br>
+        Chapter Map Lock remains: each ten-mission Story chapter shares one 4800 × 2800 base map in Solo and Co-op, including its roads, living water, homes, trees and bridges. Objectives and weather can vary without moving the base geography.<br>
         Settlement Siege, Escaped Alpha Transport, and Government Response Raid are real playable Solo crises with their own enemies, civilians, objectives, rewards, completion receipts, and safe return to the command network.<br>
         All 100 Story missions now share one authored map-truth system across Solo and Shared Story. Every future mission batch includes Mission Map Truth &amp; Parity in the same update—not as a later visual patch.<br>
         Mission 98 is the exact eighteen-tiger final swarm with no fake side objective. Mission 99 fields exactly fourteen temple guards and requires all four guardian seals activated in order. Mission 100 is the single 8,500-HP Ancient Tiger; defeating it or capturing it alive is valid before the final Story extraction.<br>
@@ -2605,6 +2606,7 @@
     <div class="row topActions">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
       <button class="ghost" onclick="toggleMusic()">🎵 Music <span id="musicLbl">On</span></button>
+      <button class="ghost" onclick="TigerCombatFeel.openComfort()">Combat Comfort</button>
       <button class="ghost mobileCompactHide" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
       <button class="ghost mobileCompactHide" onclick="openBaseHQ()">🏠 HQ</button>
       <button class="ghost mobileCompactHide" onclick="openMode()">🎮 Mode</button>
@@ -3157,6 +3159,15 @@
 </div>
 
 <!-- HUD / Controls Customizer -->
+<dialog id="combatComfortDialog" aria-labelledby="combatComfortTitle" style="color:#edf5f3;background:#101f2b;border:2px solid #799caa;border-radius:18px;max-width:390px;width:85vw;padding:22px;z-index:2147483647">
+  <h2 id="combatComfortTitle">Combat Comfort</h2>
+  <p>Shared by Solo and Co-op on this device. Music and difficulty are unchanged. This panel does not pause a live mission.</p>
+  <p><label><input id="combatVibration" type="checkbox" onchange="TigerCombatFeel.updateComfort()"> Optional vibration</label></p>
+  <p><label><input id="combatReducedFlashes" type="checkbox" onchange="TigerCombatFeel.updateComfort()"> Reduced weapon and hit flashes</label></p>
+  <p><label for="combatShake">Screen shake <output id="combatShakeValue">25%</output></label><input id="combatShake" aria-label="Screen shake" type="range" min="0" max="100" step="5" style="width:100%" oninput="TigerCombatFeel.updateComfort()"></p>
+  <p>Set shake to 0% to switch it off. Reduced flashes also disables shake. Vibration requires Telegram support.</p>
+  <form method="dialog"><button type="submit" class="good">Done</button></form>
+</dialog>
 <div class="overlay" id="hudOverlay">
   <div class="modal" style="width:min(620px,95vw)">
     <div class="modalTop">
@@ -3165,6 +3176,7 @@
     </div>
     <div class="modalBody">
       <div class="hudLine">Adjust on-screen controls for comfort. These settings save automatically.</div>
+      <button type="button" class="ghost" onclick="TigerCombatFeel.openComfort()">Combat Comfort • flashes, vibration and shake</button>
       <div class="controlGrid">
         <div class="controlItem">
           <div class="controlLabel"><span>Transparency</span><b id="hudOpacityValue">44%</b></div>
@@ -3549,7 +3561,7 @@
     <div class="modalTop"><div class="modalTitle">🎬 Story Finale</div><button class="ghost" type="button" onclick="closePostCampaignEnding()">Skip / Continue</button></div>
     <div class="modalBody">
       <div class="postCampaignEndingHero">
-        <div class="small">V12.11 • CHAPTER MAP LOCK</div>
+        <div class="small">V13.0 • COMBAT FEEL & IMPACT</div>
         <div class="hudTitle" id="postCampaignEndingTitle">The World Changes</div>
         <div class="hudLine" id="postCampaignEndingRoute">Campaign ending</div>
       </div>
@@ -3564,7 +3576,7 @@
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V12.11 • Chapter Map Lock</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V13.0 • Combat Feel & Impact</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3609,33 +3621,34 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5245-chapter-maps"></script>
-  <script src="./chapter-maps.js?v=5245-chapter-maps"></script>
-  <script src="./extraction-geometry.js?v=5245-chapter-maps"></script>
-  <script src="./ammo-modes.js?v=5245-chapter-maps"></script>
-  <script src="./government-policy.js?v=5245-chapter-maps"></script>
-  <script src="./tiger-intelligence.js?v=5245-chapter-maps"></script>
-  <script src="./tiger-encounters.js?v=5245-chapter-maps"></script>
-  <script src="./living-world.js?v=5245-chapter-maps"></script>
-  <script src="./mission-map-truth.js?v=5245-chapter-maps"></script>
-  <script src="./post-campaign.js?v=5245-chapter-maps"></script>
-  <script src="./sanctuary.js?v=5245-chapter-maps"></script>
-  <script src="./player-experience.js?v=5245-chapter-maps"></script>
-  <script src="./field-radio.js?v=5245-chapter-maps"></script>
-  <script src="./civilian-rescue.js?v=5245-chapter-maps"></script>
-  <script src="./rescue-tools.js?v=5245-chapter-maps"></script>
-  <script src="./escort-teamwork.js?v=5245-chapter-maps"></script>
-  <script src="./chapter-milestones.js?v=5245-chapter-maps"></script>
-  <script src="./mission-debrief.js?v=5245-chapter-maps"></script>
-  <script src="./mastery-rewards.js?v=5245-chapter-maps"></script>
-  <script src="./shared-battlefield-renderer.js?v=5245-chapter-maps"></script>
-  <script src="./game.js?v=5245-chapter-maps"></script>
-  <script src="./story-cinematics.js?v=5245-chapter-maps"></script>
-  <script src="./field-systems.js?v=5245-chapter-maps"></script>
-  <script src="./tutorial.js?v=5245-chapter-maps"></script>
-  <script src="./squad-motion.js?v=5245-chapter-maps"></script>
-  <script src="./squad-coop.js?v=5245-chapter-maps"></script>
-  <script src="./extraction-qa.js?v=5245-chapter-maps"></script>
+  <script src="./water-terrain.js?v=5246-combat-feel"></script>
+  <script src="./combat-feel.js?v=5246-combat-feel"></script>
+  <script src="./chapter-maps.js?v=5246-combat-feel"></script>
+  <script src="./extraction-geometry.js?v=5246-combat-feel"></script>
+  <script src="./ammo-modes.js?v=5246-combat-feel"></script>
+  <script src="./government-policy.js?v=5246-combat-feel"></script>
+  <script src="./tiger-intelligence.js?v=5246-combat-feel"></script>
+  <script src="./tiger-encounters.js?v=5246-combat-feel"></script>
+  <script src="./living-world.js?v=5246-combat-feel"></script>
+  <script src="./mission-map-truth.js?v=5246-combat-feel"></script>
+  <script src="./post-campaign.js?v=5246-combat-feel"></script>
+  <script src="./sanctuary.js?v=5246-combat-feel"></script>
+  <script src="./player-experience.js?v=5246-combat-feel"></script>
+  <script src="./field-radio.js?v=5246-combat-feel"></script>
+  <script src="./civilian-rescue.js?v=5246-combat-feel"></script>
+  <script src="./rescue-tools.js?v=5246-combat-feel"></script>
+  <script src="./escort-teamwork.js?v=5246-combat-feel"></script>
+  <script src="./chapter-milestones.js?v=5246-combat-feel"></script>
+  <script src="./mission-debrief.js?v=5246-combat-feel"></script>
+  <script src="./mastery-rewards.js?v=5246-combat-feel"></script>
+  <script src="./shared-battlefield-renderer.js?v=5246-combat-feel"></script>
+  <script src="./game.js?v=5246-combat-feel"></script>
+  <script src="./story-cinematics.js?v=5246-combat-feel"></script>
+  <script src="./field-systems.js?v=5246-combat-feel"></script>
+  <script src="./tutorial.js?v=5246-combat-feel"></script>
+  <script src="./squad-motion.js?v=5246-combat-feel"></script>
+  <script src="./squad-coop.js?v=5246-combat-feel"></script>
+  <script src="./extraction-qa.js?v=5246-combat-feel"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

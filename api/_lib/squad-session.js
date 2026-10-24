@@ -15,6 +15,7 @@ const missionDebrief = require("../../mission-debrief");
 const masteryRewards = require("../../mastery-rewards");
 const waterTerrain = require("../../water-terrain");
 const chapterMaps = require("../../chapter-maps");
+const combatFeel = require("../../combat-feel");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -2036,6 +2037,11 @@ function matchQueueKey(launchType, storyMissionLevel, bucket, lane){
 }
 function roleKey(value){ return ROLE_DEFS[String(value || "").toLowerCase()] ? String(value).toLowerCase() : "tracker"; }
 function distance(a, b){ return Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0)); }
+function recordCombatPresentation(session,player,target,mode,at,{killed=false,captured=false}={}){
+  player.combatSequence=Number(player.combatSequence||0)+1;
+  const receipt=combatFeel.event({id:`${session.code}:${session.startedAt}:${player.userId}:${player.combatSequence}`,at,mode,actorId:String(player.userId),targetId:String(target.id),x1:Number(player.x),y1:Number(player.y),x2:Number(target.x),y2:Number(target.y),killed,captured,tagged:mode==='tranq'});
+  player.combatEvents=[...(player.combatEvents||[]),receipt].filter(Boolean).slice(-8);
+}
 function damagePlayer(player, amount){
   const incoming = Math.max(0, Math.round(Number(amount || 0)));
   const absorbed = Math.min(Number(player.armor || 0), Math.ceil(incoming * .65));
@@ -2720,10 +2726,12 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     moveY:clamp(src.moveY, -1, 1),
     motionAt:Math.max(0, Number(src.motionAt || 0)),
     lastAttackAt:Math.max(0, Number(src.lastAttackAt || 0)),
+    combatSequence:clamp(src.combatSequence,0,Number.MAX_SAFE_INTEGER),
+    combatEvents:(Array.isArray(src.combatEvents)?src.combatEvents:[]).slice(-8).map(combatFeel.event).filter(Boolean),
     radioSignal:src.radioSignal && fieldRadio.SIGNALS[src.radioSignal.kind] ? src.radioSignal : null,
     pendingTigerAttack:src.pendingTigerAttack || null,
     lastHitTigerId:cleanText(src.lastHitTigerId,80),
-    lastHitKind:src.lastHitKind==='rubber'?'rubber':'real',
+    lastHitKind:['rubber','tranq'].includes(src.lastHitKind)?src.lastHitKind:'real',
     lastNoiseAt:Math.max(0, Number(src.lastNoiseAt || 0)),
     lastNoiseX:clamp(src.lastNoiseX ?? base.lastNoiseX, 24, MAX_COOP_WORLD.width - 24),
     lastNoiseY:clamp(src.lastNoiseY ?? base.lastNoiseY, 24, MAX_COOP_WORLD.height - 24),
@@ -3845,6 +3853,7 @@ async function applyAction(session, user, action, payload={}){
     profile.ammo[ammoMode] -= 1;
     if(ammoMode === "real" && appliedHit >= Number(target.hp || 0)) profile.stats.kills += 1;
     await writeCoopProfile(profile, user);
+    recordCombatPresentation(session,player,target,ammoMode,now,{killed:ammoMode==='real'&&appliedHit>=Number(target.hp||0)});
     await writePlayer(session.code, player);
   }else if(action === "capture"){
     if(session.launchType === "endless-survival") throw new Error("Capture is disabled in Endless Survival. Eliminate every tiger to clear the wave.");
@@ -3877,6 +3886,9 @@ async function applyAction(session, user, action, payload={}){
       condition:72,
     }).state;
     await writeCoopProfile(profile, user);
+    player.lastHitTigerId=target.id;
+    player.lastHitKind='tranq';
+    recordCombatPresentation(session,player,target,'tranq',now,{captured:true});
     await writePlayer(session.code, player);
   }else if(action === "rescue"){
     const id = cleanText(payload.civilianId, 24);
