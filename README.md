@@ -1,6 +1,14 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V13.5 — Battlefield Awareness & Control Dock
+
+- Shared off-screen guidance prioritizes at most one endangered civilian, the real Co-op teammate (down/offline states included) and the existing next objective. On-screen and duplicate destinations are omitted; colliding labels are suppressed. It does not add a radar of hidden enemies or change simulation.
+- Compact live progress distinguishes civilians safe from following, exact required capture IDs, completed locations and living threats. Co-op extraction opens only when the server says so. Radio guidance no longer chases optional civilians after the rescue quota/extraction is ready; required captures with no eligible tiger explain the restart requirement. Solo uses the actual scaled landmark plan if interactable restoration has not finished.
+- Controls: Overlay/Docked is available in Solo's normal/mobile menu and Co-op's gear bar. Overlay remains default. Docked puts the same mobile joystick and actions beneath the map, with 44px minimum button widths, without remapping actions or hiding supplies. It is stored only on this device; switching clears held input. Solo's existing custom offsets remain saved and return in Overlay mode; HQ/tutorial/controller layouts retain their existing behavior.
+- Automated tests cover projections, priority/deduplication, label separation, authoritative counts/readiness, startup landmark fallback, quota guidance and blocked preference storage. Browser checks include the actual Solo client/progress, Co-op toggle persistence, measured Solo geometry, and both actual Solo field/combat markup/styles at 320px. Layout-only QA controls are explicitly disabled and do not certify physical phone input.
+- Music, mission difficulty, physics, ammunition, enemy attacks, rewards and save-account separation remain unchanged. Two-physical-phone weak-link acceptance remains separate from these browser/automated checks.
+
 ## V13.4 — Combat Targeting & Attack Clarity
 
 - Solo's active/scanned tiger and Co-op's actual nearest Attack/Capture target use the same corner-bracket artwork and compact status text. This replaces redundant Solo lock rings; it does not create a new Co-op engagement lock. Range uses the actual action checks, not cosmetic interpolation.

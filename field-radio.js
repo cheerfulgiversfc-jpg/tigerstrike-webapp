@@ -23,12 +23,15 @@
     const player=(snap.players||[]).find(p=>Number(p.userId)===Number(viewerId));if(!player)return null;
     const point=(target,action)=>valid(target)?{...target,action,distance:Math.round(Math.hypot(target.x-player.x,target.y-player.y))}:null;
     const down=(snap.players||[]).find(p=>p.userId!==player.userId&&p.downed);if(down)return point(down,'Revive teammate');
+    if(snap.objectivesReady===true)return point(snap.extraction,'Reach extraction');
     const checkpoint=(snap.checkpoints||[]).find(c=>!(snap.checkpointCompletedIds||[]).includes(c.id));
     if(snap.mission?.checkpointsBeforeRescue&&checkpoint)return point(checkpoint,'Both players inspect');
     const mine=(snap.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(viewerId)&&!c.secured);
     if(checkpoint&&mine.length)return point(checkpoint,'Escort to checkpoint');
     if(mine.length)return point(snap.rescueHouse,'Take followers to Rescue House');
-    const available=(snap.civilians||[]).filter(c=>!c.following&&!c.secured&&!(snap.securedCivilianIds||[]).includes(c.id)&&c.alive!==false);
+    const rescueRequired=Number(snap.mission?.rescueRequired??(snap.civilians||[]).length);
+    const needsRescue=new Set(snap.securedCivilianIds||[]).size<rescueRequired;
+    const available=needsRescue?(snap.civilians||[]).filter(c=>!c.following&&!c.secured&&!(snap.securedCivilianIds||[]).includes(c.id)&&c.alive!==false):[];
     if(available.length)return point(nearest(available,player),'Rescue civilian');
     if(checkpoint)return point(checkpoint,'Join teammate at checkpoint');
     const tigers=(snap.tigers||[]).filter(t=>!t.defeated&&t.hp>0);

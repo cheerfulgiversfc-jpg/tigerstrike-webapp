@@ -1,0 +1,22 @@
+.battlefieldProgress{font-size:12px;line-height:1.5;color:#d1fae5;padding:6px 10px;border:1px solid #315b54;border-radius:9px;background:#0a2426;margin:5px 0;overflow-wrap:anywhere}
+@media(max-width:900px){
+  body.soloBattleDocked .mapStage{display:flex;flex-direction:column;min-height:0;overflow:visible}
+  body.soloBattleDocked .mapStage #cv{position:relative;inset:auto;display:block;width:100%;height:clamp(300px,58dvh,620px);flex:none}
+  body.soloBattleDocked .mapStage .touchOverlay{position:relative;inset:auto;display:grid!important;grid-template-columns:100px minmax(0,1fr);grid-template-rows:auto auto 1fr;gap:6px;padding:10px 8px max(12px,env(safe-area-inset-bottom));box-sizing:border-box;min-height:204px;background:#0a1727;pointer-events:none}
+  body.soloBattleDocked .touchHint{display:none!important}
+  body.soloBattleDocked .touchStickShell{position:relative;left:auto;bottom:auto;grid-column:1;grid-row:3;align-self:end;width:92px;height:92px;transform:none;opacity:.9}
+  body.soloBattleDocked .touchStick{left:24px;top:24px;width:40px;height:40px}
+  body.soloBattleDocked #mapTouchCluster,body.soloBattleDocked #combatTouchCluster{position:relative;inset:auto;grid-column:2;grid-row:1/4;grid-template-columns:repeat(3,minmax(44px,1fr));gap:5px;width:auto;transform:none;opacity:1!important;align-content:end}
+  body.soloBattleDocked .touchOverlay .touchBtn,body.soloBattleDocked #combatTouchCluster .touchBtn{width:100%;min-width:44px;min-height:52px;box-sizing:border-box;transform:none;border-radius:12px}
+  body.soloBattleDocked #touchCacheBtn,body.soloBattleDocked #touchSquadWheelBtn{position:relative;inset:auto;grid-column:1;width:92px;min-height:44px;transform:none;opacity:1}
+  body.soloBattleDocked #touchCacheBtn{grid-row:1}body.soloBattleDocked #touchSquadWheelBtn{grid-row:2}
+  body.soloBattleDocked .squadCommandWheel{z-index:30}
+}
+@media(max-width:640px){
+  body.battleControlsDocked .squadControls{position:relative;inset:auto;grid-template-columns:clamp(88px,27vw,136px) minmax(0,1fr);width:100%;box-sizing:border-box;margin:8px 0 0;padding:8px 4px max(12px,env(safe-area-inset-bottom));gap:6px;background:#0a1727;pointer-events:none}
+  body.battleControlsDocked .squadJoystick{width:100%}
+  body.battleControlsDocked .squadJoystickRing{width:clamp(78px,24vw,126px);height:clamp(78px,24vw,126px);box-sizing:border-box}
+  body.battleControlsDocked .squadActions{grid-template-columns:repeat(3,minmax(44px,1fr));width:100%;max-width:240px;gap:5px;justify-self:end}
+  body.battleControlsDocked .squadActionBtn{min-width:44px;min-height:58px;aspect-ratio:auto;border-radius:13px}
+  body.battleControlsDocked #squadArena{min-height:0;height:auto;aspect-ratio:4/3}
+}

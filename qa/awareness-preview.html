@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><title>Battlefield UI validation</title>
+<style>body{margin:16px;background:#081420;color:#edf5f3;font:14px system-ui}main{display:flex;gap:14px;align-items:flex-start}iframe{height:1000px;border:2px solid #608c91;border-radius:12px}p{max-width:1000px}h2{font-size:16px}</style>
+<h1>V13.5 • Mobile interface checks</h1><p>Actual Solo interface and localhost memory-only Co-op client at phone widths. These are local test profiles, not physical Telegram phones or production accounts.</p>
+<button onclick="reportLayout()">Inspect Solo layout</button><pre id="report"></pre>
+<main><section><h2>Solo • 320 px</h2><iframe width="320" title="Solo phone-width interface" src="../?qa=awareness"></iframe></section><section><h2>Co-op • 390 px</h2><iframe width="390" title="Co-op phone-width interface" src="http://127.0.0.1:8774/client?slot=1"></iframe></section></main>
+<script>function reportLayout(){const d=document.querySelector('iframe').contentDocument;document.getElementById('report').textContent=JSON.stringify({body:d.body.className,nodes:['cv','touchStickShell','mapTouchCluster','combatTouchCluster'].map(id=>{const e=d.getElementById(id),r=e.getBoundingClientRect(),s=d.defaultView.getComputedStyle(e);return {id,display:s.display,position:s.position,rect:{x:r.x,y:r.y,width:r.width,height:r.height}};})},null,2);}</script>

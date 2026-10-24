@@ -298,6 +298,7 @@
       <button type="button" class="squadBtn" data-squad-command="inventory">🎒 Inventory</button>
       <button type="button" class="squadBtn" data-squad-command="combat-comfort">Combat Comfort</button>
       <button type="button" class="squadBtn" data-squad-command="smooth-play">Graphics</button>
+      <button type="button" class="squadBtn" data-battlefield-layout data-squad-command="controls-layout">Controls: ${window.TigerBattlefieldAwareness?.layout()==='docked'?'Docked':'Overlay'}</button>
     </div>`;
   }
 
@@ -530,6 +531,7 @@
     const connection = $("squadConnection");
     if(connection) connection.textContent = playerConnectionText();
     set("squadObjective", objectiveText());
+    set('squadMissionProgress',window.TigerBattlefieldAwareness?.progress(snap)||'');
     updateFieldRadio();
     updateRescueTeamwork();
     const pauseNotice = $("squadPauseNotice");
@@ -879,6 +881,7 @@
       ${postCampaignActive() && snap.memberCount < 2 && snap.status === "active" ? `<div class="squadRow"><button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate During Crisis</button><button type="button" class="squadBtn" data-squad-command="copy-code">Copy Drop-in Code</button></div>` : ""}
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
+      <div class="battlefieldProgress" id="squadMissionProgress">${esc(window.TigerBattlefieldAwareness?.progress(snap)||'')}</div>
       ${fieldRadioHtml()}
       <section class="squadRescueTeamwork" aria-label="Civilian teamwork"><div id="squadRescueCounts" class="squadSmall" role="status"></div><div id="squadEscortActions" class="squadRow"></div><div class="squadRow"><button type="button" class="squadBtn" data-squad-command="tool-preview">Preview Tool • No Charge</button><span id="squadToolPreview" class="squadSmall"></span></div></section>
       ${livingWorldMissionText() ? `<div class="squadConnection" id="squadLivingWorldNotice">🌍 ${esc(livingWorldMissionText())}</div>` : ""}
@@ -1057,6 +1060,8 @@
     if(captureRequired() > 0 && captureProgress() < captureRequired()){
       const threats = (snap.tigers || []).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
       const namedTargets = snap.mission?.captureTargetNames || [];
+      const requiredIds=snap.mission?.captureTargetIds||[];
+      if(!threats.some(t=>!t.lethalWounded&&t.capturable!==false&&t.faction!=='government'&&(!requiredIds.length||requiredIds.includes(t.id))))return 'Required live capture cannot be completed: no eligible target remains. Restart this mission and use Rubber before tranquilizing.';
       const captureSubject = namedTargets.length ? namedTargets.join(" and ") : "a fresh tiger";
       return `Research objective: Select Rubber, weaken ${captureSubject} to 30% health, then tap Capture. Real hits block capture (${captureProgress()}/${captureRequired()} captured • ${threats.length} target${threats.length === 1 ? "" : "s"} active).`;
     }
@@ -1247,6 +1252,7 @@
       'escort-recover':()=>escortCommand('escort-recover'),
       'radio-locate':()=>{ radioLocateUntil=Date.now()+7000;updateFieldRadio(); },
       'radio-mute':()=>{ radioMuted=!radioMuted;try{localStorage.setItem('ts_field_radio_muted',radioMuted?'1':'0');}catch(e){}updateFieldRadio(); },
+      'controls-layout':()=>window.TigerBattlefieldAwareness?.toggleLayout(),
       action:()=>action(actionName),
       shop:()=>openEquipment("shop"),
       inventory:()=>openEquipment("inventory"),
@@ -2944,17 +2950,11 @@
   }
 
   function drawOffscreenTeammate(ctx,snap,view,w,h){
-    const teammate=remoteSnapshotPlayer();
-    if(!teammate||!state.local)return;
-    const shown=state.remoteDraw.get(teammate.userId);
-    const shownX=Number(shown?.drawX ?? teammate.x),shownY=Number(shown?.drawY ?? teammate.y);
-    const sx=shownX-view.x,sy=shownY-view.y;
-    if(sx>=42&&sx<=w-42&&sy>=42&&sy<=h-42)return;
-    const dx=shownX-Number(state.local.x),dy=shownY-Number(state.local.y),angle=Math.atan2(dy,dx);
-    const cx=w/2,cy=h/2,limitX=w/2-54,limitY=h/2-54,scale=Math.min(limitX/Math.max(1,Math.abs(dx)),limitY/Math.max(1,Math.abs(dy)));
-    const x=clamp(cx+dx*scale,54,w-54),y=clamp(cy+dy*scale,54,h-54);
-    ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.fillStyle="#a78bfa";ctx.strokeStyle="#ede9fe";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(20,0);ctx.lineTo(-12,-12);ctx.lineTo(-7,0);ctx.lineTo(-12,12);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
-    ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,x-52,y+19,104,24,9);ctx.fill();ctx.fillStyle="#ede9fe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText(`TEAM ${Math.round(Math.hypot(dx,dy))}m`,x,y+35);
+    const api=window.TigerBattlefieldAwareness;
+    if(!api||!state.local||snap.status!=='active'||snap.paused)return;
+    const mate=remoteSnapshotPlayer(),shown=mate&&state.remoteDraw.get(mate.userId);
+    const teammate=mate?{...mate,x:shown?.drawX??mate.x,y:shown?.drawY??mate.y}:null;
+    api.draw(ctx,{view:{...view,w,h},player:state.local,mobile:window.matchMedia?.('(max-width:640px)')?.matches||false,docked:api.layout()==='docked',targets:api.targets({player:state.local,teammate,civilians:snap.civilians,tigers:snap.tigers,objective:window.TigerFieldRadio?.guide(snap,viewerId())})});
   }
 
   function drawSnowstormOverlay(ctx,snap,view,now){
@@ -3141,4 +3141,5 @@
     isOpen:()=>state.open,
   });
   window.addEventListener("load",autoJoinFromTelegram,{once:true});
+  window.addEventListener('battlefield-layout-change',()=>{clearPresentationInput();window.TigerBattlefieldAwareness?.applyLayout();});
 })();

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5251";
+const TS_BUILD = "5252";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -49507,6 +49507,7 @@ function updateCaptureReadyCue(t, ready){
 }
 
 function renderCombatControls(){
+  document.body?.classList.toggle('soloBattleDocked',window.TigerBattlefieldAwareness?.layout()==='docked'&&!baseHqActive()&&!window.TigerTutorial?.isRunning&&!controllerOwnsUi());
   const touchOverlay = document.querySelector(".touchOverlay");
   const touchHint = document.querySelector(".touchHint");
   const mapCluster = document.getElementById("mapTouchCluster");
@@ -49773,7 +49774,8 @@ function fieldCaptureStatus(t){
 }
 function fieldNextObjective(){
   const pending = new Set(missionMapTruthPending(S));
-  const landmarks = (S.mapInteractables||[]).filter(it=>it.missionTruth && pending.has(String(it.missionTruthId)));
+  let landmarks = (S.mapInteractables||[]).filter(it=>it.missionTruth && pending.has(String(it.missionTruthId)));
+  if(!landmarks.length&&pending.size)landmarks=missionMapTruthInteractables().filter(it=>pending.has(String(it.missionTruthId)));
   const mission = currentModeMission();
   return window.TigerPlayerExperience?.nextObjective({player:S.me,landmarks,civilians:S.civilians,tigers:S.tigers,
     evac:S.evacZone,captures:S.stats?.captures||0,captureRequired:mission?.captureRequired||0});
@@ -49797,6 +49799,13 @@ function renderPlayerExperience(){
   const hidden=baseHqActive()||S.missionEnded||S.gameOver||window.TigerTutorial?.isRunning;
   root.hidden=!!hidden;
   if(hidden)return;
+  let progress=document.getElementById('soloMissionProgress');
+  if(!progress){progress=document.createElement('div');progress.id='soloMissionProgress';progress.className='battlefieldProgress';root.insertBefore(progress,root.firstChild);}
+  if(progress){
+    const mission=currentModeMission(),truth=missionMapTruthSpec(S),pending=missionMapTruthPending(S);
+    const text=window.TigerBattlefieldAwareness?.progress({mission:{...mission,survival:S.mode==='Survival'},civilians:S.civilians,tigers:S.tigers,captures:S.stats?.captures||0,rescueRequired:(S.civilians||[]).length,checkpointRequired:truth?.requiredActionIds?.length||0,checkpointCompletedIds:(truth?.requiredActionIds||[]).filter(id=>!pending.includes(String(id)))})||'';
+    if(progress.textContent!==text)progress.textContent=text;
+  }
   const target=S.mode==='Survival'?null:fieldNextObjective();
   const button=document.getElementById('nextObjectiveButton');
   button.hidden=!target;
@@ -65111,6 +65120,12 @@ function draw(){
       drawAbilityCooldownWheel();
       drawMobileUiClearLane();
       drawCinematicCameraOverlay(Date.now());
+      if(!S.paused&&!S.missionEnded&&!S.gameOver&&!baseHqActive()&&!window.TigerTutorial?.isRunning){
+        safeTick('drawBattlefieldGuidance',()=>{
+          const api=window.TigerBattlefieldAwareness;
+          api?.draw(ctx,{view:{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height},player:S.me,mobile:isMobileViewport(),docked:api.layout()==='docked',targets:api.targets({player:S.me,civilians:S.civilians,tigers:S.tigers,dangerCivilianId:S.dangerCivId,objective:S.mode==='Survival'?null:fieldNextObjective()})});
+        });
+      }
     }
     maybeAutosave();
   }catch(err){
@@ -65132,6 +65147,7 @@ function draw(){
 }
 
 // ===================== INIT =====================
+window.addEventListener('battlefield-layout-change',()=>{resetControlInputState('controls-layout');renderCombatControls();});
 function missionStateLooksEmpty(){
   return !!missionEntityStateInvalid(S);
 }
