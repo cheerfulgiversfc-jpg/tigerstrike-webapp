@@ -597,15 +597,15 @@
     }
     const survival = !!state.snapshot?.mission?.survival;
     const searchReady = !state.snapshot?.mission?.checkpointsBeforeRescue || (state.snapshot?.checkpointCompletedIds || []).length >= checkpointRequired();
-    const captureReady = tiger && !tiger.lethalWounded && Number(tiger.hp || 0) > 0 && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
+    const captureReady = tiger && !survival && tiger.capturable!==false && tiger.faction!=='government' && !tiger.lethalWounded && Number(tiger.hp || 0) > 0 && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
     const ammoMode = localSnapshotPlayer()?.ammoMode === "rubber" ? "rubber" : "real";
     const profile = state.profile || { ammo:{real:0,rubber:0,tranq:0}, supplies:{medkits:0,armorPlates:0} };
     const unavailableLabel = state.snapshot?.paused ? "⏸️ Paused<br><small>Gear menu open</small>" : "⏳ Down<br><small>Recovery</small>";
     if(attack){ attack.innerHTML = unavailable ? unavailableLabel : (tiger ? (tigerNear ? `${ammoMode === "rubber" ? "🟡" : "🔴"} Attack<br><small>${Number(profile.ammo?.[ammoMode] || 0)} rounds</small>` : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger || Number(profile.ammo?.[ammoMode] || 0) < 1; }
     if(capture){
       const blocked = !!tiger?.lethalWounded;
-      capture.innerHTML = unavailable ? unavailableLabel : (blocked ? "🚫 Fresh Tiger<br><small>Real round hit</small>" : (captureReady ? `💉 Capture<br><small>${Number(profile.ammo?.tranq || 0)} charges</small>` : "💉 Capture<br><small>Rubber to 30%</small>"));
-      capture.disabled = unavailable || !tiger || !captureReady || Number(profile.ammo?.tranq || 0) < 1;
+      capture.innerHTML = unavailable ? unavailableLabel : (survival ? "🔴 Survival<br><small>No captures</small>" : (!tiger ? "✅ Threat Clear" : (tiger.capturable===false||tiger.faction==='government' ? "🚫 No Capture<br><small>Response unit</small>" : (blocked ? "🚫 Fresh Tiger<br><small>Real round hit</small>" : (captureReady ? (!tigerNear ? "💉 Move Closer<br><small>Capture range</small>" : `💉 Capture<br><small>${Number(profile.ammo?.tranq || 0)} charges</small>`) : "💉 Capture<br><small>Rubber to 30%</small>")))));
+      capture.disabled = unavailable || !tiger || !tigerNear || !captureReady || Number(profile.ammo?.tranq || 0) < 1;
     }
     if(ammo){
       ammo.innerHTML = survival ? "🔴 Real Only<br><small>Kill-only Survival</small>" : (unavailable ? unavailableLabel : `${ammoMode === "rubber" ? "🟡 Rubber" : "🔴 Real"}<br><small>Tap to switch</small>`);
@@ -2251,7 +2251,7 @@
       if(prior.attack)window.TigerCombatReactions?.drawStrike(ctx,{...prior.attack,kind:'pounce',tigerX:tiger.x,tigerY:tiger.y},now,window.TigerCombatFeel?.settings(),false);
       const drawn=window.TigerStrikeBattlefieldRenderer.drawTiger(ctx,tiger,{facing:visualFacing,walking:walking&&!tiger.attackWarnings?.length,running:moved>.8,phase:prior.phase,scale:s,now,attack:prior.attack,swimming:coopSwimmingAt(tiger.x,tiger.y),reaction:typeof reactionPresentation==='object'?reactionPresentation?.pose('tiger',String(tiger.id),Date.now(),window.TigerCombatFeel?.settings())||0:0});
       const encounter=window.TigerEncounters?.posture(tiger,now);
-      if(encounter){ctx.fillStyle=encounter.warning?'#ffe4e6':'#fef3c7';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText(encounter.label,tiger.x,drawn.labelY-16);}
+      if(encounter&&!encounter.warning){ctx.fillStyle='#fef3c7';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText(encounter.label,tiger.x,drawn.labelY-16);}
       const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1),barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,drawn.barY,barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,drawn.barY+2,(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(`${tiger.awarenessIcon||"🟢"} ${alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase()} • ${String(tiger.awarenessLabel||"Calm").toUpperCase()}`,tiger.x,drawn.labelY);
       return;
     }
@@ -3051,7 +3051,14 @@
       const effect=player.rescueTool?.effect;
       window.TigerRescueTools?.drawEffect(ctx,effect?.kind==='flare'?{...effect,target:window.TigerFieldRadio?.guide(snap,player.userId)}:effect,now);
     }
-    for(const tiger of (snap.tigers||[]))for(const warning of (tiger.attackWarnings||[]))window.TigerEncounters?.drawWarning(ctx,tiger,warning,now);
+    const combatTarget=nearestActiveTiger();
+    if(snap.status==='active'&&!snap.paused&&!state.local?.downed&&combatTarget){
+      const status=window.TigerPlayerExperience?.captureStatus(combatTarget,{survival:!!snap.mission?.survival,threshold:.30,tranqReady:Number(state.profile?.ammo?.tranq||0)>0});
+      window.TigerCombatReactions?.drawTarget(ctx,combatTarget,status,{inRange:distance(state.local,combatTarget)<=(combatTarget.boss?178:164),radius:combatTarget.boss?52:38,view});
+    }
+    if(snap.status==='active'&&!snap.paused)for(const tiger of (snap.tigers||[]))for(const warning of (tiger.attackWarnings||[])){
+      if(!tiger.defeated&&!tiger.captured&&Number(tiger.lastRubberHitAt||0)<=Number(warning.startedAt||0))window.TigerEncounters?.drawWarning(ctx,tiger,warning,now,{viewerId:viewerId(),view});
+    }
     drawSnowstormOverlay(ctx,snap,view,now);
     drawNightVisibilityOverlay(ctx,snap,view);
     // Known mission destinations stay above decorative art and visibility FX.

@@ -81,13 +81,58 @@
     }
     ctx.restore();
   }
+  function warningState(attack,now=Date.now(),options={}){
+    if(!attack||![attack.x,attack.y,attack.resolveAt].every(Number.isFinite))return null;
+    const start=Number.isFinite(attack.startedAt)?attack.startedAt:attack.resolveAt-1000;
+    if(now<start||now>=attack.resolveAt||attack.resolveAt<=start)return null;
+    const requested=String(attack.kind||'').toLowerCase();
+    const kind=['bite','claw','charge','pounce'].includes(requested)?requested:'pounce';
+    const who=options.viewerId!=null&&attack.targetUserId!=null
+      ?(String(options.viewerId)===String(attack.targetUserId)?'YOU':'TEAMMATE'):'';
+    return {kind,progress:Math.max(0,Math.min(1,(now-start)/(attack.resolveAt-start))),
+      label:`${kind.toUpperCase()}${who?' → '+who:''} • ${options.canRoll?'ROLL':'MOVE'}`};
+  }
+  function cueLabel(point,width,view,offset){
+    if(view&&[view.x,view.y,view.w,view.h].every(Number.isFinite)&&view.w>20&&view.h>32&&point.x>=view.x&&point.x<=view.x+view.w&&point.y>=view.y&&point.y<=view.y+view.h){
+      width=Math.min(width,view.w-12);
+      return {width,x:clamp(point.x,view.x+width/2+6,view.x+view.w-width/2-6),y:clamp(point.y+offset,view.y+5,view.y+view.h-28)};
+    }
+    return {width,x:point.x,y:point.y+offset};
+  }
+  function drawWarning(ctx,tiger,attack,now=Date.now(),comfort={},options={}){
+    const warning=warningState(attack,now,options);
+    if(!warning||!valid(tiger))return;
+    ctx.save();ctx.lineCap='round';ctx.strokeStyle='#fda4af';ctx.lineWidth=comfort.reducedFlashes?2:3;
+    // Fixed attack destination, not a false moving hitbox. No flashing fill.
+    ctx.globalAlpha=.65;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(tiger.x,tiger.y);ctx.lineTo(attack.x,attack.y);ctx.stroke();ctx.setLineDash([]);
+    ctx.globalAlpha=1;ctx.strokeStyle='#fecdd3';ctx.beginPath();ctx.arc(attack.x,attack.y,27,-Math.PI/2,-Math.PI/2+Math.PI*2*warning.progress);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(attack.x-7,attack.y-7);ctx.lineTo(attack.x+7,attack.y+7);ctx.moveTo(attack.x+7,attack.y-7);ctx.lineTo(attack.x-7,attack.y+7);ctx.stroke();
+    const label=cueLabel(attack,Math.min(260,warning.label.length*6.8+16),options.view,-60);
+    ctx.fillStyle='rgba(12,18,29,.94)';ctx.fillRect(label.x-label.width/2,label.y,label.width,23);
+    ctx.fillStyle='#ffe4e6';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText(warning.label,label.x,label.y+16,label.width-8);
+    ctx.restore();
+  }
+  function targetState(tiger,status={},options={}){
+    if(!tiger||tiger.captured||tiger.defeated||tiger.alive===false||!(tiger.hp>0))return null;
+    const stages={ready:['TRANQ / CAPTURE','#86efac'],weaken:['RUBBER TO WEAKEN','#93c5fd'],blocked:['NO CAPTURE • REAL HIT','#fda4af'],supply:['RESTOCK TRANQ','#fcd34d'],boss:['BOSS STRATEGY FIRST','#fcd34d'],survival:['REAL ONLY • SURVIVAL','#fda4af'],unavailable:['CANNOT CAPTURE','#fda4af']};
+    const [hint,color]=stages[status.stage]||['TARGET','#e2e8f0'];
+    return {color,label:options.inRange===false?'MOVE CLOSER':hint,id:String(tiger.id??''),inRange:options.inRange!==false};
+  }
+  function drawTarget(ctx,tiger,status,options={}){
+    const target=targetState(tiger,status,options);if(!target||!valid(tiger))return;
+    const r=Math.max(32,Math.min(60,Number(options.radius)||38));
+    ctx.save();ctx.strokeStyle=target.color;ctx.lineWidth=2;ctx.setLineDash(target.inRange?[]:[4,4]);ctx.beginPath();
+    for(const sx of [-1,1])for(const sy of [-1,1]){ctx.moveTo(tiger.x+sx*(r-10),tiger.y+sy*r);ctx.lineTo(tiger.x+sx*r,tiger.y+sy*r);ctx.lineTo(tiger.x+sx*r,tiger.y+sy*(r-10));}ctx.stroke();ctx.setLineDash([]);
+    const text=`TARGET • ${target.label}`,label=cueLabel(tiger,Math.min(260,text.length*6.2+16),options.view,r+7);
+    ctx.fillStyle='rgba(8,18,28,.94)';ctx.fillRect(label.x-label.width/2,label.y,label.width,22);ctx.fillStyle=target.color;ctx.font='900 10px system-ui';ctx.textAlign='center';ctx.fillText(text,label.x,label.y+15,label.width-8);ctx.restore();
+  }
   function drawStrike(ctx,attack,now=Date.now(),comfort={},showWarning=true){
     if(!attack||![attack.x,attack.y,attack.tigerX,attack.tigerY,attack.startedAt,attack.resolveAt].every(Number.isFinite))return;
     const age=now-attack.resolveAt;if(now<attack.startedAt||age>480)return;
     const kind=String(attack.kind||'pounce').toUpperCase();
     ctx.save();ctx.lineCap='round';ctx.strokeStyle=age<0?'#f5b899':'#f3d4be';ctx.lineWidth=comfort.reducedFlashes?2:3;
     if(age<0){
-      if(showWarning){ctx.globalAlpha=.7;ctx.beginPath();ctx.moveTo(attack.tigerX,attack.tigerY-8);ctx.lineTo(attack.x,attack.y-8);ctx.stroke();ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillStyle='#ffe4ce';ctx.fillText(`${kind} — ROLL TO DODGE`,attack.tigerX,attack.tigerY-60);}
+      if(showWarning)drawWarning(ctx,{x:attack.tigerX,y:attack.tigerY},attack,now,comfort,{canRoll:true,view:comfort.view});
     }else{
       ctx.globalAlpha=Math.max(.15,1-age/480);ctx.translate(attack.x,attack.y-10);
       if(kind==='BITE'){
@@ -96,5 +141,5 @@
     }
     ctx.restore();
   }
-  return Object.freeze({create,celebration,drawMoment,drawStrike});
+  return Object.freeze({create,celebration,drawMoment,drawStrike,warningState,drawWarning,targetState,drawTarget});
 });

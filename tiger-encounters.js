@@ -16,7 +16,10 @@
     const hit=now<Number(t.hitFlashUntil||t.hitUntil||0);
     return {warning,hit,crouch:warning?.20:0,slowed:!!t.rubberSlowed||now<Number(t.rubberSlowUntil||0),label:warning?'POUNCE — MOVE!':hit?'HIT':(t.rubberSlowed||now<Number(t.rubberSlowUntil||0)?'SLOWED':personality(t))};
   }
-  function drawWarning(ctx,tiger,attack,now=Date.now()){
+  function drawWarning(ctx,tiger,attack,now=Date.now(),options={}){
+    if(typeof globalThis.TigerCombatReactions?.drawWarning==='function'){
+      globalThis.TigerCombatReactions.drawWarning(ctx,tiger,attack,now,globalThis.TigerCombatFeel?.settings?.()||{},options);return;
+    }
     if(!attack||now>=attack.resolveAt)return;
     ctx.save();ctx.strokeStyle='#fb7185';ctx.fillStyle='rgba(251,113,133,.16)';ctx.lineWidth=3;
     const angle=Math.atan2(attack.y-tiger.y,attack.x-tiger.x),side=25;

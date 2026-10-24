@@ -1,6 +1,14 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V13.4 — Combat Targeting & Attack Clarity
+
+- Solo's active/scanned tiger and Co-op's actual nearest Attack/Capture target use the same corner-bracket artwork and compact status text. This replaces redundant Solo lock rings; it does not create a new Co-op engagement lock. Range uses the actual action checks, not cosmetic interpolation.
+- Guidance distinguishes Rubber weakening, ready for tranquilizing/capture, lethal injury, missing tranquilizers, unfinished boss strategy, noncapturable units and kill-only Survival. Co-op's Capture button stays disabled outside range or for Survival/government/noncapturable targets, consistent with existing server rules.
+- Existing bite, claw, charge and pounce warnings in Solo combat share a nonflashing destination cross, timing arc and short Roll cue. Field/Co-op pounces use Move; Co-op identifies You versus Teammate. No new Co-op attack types or Roll action are added. Paused, interrupted and resolved Co-op attacks do not advertise an incoming strike.
+- Labels near viewport edges remain readable. No DOM overlays, sounds, timers, camera takeover, damage/range changes, reward changes, music changes or increased mission difficulty. Reduced Flashes retains readable cues.
+- `combat-clarity.test.js` covers timing/kinds, viewer identity, capture states, ranges, actual nearest-target selection, pause/interruption filters, viewport edges and isolated finite Canvas state. `qa/combat-clarity.html` is a fixed-scene artwork preview, not evidence of completing a live mission.
+
 ## V13.3 — Combat Performance & Network Resilience
 
 - Solo reaction sampling copies only combat scalars, not full support-unit equipment or tiger records. Local drawing-layer diagnostics help identify remaining hotspots.

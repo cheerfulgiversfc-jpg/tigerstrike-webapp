@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>Combat clarity preview</title>
+<style>body{margin:16px;background:#081722;color:#edf4eb;font:15px system-ui}canvas{max-width:100%;border:1px solid #6a8991;border-radius:12px}p{max-width:900px}</style>
+<h1>V13.4 • Combat targeting & attack clarity</h1>
+<p>Actual shared artwork and cues in fixed test scenes—not a live mission. One target marker, capture guidance, and attack timing without flashing overlays. Co-op says Move, not Roll.</p>
+<canvas id="preview" width="960" height="600"></canvas>
+<script src="../shared-battlefield-renderer.js"></script><script src="../combat-reactions.js"></script>
+<script>
+const ctx=document.getElementById('preview').getContext('2d');
+for(let i=0;i<6;i++){
+ const col=i%3,row=Math.floor(i/3);ctx.save();ctx.translate(col*320,row*300);ctx.fillStyle=row?'#25443c':'#2f5140';ctx.fillRect(0,0,319,299);
+ const tiger={id:'t'+i,x:220,y:155,hp:40,hpMax:100};
+ const labels=['Rubber: weaken safely','Ready for tranquilizer','Real hit: capture blocked','Bite: Solo roll warning','Claw: Solo roll warning','Pounce: Co-op move warning'];
+ ctx.fillStyle='#eef6ed';ctx.font='bold 15px system-ui';ctx.fillText(labels[i],12,28);
+ const attack=row?{kind:['bite','claw','pounce'][col],x:90,y:155,startedAt:1000,resolveAt:1600,targetUserId:1}:null;
+ TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{x:90,y:155,face:0,hp:100},{now:1300,role:'player',showMarker:false});
+ TigerStrikeBattlefieldRenderer.drawTiger(ctx,tiger,{now:1300,facing:-1,attack,showState:false});
+ if(!row)TigerCombatReactions.drawTarget(ctx,tiger,{stage:['weaken','ready','blocked'][col]},{inRange:true});
+ else TigerCombatReactions.drawWarning(ctx,tiger,attack,1370,{reducedFlashes:true},{canRoll:col!==2,viewerId:1});
+ ctx.restore();
+}
+</script>

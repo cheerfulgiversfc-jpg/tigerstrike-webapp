@@ -9,6 +9,7 @@
     if(!tiger)return {stage:'none',text:'Scan to find a tiger.'};
     if(tiger.captured||tiger.missionOutcome==='CAPTURE')return {stage:'captured',text:'Captured alive — secured for wildlife transport.'};
     if(tiger.defeated||tiger.alive===false||Number(tiger.hp)<=0)return {stage:'resolved',text:'Tiger cleared. Follow your next objective.'};
+    if(tiger.capturable===false||tiger.faction==='government')return {stage:'unavailable',text:'This target cannot be tranquilized or captured.'};
     if(tiger.lethalWounded)return {stage:'blocked',text:'Capture blocked: this tiger was hit by Real rounds. Use Rubber on a fresh tiger.'};
     const threshold=Number(options.threshold||.30);
     if(Number(tiger.hp)>Number(tiger.hpMax)*threshold)return {stage:'weaken',text:`Use Rubber to weaken this tiger to ${Math.round(threshold*100)}% health. Rubber cannot kill it.`};

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5250";
+const TS_BUILD = "5251";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -49825,7 +49825,7 @@ function drawObjectiveHighlight(now=Date.now()){
     const until=Number(tiger._fieldPounceResolveAt||0);
     if(until>now){
       const target=fieldPounceTarget(tiger);
-      if(target)window.TigerEncounters?.drawWarning(ctx,tiger,{x:target.x,y:target.y,resolveAt:until},now);
+      if(target)window.TigerEncounters?.drawWarning(ctx,tiger,{x:target.x,y:target.y,startedAt:tiger.attackTelegraphStart,resolveAt:until},now,{view:{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height}});
     }
     if(now<Number(tiger.rubberSlowUntil||0)){
       ctx.save();ctx.fillStyle='#bae6fd';ctx.font='900 11px system-ui';ctx.textAlign='center';ctx.fillText('RUBBER • SLOWED',tiger.x,tiger.y-75);ctx.restore();
@@ -57645,9 +57645,7 @@ function drawOnMapBattleReadability(){
     ctx.beginPath();
     ctx.arc(p.x, p.y, 34, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(tp.x, tp.y, 40, 0, Math.PI * 2);
-    ctx.stroke();
+    // Shared corner brackets identify the actual target; no second oval ring.
   }
 
   const dangerLeft = Math.max(0, Number(S._combatDangerUntil || 0) - now);
@@ -62458,7 +62456,7 @@ function drawTiger(t){
     ctx.globalAlpha=alpha;
   }
 
-  if(S.lockedTigerId===t.id){
+  if(S.lockedTigerId===t.id && !window.TigerCombatReactions?.drawTarget){
     ctx.strokeStyle="rgba(58,120,255,.95)";
     ctx.lineWidth=3;
     ctx.beginPath(); ctx.arc(x,y,30*s,0,Math.PI*2); ctx.stroke();
@@ -62784,7 +62782,7 @@ function drawEntitiesLite(){
     ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.2 ? "#f59e0b" : "#fb7185");
     ctx.fillRect(x - 18, y - 18, 36 * pct, 4);
     drawEliteTigerMutationAura(t, x, y, tigerLiteScale, 0.82, Date.now());
-    if(focus){
+    if(focus && !window.TigerCombatReactions?.drawTarget){
       ctx.strokeStyle = "rgba(59,130,246,.96)";
       ctx.lineWidth = 2.4;
       ctx.beginPath();
@@ -63024,7 +63022,14 @@ function drawEntities(){
   drawSafe("drawFieldObjectiveBeacons",drawFieldObjectiveBeacons);
   drawSafe('drawSharedWeaponImpacts',()=>soloCombatPresentation()?.draw(ctx,Date.now(),combatComfortSettings()));
   drawSafe('drawTigerStrike',()=>{
-    for(const t of S.tigers||[]){if(!t.alive)continue;window.TigerCombatReactions?.drawStrike(ctx,t._battleAttack||t._lastBattleAttack,Date.now(),combatComfortSettings());}
+    const comfort={...combatComfortSettings(),view:{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height}};
+    for(const t of S.tigers||[]){if(!t.alive)continue;window.TigerCombatReactions?.drawStrike(ctx,t._battleAttack||t._lastBattleAttack,Date.now(),comfort);}
+  });
+  drawSafe('drawCombatTarget',()=>{
+    const target=S.inBattle?activeTiger():tigerById(S.lockedTigerId);
+    if(target?.alive)window.TigerCombatReactions?.drawTarget(ctx,target,fieldCaptureStatus(target),{
+      inRange:dist(S.me.x,S.me.y,target.x,target.y)<=equippedWeaponRange(),radius:isBossTiger(target)?52:38,view:{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height}
+    });
   });
   drawSafe('drawSharedActionMoments',()=>soloCombatReactions()?.draw(ctx,Date.now(),combatComfortSettings(),{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height}));
   drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
