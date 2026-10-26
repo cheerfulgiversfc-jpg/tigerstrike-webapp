@@ -1,8 +1,8 @@
 (function(root,factory){
-  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps);
+  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps,typeof module==='object'&&module.exports?require('./tiger-encounters'):root.TigerEncounters);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root)root.TigerStrikeBattlefieldRenderer=api;
-})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain,chapterMaps){
+})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain,chapterMaps,encounters){
   "use strict";
 
   const VERSION="10.22";
@@ -293,19 +293,22 @@
     const injured=!dead&&!asleep&&max>0&&Number.isFinite(hp)&&hp/max<=.36;
     const lethal=!asleep&&!!entity.lethalWounded;
     const attack=options.attack||(entity.attackWarnings||[]).find(a=>now<Number(a.resolveAt)+420);
-    const validAttack=!dead&&!asleep&&attack&&Number(entity.lastRubberHitAt||0)<=Number(attack.startedAt||0);
+    const interrupted=now<Number(entity.holdUntil||0)||now<Number(entity.staggerUntil||0);
+    const validAttack=!dead&&!asleep&&!interrupted&&attack&&Number(entity.lastRubberHitAt||0)<=Number(attack.startedAt||0);
     const strikeKind=String(attack?.kind||'pounce'),groundStrike=['claw','bite','strike'].includes(strikeKind);
-    const warning=!dead&&!asleep&&(validAttack&&now<Number(attack.resolveAt)||now<Number(entity.pounceWindupUntil||0));
+    const warning=!dead&&!asleep&&!interrupted&&(validAttack&&now<Number(attack.resolveAt)||now<Number(entity.pounceWindupUntil||0));
     const pounceProgress=validAttack&&now>=Number(attack.resolveAt)?clamp((now-Number(attack.resolveAt))/420,0,1):
       options.pouncing&&Number(entity.pounceWindupUntil)>0?clamp((now-Number(entity.pounceWindupUntil))/Math.max(420,Number(entity.huntStateUntil||0)-Number(entity.pounceWindupUntil)),0,1):0;
     const striking=!!validAttack&&now>=Number(attack.resolveAt)&&now<Number(attack.resolveAt)+420;
     const pouncing=!dead&&!asleep&&!warning&&!groundStrike&&(pounceProgress>0&&pounceProgress<1||!!options.pouncing);
     const awareness=String(entity.awarenessState||"calm").toLowerCase();
     const aggressive=!dead&&!asleep&&(warning||pouncing||options.roaring||["attacking","blood_frenzy"].includes(awareness));
-    const labels=asleep?["TRANQUILIZED"]:dead?["DEAD"]:lethal?["LETHAL WOUND"]:tagged?["TRANQ TAGGED"]:warning?[`${strikeKind.toUpperCase()} — DODGE!`]:pouncing?["POUNCE"]:striking?[strikeKind.toUpperCase()]:aggressive?[awareness==="blood_frenzy"?"BLOOD FRENZY":"AGGRESSIVE"]:injured?["INJURED"]:[];
+    const labels=asleep?["TRANQUILIZED"]:dead?["DEAD"]:lethal?["LETHAL WOUND"]:tagged?["TRANQ TAGGED"]:warning?[`${strikeKind.toUpperCase()} — DODGE!`]:pouncing?["POUNCE"]:striking?[strikeKind.toUpperCase()]:aggressive?[awareness==="blood_frenzy"?"BLOOD FRENZY":"AGGRESSIVE"]:injured?["WEAKENED"]:[];
     if(!asleep&&!dead&&slowed)labels.push("SLOWED");
-    if(!asleep&&!dead&&injured&&!labels.includes("INJURED"))labels.push("INJURED");
-    return {asleep,dead,tagged,slowed,injured,lethal,warning:!!warning,pouncing:!!pouncing,pounceProgress,aggressive,striking,strikeKind,label:labels.join(" • ")};
+    const healthLabel=lethal?'INJURED':'WEAKENED';
+    if(!asleep&&!dead&&injured&&!labels.includes(healthLabel))labels.push(healthLabel);
+    const cue=(encounters||globalThis.TigerEncounters)?.intent(entity,now,{attack});
+    return {asleep,dead,tagged,slowed,injured,lethal,warning:!!warning,pouncing:!!pouncing,pounceProgress,aggressive,striking,strikeKind,cue,label:labels.join(" • ")};
   }
   function drawTiger(ctx,entity={},options={}){
     if(options.swimming&&!entity.captured&&!entity.carcass&&Number(entity.hp)>0)return drawSwimming(ctx,entity,options,drawTiger,true);
@@ -317,7 +320,8 @@
     const running=moving&&(options.running||options.gait==="run"||options.gait==="sprint");
     const stride=moving?Math.sin(phase)*(running?10:5):0;
     const leap=state.pouncing?(state.pounceProgress>0?Math.sin(state.pounceProgress*Math.PI):.85):0;
-    const crouch=state.warning?5:options.crouching?2:0;
+    const posture=state.cue?.pose||{head:0,ears:0,tail:0,crouch:0};
+    const crouch=state.warning?5:Math.max(options.crouching?2:0,posture.crouch);
     const bob=moving?Math.abs(Math.sin(phase))*(running?2.2:.7):0;
     const rest=state.asleep||state.dead;
     const motion=globalThis.TigerCombatFeel?.settings().reducedFlashes ? .3 : 1;
@@ -338,7 +342,7 @@
     ctx.translate(0,crouch-bob-leap*9+(rest?13:0));
     if(reaction>0||leap>0){ctx.rotate(-reaction*.10-leap*.12*motion);ctx.translate(-reaction*2,reaction*2);}
     // Tail, body and chest silhouette: a flexible spine, not a sliding oval.
-    const tailWave=moving?Math.sin(phase-.7)*(running?7:3):0;
+    const tailWave=(moving?Math.sin(phase-.7)*(running?7:3):0)+(rest?0:posture.tail);
     line(ctx,dark,6,[[-29,-3],[-45,-8+tailWave],[-57,-17+tailWave*.5],[-62,-15+tailWave*.4]]);
     line(ctx,coat,4.5,[[-29,-4],[-45,-9+tailWave],[-57,-18+tailWave*.5],[-62,-16+tailWave*.4]]);
     for(let i=0;i<4;i++)line(ctx,stripe,2,[[-42-i*5,-7-i*2+tailWave*.7],[-44-i*5,-11-i*2+tailWave*.7]]);
@@ -387,11 +391,12 @@
     ctx.restore();
     leg(-26,2,true);leg(21,3,true);
     // Head, muzzle, ears, eyes and whiskers.
-    const headY=-11+(rest?7:state.injured?3:0),headX=30+(state.pouncing?4:0);
+    const headY=-11+(rest?7:state.injured?Math.max(3,posture.head):posture.head),headX=30+(state.pouncing?4:0);
     ctx.save();ctx.translate(headX,headY);
-    ellipse(ctx,-6,-11,5.5,6,stripe);ellipse(ctx,6,-12,5.5,6,stripe);
-    ellipse(ctx,-6,-11,3.2,3.6,coat);ellipse(ctx,6,-12,3.2,3.6,coat);
-    ellipse(ctx,-6,-11,1.5,2,"#c98f7a");ellipse(ctx,6,-12,1.5,2,"#c98f7a");
+    const earTilt=rest?0:posture.ears;
+    ellipse(ctx,-6,-11,5.5,6,stripe,earTilt);ellipse(ctx,6,-12,5.5,6,stripe,-earTilt);
+    ellipse(ctx,-6,-11,3.2,3.6,coat,earTilt);ellipse(ctx,6,-12,3.2,3.6,coat,-earTilt);
+    ellipse(ctx,-6,-11,1.5,2,"#c98f7a",earTilt);ellipse(ctx,6,-12,1.5,2,"#c98f7a",-earTilt);
     ellipse(ctx,0,0,15,14,coat,.08);ellipse(ctx,-6,6,8,7,cream,-.1);
     ellipse(ctx,10,5,10,7,cream);ellipse(ctx,17,2,3.2,2.4,"#353333");
     line(ctx,stripe,2,[[-11,-7],[-4,-3],[-9,0]]);line(ctx,stripe,2,[[1,-12],[3,-7],[0,-5]]);

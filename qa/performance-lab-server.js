@@ -5,7 +5,7 @@ const server=require('../api/_lib/squad-session'),store=require('../api/_lib/met
 const root=path.resolve(__dirname,'..'),users=[{id:983101,first_name:'Lab Host'},{id:983102,first_name:'Lab Partner'}];
 if(store.storageMode()!=='memory')throw Error('Lab requires memory storage; refusing configured KV.');
 let room,weak=false,requests=0;const counts={};
-const scripts=['water-terrain','chapter-maps','ammo-modes','government-policy','player-experience','battlefield-awareness','field-radio','civilian-rescue','rescue-tools','escort-teamwork','mastery-rewards','combat-feel','combat-reactions','smooth-play','squad-motion','shared-battlefield-renderer'];
+const scripts=['water-terrain','chapter-maps','ammo-modes','government-policy','tiger-encounters','player-experience','battlefield-awareness','field-radio','civilian-rescue','rescue-tools','escort-teamwork','mastery-rewards','combat-feel','combat-reactions','smooth-play','squad-motion','shared-battlefield-renderer'];
 async function start(){
   room=await server.createSession(users[0],{launchType:'shared-story',storyMissionLevel:1});room=await server.joinSession(room.code,users[1]);room=await server.applyAction(room,users[0],'start');
   for(const [i,user] of users.entries()){

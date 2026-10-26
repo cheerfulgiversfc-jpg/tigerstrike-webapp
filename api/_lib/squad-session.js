@@ -2797,7 +2797,7 @@ function tigerSnapshots(session, players, at=nowMs()){
       targetVisible:nearestPlayerDistance <= (def.boss ? 310 : 250) * balance.detectMul,
       enraged:!!def.bloodRage && hp <= def.hpMax * 0.35,
     });
-    return {
+    const snapshot = {
       ...def,
       ...position,
       hp,
@@ -2819,6 +2819,9 @@ function tigerSnapshots(session, players, at=nowMs()){
       awarenessIcon:awareness.icon,
       awarenessScore:awareness.score,
     };
+    const cue=tigerEncounters.intent(snapshot,at,{server:true});
+    // Ship a compact authoritative state, not duplicated per-frame pose data.
+    return {...snapshot,personality:cue.personality,behaviorIntent:{version:1,key:cue.key,observedAt:at}};
   });
 }
 

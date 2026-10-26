@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5252";
+const TS_BUILD = "5253";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -62620,7 +62620,8 @@ function drawTiger(t){
     : "";
   const mutationLabel = eliteTigerMutationLabel(t);
   const awarenessVisual = livingTigerVisual(t.awarenessState);
-  const awarenessLabel = ` • ${awarenessVisual.icon} ${awarenessVisual.label}`;
+  const bodyCue=window.TigerEncounters?.intent(t,now,{attack:t._battleAttack});
+  const awarenessLabel = ` • ${awarenessVisual.icon} ${bodyCue&&bodyCue.key!=='windup'?bodyCue.label:awarenessVisual.label}`;
   const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + (mutationLabel ? ` • ${mutationLabel}` : "") + persona + awarenessLabel + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
   const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (mutationLabel ? ` • ${mutationLabel}` : "") + (t.tranqTagged ? " (tranq)" : "");
   const skipLabel =

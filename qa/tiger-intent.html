@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>Tiger intent artwork check</title>
+<style>body{margin:18px;background:#081722;color:#edf4eb;font:15px system-ui}p{max-width:950px}canvas{max-width:100%;border:1px solid #547a75;border-radius:12px}button{padding:10px 14px;margin:4px;border:1px solid #6f9e9b;border-radius:10px;background:#183d43;color:#efffff}button[aria-pressed=true]{background:#215d46;border-color:#86efac}</style>
+<h1>V13.6 • Tiger intent & body language</h1>
+<p>First-slice artwork preview using the actual shared renderer. These are fixed test states, not evidence of new Co-op chase/retreat AI. No game accounts are used.</p>
+<div id="states"></div><canvas id="preview" width="1000" height="440"></canvas>
+<script src="../tiger-encounters.js"></script><script src="../shared-battlefield-renderer.js"></script>
+<script>
+const ctx=document.getElementById('preview').getContext('2d'),names=['Hunter','Ambusher','Sentinel','Fury'];
+const states={watching:{awarenessState:'suspicious'},stalking:{huntState:'stalk',huntStateUntil:2000},guarding:{intent:'Guard Wounded',intentUntil:2000},slowed:{hp:20,rubberSlowed:true},tagged:{tranqTagged:true},windup:{attackWarnings:[{startedAt:900,resolveAt:1600,x:120,y:250}]},caged:{hp:0,captured:true}};
+function showState(key){
+ document.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.state===key)));
+ ctx.clearRect(0,0,1000,440);
+ for(const [i,personality] of names.entries()){
+   ctx.save();ctx.translate(i*250,0);ctx.fillStyle=i%2?'#274b3b':'#31533f';ctx.fillRect(0,0,249,440);ctx.fillStyle='#f0f7e8';ctx.font='bold 20px system-ui';ctx.textAlign='center';ctx.fillText(personality,125,35);
+   const t={id:personality,personality,x:125,y:200,hp:100,hpMax:100,...states[key]},cue=TigerEncounters.intent(t,1200);
+   TigerStrikeBattlefieldRenderer.drawTiger(ctx,t,{now:1200,facing:-1,scale:1.65,walking:false});
+   ctx.fillStyle='#e4eee3';ctx.font='bold 13px system-ui';ctx.fillText(cue.label,125,290);
+   ctx.fillStyle='#bcd5cf';ctx.font='12px system-ui';ctx.fillText(key==='windup'?'Actual warning overrides personality':key==='slowed'?'Alive; capture rules unchanged':key==='caged'?'Confirmed capture only':'Same artwork in Solo & Co-op',125,320);
+   ctx.restore();
+ }
+}
+for(const key of Object.keys(states)){const button=document.createElement('button');button.type='button';button.dataset.state=key;button.textContent=key==='tagged'?'Tranq tagged':key[0].toUpperCase()+key.slice(1);button.onclick=()=>showState(key);document.getElementById('states').appendChild(button);}
+showState('watching');
+</script>

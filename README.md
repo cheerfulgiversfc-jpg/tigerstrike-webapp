@@ -1,6 +1,15 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V13.6 — Tiger Intent & Body Language, Part 1
+
+- This first slice improves presentation of real existing behavior, not the whole proposed adaptive-AI upgrade. Saved Solo Hunter/Ambusher/Sentinel/Fury personalities are preserved. Co-op derives stable identities from its existing tiger definitions; no new randomized profiles or hidden stat multipliers are introduced.
+- Shared artwork uses subtle head height, ear tilt, tail position and crouch differences. Actual Solo stalking/flanking, guarding wounded packmates and recovery states are read only while active. Co-op receives a compact server-issued intent key/time; both viewers derive the same pose. A suspicious Co-op patrol says Watching, not a fictional new chase or retreat.
+- Confirmed warning windows outrank personality poses. Holds, stagger and Rubber interruptions cannot advertise another new windup. Captured/dead actors rest. Tranq-tagged is distinct from confirmed tranquilization; low nonlethal health says Weakened, and Real injuries remain Lethal Wound. No capture eligibility changes.
+- Existing label positions are reused; no new HUD panel, warning ring, sound, flash, camera takeover or timer is added. Solo's two-coordinated-attacker fairness limit and existing attack/damage/capture/reward systems remain unchanged. Music is untouched.
+- Tests cover personality preservation, real/expired intent priorities, nonlethal distinctions, finite balanced artwork on land/in water and both facings, and matching cues for two actual memory-backed Co-op viewers. `qa/tiger-intent.html` is a fixed-state artwork preview, not a recorded mission or proof of new AI movement.
+- Still future work: actual cautious retreat/territorial decision-making across modes and deeper Co-op pack/pathfinding parity. Those behavior changes are not claimed installed by this first release.
+
 ## V13.5 — Battlefield Awareness & Control Dock
 
 - Shared off-screen guidance prioritizes at most one endangered civilian, the real Co-op teammate (down/offline states included) and the existing next objective. On-screen and duplicate destinations are omitted; colliding labels are suppressed. It does not add a radar of hidden enemies or change simulation.
