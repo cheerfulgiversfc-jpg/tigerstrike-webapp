@@ -2578,6 +2578,8 @@ function normalizeSession(raw){
     missionWipes:Math.max(0,Number(raw.missionWipes||0)),
     missionRestarts:Math.max(0,Number(raw.missionRestarts||0)),
     debriefSurvivalKills:Math.max(0,Number(raw.debriefSurvivalKills||0)),
+    encounterVersion:Number(raw.encounterVersion)===2?2:0,
+    encounterRunAt:Math.max(0,Number(raw.encounterRunAt)||0),
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -2709,6 +2711,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     rubberSlowUntil,
     killSites,
     captureSites,
+    encounterReactions:Object.fromEntries(Object.entries(src.encounterReactions||{}).filter(([id,r])=>ALL_COOP_TIGERS.some(t=>t.id===id)&&r&&[r.at,r.until,r.cooldownUntil,r.runAt,r.dx,r.dy].every(Number.isFinite)&&r.at>=0&&r.until>r.at&&r.until<=r.at+1600&&r.cooldownUntil<=r.at+10000&&r.runAt>0).slice(0,32).map(([id,r])=>[id,{at:r.at,until:r.until,cooldownUntil:r.cooldownUntil,runAt:r.runAt,dx:clamp(r.dx,-1,1),dy:clamp(r.dy,-1,1)}])),
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     debriefRecruitIds:Array.isArray(src.debriefRecruitIds)?[...new Set(src.debriefRecruitIds.map(id=>cleanText(id,24)).filter(id=>ALL_COOP_CIVILIANS.some(c=>c.id===id)))]:null,
     securedCivilianIds:[...new Set((Array.isArray(src.securedCivilianIds) ? src.securedCivilianIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
@@ -2748,6 +2751,7 @@ function tigerPosition(session, tiger, at=nowMs()){
   const world = missionDefinition(session).world;
   if(!session?.startedAt) return { x:tiger.baseX, y:tiger.baseY };
   const elapsed = Math.max(0, sessionClockNow(session, at) - session.startedAt) / 1000;
+  if(session.encounterVersion===2)return tigerEncounters.patrol(tiger,elapsed,world,session.launchType!=='endless-survival');
   return {
     x:clamp(tiger.baseX + Math.cos(elapsed * tiger.speed + tiger.phase) * tiger.rangeX, 70, world.width - 70),
     y:clamp(tiger.baseY + Math.sin(elapsed * tiger.speed * .83 + tiger.phase) * tiger.rangeY, 90, world.height - 80),
@@ -2780,6 +2784,12 @@ function tigerSnapshots(session, players, at=nowMs()){
       ? { x:Number(captureSite.x), y:Number(captureSite.y) }
       : (defeated && killSite ? { x:Number(killSite.x), y:Number(killSite.y) } : tigerPosition(session, def, at));
     const windup=players.map(p=>p.pendingTigerAttack).find(a=>a&&a.tigerId===def.id&&a.runId===`${session.code}:${session.startedAt}`&&at<a.resolveAt+1800);
+    const elapsed=Math.max(0,sessionClockNow(session,at)-session.startedAt);
+    const reaction=session.encounterVersion===2?tigerEncounters.activeReaction(players.map(p=>p.encounterReactions?.[def.id]),session.encounterRunAt,elapsed):null;
+    if(!defeated&&!windup&&reaction){
+      const moved=tigerEncounters.retreatPoint(position,reaction,elapsed,missionDefinition(session).world);
+      position={...position,...moved};
+    }
     if(!defeated&&windup&&Number.isFinite(windup.tigerX)&&Number.isFinite(windup.tigerY))position={x:windup.tigerX,y:windup.tigerY};
     const nearestPlayerDistance = players.filter((player)=>!player.downed).reduce((nearest, player)=>Math.min(nearest, distance(position, player)), Infinity);
     const nearestBloodDistance = killSites.reduce((nearest, site)=>Math.min(nearest, distance(position, site)), Infinity);
@@ -2818,6 +2828,9 @@ function tigerSnapshots(session, players, at=nowMs()){
       awarenessColor:awareness.color,
       awarenessIcon:awareness.icon,
       awarenessScore:awareness.score,
+      encounterRetreating:!!position.retreating,
+      encounterGuarding:!!position.guarding&&!position.retreating,
+      encounterUntil:position.retreating?at+Math.max(0,reaction.until-elapsed):0,
     };
     const cue=tigerEncounters.intent(snapshot,at,{server:true});
     // Ship a compact authoritative state, not duplicated per-frame pose data.
@@ -3511,7 +3524,7 @@ async function updateOwnPresence(session, user, patch={}){
         if(resolution==='dodged')player.lastEvasion={id:`${attackRun}:${player.userId}:evade:${pending.startedAt}`,kind:'dodged',at:now,x:Number(player.x),y:Number(player.y)};
         player.pendingTigerAttack=null;player.lastHazardAt=now;
       }
-    }else if(threat&&threat.faction!=='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown){
+    }else if(threat&&!threat.encounterRetreating&&threat.faction!=='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown){
       player.pendingTigerAttack=tigerEncounters.beginAttack(threat,player,now,players.length<=1,attackRun);
     }
     if(threat && (attackHit || (threat.faction==='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown))){
@@ -3663,6 +3676,8 @@ async function applyAction(session, user, action, payload={}){
     }
     session.status = "active";
     session.startedAt = now;
+    session.encounterVersion=2;
+    session.encounterRunAt=now;
     session.completedAt = 0;
     session.failureReason = "";
     session.pausedAt = 0;
@@ -3702,6 +3717,7 @@ async function applyAction(session, user, action, payload={}){
       p.moveY = 0;
       p.motionAt = now;
       p.ammoMode = session.launchType === "endless-survival" ? "real" : "rubber";
+      p.encounterReactions={};
       p.rescueTool=restartCheckpoint ? {...p.rescueTool,effect:null} : rescueTools.create(p.rescueTool?.id);
       if(!restartCheckpoint){
         p.civilianHealing={};
@@ -3844,6 +3860,12 @@ async function applyAction(session, user, action, payload={}){
     }else{
       if(!player.rubberSlowUntil || typeof player.rubberSlowUntil !== "object") player.rubberSlowUntil = {};
       player.rubberSlowUntil[target.id] = now + 5200;
+      if(session.encounterVersion===2){
+        const at=Math.max(0,sessionClockNow(session,now)-session.startedAt);
+        const cooldownUntil=Math.max(0,...players.map(p=>p.encounterReactions?.[target.id]).filter(r=>r?.runAt===session.encounterRunAt).map(r=>r.cooldownUntil));
+        const retreat=tigerEncounters.retreat({...target,hp:Math.max(1,Number(target.hp)-appliedHit)},player,at,{survival:session.launchType==='endless-survival',requiredCapture:Number(missionDefinition(session).captureRequired||0)>0,cooldownUntil});
+        if(retreat){player.encounterReactions=player.encounterReactions||{};player.encounterReactions[target.id]={...retreat,runAt:session.encounterRunAt};}
+      }
     }
     if(target.boss) player.bossDamage = clamp(player.bossDamage + appliedHit, 0, BOSS_HP_MAX);
     player.lastAttackAt = now;

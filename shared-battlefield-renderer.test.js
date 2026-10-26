@@ -11,7 +11,7 @@ const html=fs.readFileSync("index.html","utf8");
 test("V11.4 keeps one reusable premium battlefield renderer",()=>{
   assert.equal(renderer.VERSION,"10.22");
   for(const name of ["drawSoldier","drawCivilian","drawTiger","drawBattlefieldFinish"])assert.equal(typeof renderer[name],"function");
-  assert(html.includes('shared-battlefield-renderer.js?v=5253-tiger-intent'));
+  assert(html.includes('shared-battlefield-renderer.js?v=5254-tiger-movement'));
   assert(html.indexOf("shared-battlefield-renderer.js")<html.indexOf("squad-coop.js"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawSoldier"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawCivilian"));

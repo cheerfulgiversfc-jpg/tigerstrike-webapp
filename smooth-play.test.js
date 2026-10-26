@@ -66,7 +66,7 @@ test('Co-op camera approaches the same position over equal time at 30 and 60 FPS
 });
 test('graphics uses a native top-layer dialog and input guards; no multiplayer pause or music mutation',()=>{
   assert(html.indexOf('src="./smooth-play.js')<html.indexOf('src="./game.js'));
-  assert(html.includes('smooth-play.js?v=5253-tiger-intent'));
+  assert(html.includes('smooth-play.js?v=5254-tiger-movement'));
   assert.match(html,/<dialog id="smoothPlayDialog"/);assert.match(html,/<select id="graphicsMode"/);assert.match(html,/<form method="dialog">/);
   assert.match(coop,/'smooth-play':\(\)=>window.TigerSmoothPlay\?\.open\(\)/);
   assert.match(fn(game,'pollGamepadControls'),/smoothPlayDialog/);assert.match(game,/smoothPlayDialog'\)\?\.open\)return/);assert.match(coop,/smoothPlayDialog'\)\?\.open\)return/);

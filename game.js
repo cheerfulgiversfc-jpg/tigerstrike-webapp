@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5253";
+const TS_BUILD = "5254";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -40185,6 +40185,7 @@ function setTigerHuntState(t, nextState, now=Date.now(), durationMs=640){
 
 function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
   ensureTigerHuntState(t, now);
+  if(t._encounterMotion?.kind==='retreat'&&now<t._encounterMotion.until)return;
   const livingBalance = livingTigerBalance(t);
   const hasTarget = Number.isFinite(targetDist) && targetDist < (motion.detect + 80);
   const inPounceBand = Number.isFinite(targetDist) && targetDist > 88 && targetDist < 340;
@@ -47518,6 +47519,13 @@ function roamTigers(){
       chase = Number.isFinite(targetDist) && targetDist < (motion.detect * 0.62) * directorAggroMul * packAggroMul;
     }
 
+    if(!t._encounterHome||!Number.isFinite(t._encounterHome.x)||!Number.isFinite(t._encounterHome.y))t._encounterHome={x:t.x,y:t.y};
+    const encounterSteering=window.TigerEncounters?.fieldPlan?.(t,S.me,now,{home:t._encounterHome,previous:t._encounterMotion,cooldownUntil:t._encounterCooldownUntil||0,guardBlocked:now<Number(t._encounterGuardBlockedUntil||0),engaged:!!S.inBattle||t.id===S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,nearCivilian:!!closestCiv&&closestCivDist<180,world:{width:worldWidth(S),height:worldHeight(S)}})||null;
+    t._encounterMotion=encounterSteering;
+    if(encounterSteering){
+      t._encounterCooldownUntil=Math.max(Number(t._encounterCooldownUntil||0),Number(encounterSteering.cooldownUntil||0));
+      targetX=encounterSteering.goal.x;targetY=encounterSteering.goal.y;targetDist=dist(t.x,t.y,targetX,targetY);chase=false;t.wanderAngle=Math.atan2(targetY-t.y,targetX-t.x);
+    }
     const tx = targetX - t.x;
     const ty = targetY - t.y;
     const td = Math.hypot(tx, ty) || 1;
@@ -47670,6 +47678,7 @@ function roamTigers(){
     }else if(Number(t.rubberSlowStacks || 0) > 0){
       t.rubberSlowStacks = 0;
     }
+    if(encounterSteering)speedCap=Math.min(speedCap,motion.walk*(now<Number(t.rubberSlowUntil||0)?window.TigerAmmoRules?.rubberSlowMultiplier(t.rubberSlowStacks,true)||.70:1));
     speedCap *= directorSpeedMul;
     speedCap *= packSpeedMul;
     speedCap *= waterSpeedMul("tiger", t.x, t.y, 14);
@@ -47687,6 +47696,7 @@ function roamTigers(){
 
     const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18, { avoidKeepout:false });
     if(!moved){
+      if(encounterSteering){t._encounterMotion=null;t._encounterGuardBlockedUntil=now+3000;}
       t.vx *= -0.72;
       t.vy *= -0.72;
       t.heading += Math.PI * 0.42;
@@ -48351,6 +48361,7 @@ function fieldPounceTarget(t){
 }
 
 function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
+  if(t?._encounterMotion?.kind==='retreat'&&now<t._encounterMotion.until)return false;
   if(!t || !target || S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
   const smokeAt=S.secondarySmokeAt||S.me;
   if(now < Number(S.secondarySmokeUntil || 0) && (dist(t.x,t.y,smokeAt.x,smokeAt.y)<=300 || dist(target.x,target.y,smokeAt.x,smokeAt.y)<=300)) return false;

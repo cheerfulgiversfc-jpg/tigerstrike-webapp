@@ -1,6 +1,15 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V13.6 — Tiger Retreat & Territory, Part 2
+
+- Eligible mid-health Hunters and Ambushers can briefly retreat toward a goal 24 units away, with a 10-second cooldown. Co-op's displacement from the existing patrol is capped at 24 units. No new retreat starts at capture-ready health (35% or less), for bosses/government units, required-capture missions or Survival. Solo's active engagement/locked target is excluded. A retreat already underway may finish as health changes; capture remains available under the existing rules.
+- Solo Sentinels can return toward their home area or guard nearby, yielding to nearby players/civilians and existing active tactical behaviors. Steering goes through the existing collision engine at no more than walking speed; a blocked guard falls back to normal AI. Existing Solo coordinated-attacker limits remain unchanged.
+- Co-op uses a smooth, server-authoritative retreat response after an eligible Rubber hit. Responses from two players do not stack or restart one another. Nonboss Sentinel patrol radii contract to 68% over four seconds, retaining their existing home and phase. These are bounded retreat/home-patrol behaviors, not new chase pathfinding or coordinated-pack navigation.
+- Reaction times use the mission clock and a separate run identity, so pause/resume and reconnect preserve the same movement. Restart clears reactions. Active older rooms keep legacy movement until the next mission/restart. No extra storage records or background timers are introduced.
+- Real warnings, confirmed capture sites and carcass sites retain priority. No new attack windup starts during a retreat. Health, damage, enemy counts, ammunition/capture rules, rewards and music are unchanged.
+- Automated tests exercise eligibility, bounds/continuity/cooldowns, legacy rollout, Solo steering exclusions, actual memory-backed two-viewer agreement, pause/reconnect, capture and restart. Physical two-phone weak-link validation is separate.
+
 ## V13.6 — Tiger Intent & Body Language, Part 1
 
 - This first slice improves presentation of real existing behavior, not the whole proposed adaptive-AI upgrade. Saved Solo Hunter/Ambusher/Sentinel/Fury personalities are preserved. Co-op derives stable identities from its existing tiger definitions; no new randomized profiles or hidden stat multipliers are introduced.
