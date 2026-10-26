@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>Tiger Strike pack movement preview</title>
+<style>body{margin:20px;background:#071923;color:#f0f8ef;font:16px system-ui}p{max-width:960px}canvas{max-width:100%;border:1px solid #6d9981;border-radius:12px}button{background:#1a5140;color:white;border:1px solid #96d6b2;border-radius:9px;padding:10px;margin:8px}input{width:300px;max-width:65vw}</style>
+<h1>V13.7 • Territory clues & pack steps</h1>
+<p>Isolated visual check using the actual shared planner, movement envelope and artwork. Fixed test actors; no accounts or live missions. Both viewpoints use the same position calculation. This is a short circling step, not a full pathfinding demonstration.</p>
+<button id="replay">Replay movement</button><button id="midpoint">Show mid-step</button><label>Mission time <input id="time" type="range" min="0" max="3200" value="0" step="10"></label><output id="phase"></output>
+<br><canvas id="preview" width="1000" height="620"></canvas>
+<script src="../water-terrain.js"></script><script src="../chapter-maps.js"></script><script src="../tiger-encounters.js"></script><script src="../shared-battlefield-renderer.js"></script>
+<script>
+const canvas=document.getElementById('preview'),ctx=canvas.getContext('2d'),slider=document.getElementById('time');
+const player={userId:1,x:360,y:320},tigers=[{id:'a',type:'Standard',hp:100,hpMax:100,x:560,y:320,baseX:520,baseY:240},{id:'b',type:'Scout',hp:100,hpMax:100,x:600,y:450,baseX:600,baseY:450}],world={width:1000,height:760};
+const plans=TigerEncounters.packPlans(tigers,[player],0,{world}),renderer=TigerStrikeBattlefieldRenderer;let epoch=0,playing=false;
+function paint(at){
+ ctx.clearRect(0,0,1000,620);ctx.fillStyle='#2c6440';ctx.fillRect(0,0,1000,620);renderer.drawGroundTexture(ctx,{x:0,y:0,w:1000,h:620},{family:'forest'});
+ renderer.drawTerritoryClues(ctx,tigers,{x:0,y:0,w:1000,h:620});
+ renderer.drawMapHouse(ctx,65,90,130,85,{roof:'#8f5437'});renderer.drawMapTree(ctx,800,150,1.4,{});renderer.drawMapTree(ctx,800,475,1.2,{});
+ renderer.drawSoldier(ctx,player,{now:at,scale:1.6,facing:1,walking:false});
+ for(const t of tigers){const plan=plans.find(p=>p.id===t.id),pos=TigerEncounters.packPoint(t,plan,at,world),entity={...t,...pos,encounterPackRole:pos.packRole,encounterPackUntil:3000};renderer.drawTiger(ctx,entity,{now:at,facing:-1,walking:at>1000&&at<3000,phase:at/180,scale:1.65});ctx.fillStyle='#fff2bb';ctx.font='bold 15px system-ui';ctx.textAlign='center';ctx.fillText(TigerEncounters.intent(entity,at).label,entity.x,entity.y-70);}
+ ctx.fillStyle='#d3edd9';ctx.font='16px system-ui';ctx.textAlign='left';ctx.fillText('Ground pawprints and disturbed grass mark an actual home area.',40,570);
+ document.getElementById('phase').textContent=at<1000?'Watch: preparation':at<3000?'Bounded movement':'Patrol resumes';
+}
+slider.oninput=()=>{playing=false;paint(Number(slider.value));};document.getElementById('replay').onclick=()=>{epoch=performance.now();playing=true;};document.getElementById('midpoint').onclick=()=>{playing=false;slider.value=2000;paint(2000);};
+function frame(now){if(playing){const at=Math.min(3200,now-epoch);slider.value=at;paint(at);if(at===3200)playing=false;}requestAnimationFrame(frame);}paint(0);requestAnimationFrame(frame);
+</script>

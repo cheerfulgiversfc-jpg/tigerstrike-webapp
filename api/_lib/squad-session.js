@@ -2580,6 +2580,7 @@ function normalizeSession(raw){
     debriefSurvivalKills:Math.max(0,Number(raw.debriefSurvivalKills||0)),
     encounterVersion:Number(raw.encounterVersion)===2?2:0,
     encounterRunAt:Math.max(0,Number(raw.encounterRunAt)||0),
+    packVersion:Number(raw.packVersion)===1?1:0,
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -2711,7 +2712,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     rubberSlowUntil,
     killSites,
     captureSites,
-    encounterReactions:Object.fromEntries(Object.entries(src.encounterReactions||{}).filter(([id,r])=>ALL_COOP_TIGERS.some(t=>t.id===id)&&r&&[r.at,r.until,r.cooldownUntil,r.runAt,r.dx,r.dy].every(Number.isFinite)&&r.at>=0&&r.until>r.at&&r.until<=r.at+1600&&r.cooldownUntil<=r.at+10000&&r.runAt>0).slice(0,32).map(([id,r])=>[id,{at:r.at,until:r.until,cooldownUntil:r.cooldownUntil,runAt:r.runAt,dx:clamp(r.dx,-1,1),dy:clamp(r.dy,-1,1)}])),
+    encounterReactions:Object.fromEntries(Object.entries(src.encounterReactions||{}).filter(([id,r])=>ALL_COOP_TIGERS.some(t=>t.id===id)&&r&&[r.at,r.until,r.cooldownUntil,r.runAt,r.dx,r.dy].every(Number.isFinite)&&r.at>=0&&r.until>r.at&&r.until<=r.at+(['circle','approach'].includes(r.kind)?3000:1600)&&r.cooldownUntil<=r.at+12000&&r.runAt>0).slice(0,32).map(([id,r])=>[id,{at:r.at,until:r.until,cooldownUntil:r.cooldownUntil,runAt:r.runAt,dx:clamp(r.dx,-1,1),dy:clamp(r.dy,-1,1),...(['circle','approach'].includes(r.kind)?{kind:r.kind}: {})}])),
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     debriefRecruitIds:Array.isArray(src.debriefRecruitIds)?[...new Set(src.debriefRecruitIds.map(id=>cleanText(id,24)).filter(id=>ALL_COOP_CIVILIANS.some(c=>c.id===id)))]:null,
     securedCivilianIds:[...new Set((Array.isArray(src.securedCivilianIds) ? src.securedCivilianIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
@@ -2787,7 +2788,9 @@ function tigerSnapshots(session, players, at=nowMs()){
     const elapsed=Math.max(0,sessionClockNow(session,at)-session.startedAt);
     const reaction=session.encounterVersion===2?tigerEncounters.activeReaction(players.map(p=>p.encounterReactions?.[def.id]),session.encounterRunAt,elapsed):null;
     if(!defeated&&!windup&&reaction){
-      const moved=tigerEncounters.retreatPoint(position,reaction,elapsed,missionDefinition(session).world);
+      const moved=['circle','approach'].includes(reaction.kind)
+        ? tigerEncounters.packPoint(position,reaction,elapsed,missionDefinition(session).world)
+        : tigerEncounters.retreatPoint(position,reaction,elapsed,missionDefinition(session).world);
       position={...position,...moved};
     }
     if(!defeated&&windup&&Number.isFinite(windup.tigerX)&&Number.isFinite(windup.tigerY))position={x:windup.tigerX,y:windup.tigerY};
@@ -2831,6 +2834,8 @@ function tigerSnapshots(session, players, at=nowMs()){
       encounterRetreating:!!position.retreating,
       encounterGuarding:!!position.guarding&&!position.retreating,
       encounterUntil:position.retreating?at+Math.max(0,reaction.until-elapsed):0,
+      encounterPackRole:position.packRole||'',
+      encounterPackUntil:position.packRole?at+Math.max(0,reaction.until-elapsed):0,
     };
     const cue=tigerEncounters.intent(snapshot,at,{server:true});
     // Ship a compact authoritative state, not duplicated per-frame pose data.
@@ -3490,7 +3495,14 @@ async function updateOwnPresence(session, user, patch={}){
   }
   if(session.status === "active" && !player.downed){
     const players = await memberPlayers(session);
-    const threats = tigerSnapshots(session, players, now);
+    let threats = tigerSnapshots(session, players, now);
+    if(session.packVersion===1){
+      const elapsed=Math.max(0,sessionClockNow(session,now)-session.startedAt);
+      const rows=players.map(p=>p.userId===player.userId?player:p);
+      const plans=tigerEncounters.packPlans(threats.map(t=>({...t,encounterCooldownUntil:Math.max(0,...rows.map(p=>p.encounterReactions?.[t.id]).filter(r=>r?.runAt===session.encounterRunAt).map(r=>r.cooldownUntil))})),rows,elapsed,{survival:session.launchType==='endless-survival',requiredCapture:Number(mission.captureRequired||0)>0,world:mission.world,civilians:civilianSnapshots(session,rows,rows.flatMap(p=>p.rescuedIds||[]),rows.flatMap(p=>p.securedCivilianIds||[]))});
+      for(const plan of plans)player.encounterReactions[plan.id]={at:plan.at,until:plan.until,cooldownUntil:plan.cooldownUntil,dx:plan.dx,dy:plan.dy,kind:plan.kind,runAt:session.encounterRunAt};
+      if(plans.length)threats=tigerSnapshots(session,rows,now);
+    }
     let threat = threats
       .filter((t)=>!t.defeated)
       .sort((a,b)=>distance(player,a)-distance(player,b))[0];
@@ -3524,7 +3536,7 @@ async function updateOwnPresence(session, user, patch={}){
         if(resolution==='dodged')player.lastEvasion={id:`${attackRun}:${player.userId}:evade:${pending.startedAt}`,kind:'dodged',at:now,x:Number(player.x),y:Number(player.y)};
         player.pendingTigerAttack=null;player.lastHazardAt=now;
       }
-    }else if(threat&&!threat.encounterRetreating&&threat.faction!=='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown){
+    }else if(threat&&!threat.encounterRetreating&&!threat.encounterPackRole&&threat.faction!=='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown){
       player.pendingTigerAttack=tigerEncounters.beginAttack(threat,player,now,players.length<=1,attackRun);
     }
     if(threat && (attackHit || (threat.faction==='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown))){
@@ -3678,6 +3690,7 @@ async function applyAction(session, user, action, payload={}){
     session.startedAt = now;
     session.encounterVersion=2;
     session.encounterRunAt=now;
+    session.packVersion=1;
     session.completedAt = 0;
     session.failureReason = "";
     session.pausedAt = 0;

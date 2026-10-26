@@ -596,6 +596,33 @@
     ctx.fillStyle=light;ctx.fillRect(x,y,w,h);ctx.restore();
   }
 
+  function territorySites(tigers=[],view={}){
+    const sites=[];
+    for(const t of tigers){
+      if(!t||t.alive===false||t.defeated||t.captured||t.faction==='government'||!(t.hp>0))continue;
+      const p=t._encounterHome||{x:t.baseX,y:t.baseY};
+      if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||p.x<view.x-40||p.x>view.x+view.w+40||p.y<view.y-40||p.y>view.y+view.h+40||sites.some(s=>Math.hypot(s.x-p.x,s.y-p.y)<120))continue;
+      sites.push({x:p.x,y:p.y});if(sites.length===3)break;
+    }
+    return sites;
+  }
+  function drawTerritoryClues(ctx,tigers,view,options={}){
+    const sites=territorySites(tigers,view);
+    ctx.save();
+    for(const site of sites){
+      if(sceneryOpacity({x:site.x-38,y:site.y-22,w:76,h:44},options.clearZones)===0)continue;
+      ctx.fillStyle='rgba(35,26,15,.58)';
+      for(let i=0;i<6;i++){
+        const x=site.x-32+i*12,y=site.y+(i%2?7:-7);
+        ctx.beginPath();ctx.ellipse(x,y,3.5,2.7,-.35,0,TAU);ctx.fill();
+        for(let j=0;j<3;j++){ctx.beginPath();ctx.ellipse(x-3+j*2.7,y-4.5,1.1,1.5,0,0,TAU);ctx.fill();}
+      }
+      ctx.strokeStyle='rgba(179,188,104,.58)';ctx.lineWidth=1.5;ctx.beginPath();
+      for(let i=0;i<5;i++){const x=site.x-20+i*10;ctx.moveTo(x,site.y+17);ctx.quadraticCurveTo(x+3,site.y+13,x+9,site.y+14);}ctx.stroke();
+    }
+    ctx.restore();return sites;
+  }
+
   function drawStoryMapFoundation(ctx,options={}){
     const chapterMap=Number(options.level)>0?chapterMaps?.forMission(options.level):null;
     if(chapterMap)options={...options,family:chapterMap.family,waterZones:chapterMap.waterZones};
@@ -627,6 +654,9 @@
     const colors=chapterMap?.palette||palettes[family]||palettes.forest,g=ctx.createLinearGradient(0,0,0,worldH);g.addColorStop(0,colors[0]);g.addColorStop(1,colors[1]);ctx.fillStyle=g;ctx.fillRect(view.x,view.y,view.w,view.h);
     const tile=96,startX=Math.floor(view.x/tile)*tile,startY=Math.floor(view.y/tile)*tile;for(let y=startY;y<view.y+view.h+tile;y+=tile)for(let x=startX;x<view.x+view.w+tile;x+=tile){ctx.fillStyle=(Math.floor(x/tile)+Math.floor(y/tile))%2?"rgba(255,255,255,.025)":"rgba(2,6,23,.035)";ctx.fillRect(x,y,tile,tile);}
     drawGroundTexture(ctx,view,{family,heavy:options.heavy});
+    // Ground clues belong below water, roads and scenery; never paint a paw
+    // print over a roof or bridge. Anchors come from real tiger territories.
+    drawTerritoryClues(ctx,options.tigers||[],view,options);
     for(const zone of options.waterZones||[])drawMapWater(ctx,zone,{view,heavy:options.heavy,now:options.now});
     drawRainPuddles(ctx,view,{weather:options.weather,now:options.now,waterZones:options.waterZones,blockedRects:options.blockedRects});
 
@@ -665,5 +695,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });

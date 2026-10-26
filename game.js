@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5254";
+const TS_BUILD = "5255";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -40185,7 +40185,7 @@ function setTigerHuntState(t, nextState, now=Date.now(), durationMs=640){
 
 function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
   ensureTigerHuntState(t, now);
-  if(t._encounterMotion?.kind==='retreat'&&now<t._encounterMotion.until)return;
+  if(['retreat','circle','approach'].includes(t._encounterMotion?.kind)&&now<t._encounterMotion.until)return;
   const livingBalance = livingTigerBalance(t);
   const hasTarget = Number.isFinite(targetDist) && targetDist < (motion.detect + 80);
   const inPounceBand = Number.isFinite(targetDist) && targetDist > 88 && targetDist < 340;
@@ -46840,6 +46840,11 @@ function roamTigers(){
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
+  const encounterPackPlans=window.TigerEncounters?.packPlans?.(aliveTigers,[S.me],now,{engaged:!!S.inBattle||!!S.paused||!!window.__TUTORIAL_MODE__,lockedId:S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,civilians:liveCivs,world:{width:worldWidth(S),height:worldHeight(S)}})||[];
+  for(const plan of encounterPackPlans){
+    const member=aliveTigers.find(t=>t.id===plan.id);
+    if(member){member._encounterMotion=plan;member._encounterCooldownUntil=plan.cooldownUntil;}
+  }
   const tigerBounds = worldBounds(18, S);
   const tigerMinX = tigerBounds.minX;
   const tigerMaxX = tigerBounds.maxX;
@@ -47694,7 +47699,8 @@ function roamTigers(){
       t.vy *= s;
     }
 
-    const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18, { avoidKeepout:false });
+    if(encounterSteering?.waiting){t.vx=0;t.vy=0;}
+    const moved = encounterSteering?.waiting || tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18, { avoidKeepout:false });
     if(!moved){
       if(encounterSteering){t._encounterMotion=null;t._encounterGuardBlockedUntil=now+3000;}
       t.vx *= -0.72;
@@ -48361,7 +48367,7 @@ function fieldPounceTarget(t){
 }
 
 function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
-  if(t?._encounterMotion?.kind==='retreat'&&now<t._encounterMotion.until)return false;
+  if(['retreat','circle','approach'].includes(t?._encounterMotion?.kind)&&now<t._encounterMotion.until)return false;
   if(!t || !target || S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
   const smokeAt=S.secondarySmokeAt||S.me;
   if(now < Number(S.secondarySmokeUntil || 0) && (dist(t.x,t.y,smokeAt.x,smokeAt.y)<=300 || dist(target.x,target.y,smokeAt.x,smokeAt.y)<=300)) return false;
@@ -54496,7 +54502,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   const drawY = Number.isFinite(camY) ? Number(camY) : 0;
   const zone = missionEvacZoneSafe(S);
   if(normalizeModeName(S?.mode)==='Story'&&!window.__TUTORIAL_MODE__&&globalThis.TigerChapterMaps){
-    globalThis.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:missionProgressForWorld(S),worldW:w,worldH:h,heavy,view:{x:drawX,y:drawY,w:drawW,h:drawH},clearZones:mapSceneryClearZones(S),now:frameNow,weather:lightingAtmosphereMood(frameNow).weatherFx});
+    globalThis.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:missionProgressForWorld(S),worldW:w,worldH:h,heavy,view:{x:drawX,y:drawY,w:drawW,h:drawH},tigers:S.tigers,clearZones:mapSceneryClearZones(S),now:frameNow,weather:lightingAtmosphereMood(frameNow).weatherFx});
   }else{
     drawSharedStoryDistrictFoundation(w, h, heavy,{x:drawX,y:drawY,w:drawW,h:drawH},mapSceneryClearZones(S),{now:frameNow,weather:lightingAtmosphereMood(frameNow).weatherFx});
   }

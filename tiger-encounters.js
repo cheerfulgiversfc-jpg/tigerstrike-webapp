@@ -15,7 +15,8 @@
     guarding:{head:-2,ears:.12,tail:1,crouch:0},recovering:{head:4,ears:-.32,tail:9,crouch:1},
     slowed:{head:2,ears:-.18,tail:6,crouch:1},drowsy:{head:5,ears:-.4,tail:10,crouch:2},
     windup:{head:1,ears:-.5,tail:9,crouch:5},alert:{head:-2,ears:-.18,tail:-3,crouch:0},
-    retreating:{head:3,ears:-.32,tail:10,crouch:1}
+    retreating:{head:3,ears:-.32,tail:10,crouch:1},
+    circling:{head:1,ears:-.12,tail:6,crouch:2},approaching:{head:-1,ears:.08,tail:2,crouch:1}
   });
   const valid=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
   const bounded=(n,a,b)=>Math.max(a,Math.min(b,n));
@@ -38,6 +39,30 @@
     const owner=reactions.filter(r=>r&&r.runAt===runAt&&at>=r.at&&at<r.cooldownUntil).sort((a,b)=>a.at-b.at)[0];
     return owner&&at<owner.until?owner:null;
   }
+  // One pair at a time, with a visible one-second lead-in. These short steps
+  // never grant an attack, change damage, or replace collision/pathfinding.
+  function packPlans(tigers=[],players=[],at,options={}){
+    if(!Number.isFinite(at)||options.engaged||options.survival||options.requiredCapture||tigers.some(t=>Number(t.encounterCooldownUntil||t._encounterCooldownUntil||0)>at))return [];
+    const usable=t=>valid(t)&&t.alive!==false&&!t.defeated&&!t.captured&&!t.boss&&t.faction!=='government'&&Number(t.hp)>Number(t.hpMax)*.35&&!t.tranqTagged&&!t.rubberSlowed&&at>=Number(t.rubberSlowUntil||0)&&at>=Number(t.holdUntil||0)&&at>=Number(t.staggerUntil||0)&&!t.attackWarnings?.length&&!t._battleAttack&&t.huntState!=='pounce'&&at>=Number(t.pounceWindupUntil||0)&&!t._encounterMotion&&t.id!==options.lockedId&&['Hunter','Ambusher'].includes(profile(t).key);
+    const candidates=tigers.filter(usable).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+    for(const player of players.filter(p=>valid(p)&&!p.downed&&p.alive!==false&&p.online!==false).sort((a,b)=>String(a.userId||a.id||'').localeCompare(String(b.userId||b.id||'')))){
+      const nearby=candidates.filter(t=>{const d=Math.hypot(t.x-player.x,t.y-player.y);return d>=180&&d<=340&&!(options.civilians||[]).some(c=>valid(c)&&c.alive!==false&&!c.evac&&!c.secured&&Math.hypot(c.x-t.x,c.y-t.y)<180);}).sort((a,b)=>Math.hypot(a.x-player.x,a.y-player.y)-Math.hypot(b.x-player.x,b.y-player.y)||String(a.id).localeCompare(String(b.id)));
+      const lead=nearby[0],flank=lead&&nearby.slice(1).find(t=>(!t.packId||!lead.packId||t.packId===lead.packId)&&Math.hypot(t.x-lead.x,t.y-lead.y)<=240);
+      if(!flank)continue;
+      return [lead,flank].map((t,i)=>{
+        const d=Math.max(1,Math.hypot(player.x-t.x,player.y-t.y)),ux=(player.x-t.x)/d,uy=(player.y-t.y)/d;
+        const side=String(flank.id)<String(lead.id)?-1:1,dx=i?-uy*side:ux*2/3,dy=i?ux*side:uy*2/3;
+        const w=Math.max(48,Number(options.world?.width)||4800),h=Math.max(48,Number(options.world?.height)||2800);
+        return {id:t.id,kind:i?'circle':'approach',partnerId:i?lead.id:flank.id,at,until:at+3000,cooldownUntil:at+12000,dx,dy,goal:{x:bounded(t.x+dx*24,24,w-24),y:bounded(t.y+dy*24,24,h-24)}};
+      });
+    }
+    return [];
+  }
+  function packPoint(point,reaction,at,world){
+    if(!reaction||!['circle','approach'].includes(reaction.kind))return {...point,packRole:''};
+    const moved=retreatPoint(point,{...reaction,at:reaction.at+1000},at,world);
+    return {...moved,retreating:false,packRole:at>=reaction.at&&at<reaction.until?reaction.kind:''};
+  }
   function patrol(t,elapsed,world,territorial=false){
     const guard=territorial&&!t.boss&&t.faction!=='government'&&profile(t).key==='Sentinel';
     const radius=guard?1-.32*bounded(elapsed/4,0,1):1;
@@ -46,6 +71,10 @@
   function fieldPlan(t,threat,at,options={}){
     if(!valid(t)||!valid(threat)||options.engaged||options.survival||options.requiredCapture||t.boss||t.faction==='government'||t.captured||t.defeated||t.alive===false||!(t.hp>0)||t.tranqTagged||at<Number(t.holdUntil||0)||at<Number(t.staggerUntil||0)||t.huntState==='pounce'||at<Number(t._feintUntil||0))return null;
     const previous=options.previous;
+    if(['circle','approach'].includes(previous?.kind)&&at<previous.until){
+      if(Number(t.hp)<=Number(t.hpMax)*.35||options.nearCivilian||options.guardBlocked)return null;
+      return {...previous,waiting:at<previous.at+1000||Math.hypot(t.x-previous.goal.x,t.y-previous.goal.y)<8};
+    }
     if(previous?.kind==='retreat'&&at<previous.until)return valid(previous.goal)&&Math.hypot(t.x-previous.goal.x,t.y-previous.goal.y)>8?previous:null;
     const response=retreat(t,threat,at,options);
     if(response){
@@ -81,6 +110,8 @@
     if((t.encounterRetreating&&now<Number(t.encounterUntil||0))||(t._encounterMotion?.kind==='retreat'&&now<Number(t._encounterMotion.until||0)))return make('retreating','CAUTIOUS RETREAT');
     if(t.rubberSlowed||now<Number(t.rubberSlowUntil||0))return make('slowed','RUBBER • SLOWED',Number(t.rubberSlowUntil||0));
     if(t.huntState==='recover'&&now<Number(t.huntStateUntil||0))return make('recovering','RECOVERING',Number(t.huntStateUntil));
+    const packRole=t.encounterPackRole||t._encounterMotion?.kind;
+    if(['circle','approach'].includes(packRole)&&now<Number(t.encounterPackUntil||t._encounterMotion?.until||0))return make(packRole==='circle'?'circling':'approaching',packRole==='circle'?'CIRCLING • WATCH':'APPROACHING • WATCH');
     const currentIntent=now<Number(t.intentUntil||0)?String(t.intent||'').toLowerCase():'';
     if(/guard wounded/.test(currentIntent))return make('guarding','GUARDING PACK',Number(t.intentUntil));
     if(t.encounterGuarding||t._encounterMotion?.kind==='guard'&&now<Number(t._encounterMotion.until||0))return make('guarding','GUARDING TERRITORY');
@@ -122,5 +153,5 @@
     ctx.beginPath();ctx.moveTo(attack.x-20,attack.y-20);ctx.lineTo(attack.x+20,attack.y+20);ctx.moveTo(attack.x+20,attack.y-20);ctx.lineTo(attack.x-20,attack.y+20);ctx.stroke();
     ctx.font='900 12px system-ui';ctx.textAlign='center';ctx.fillStyle='#ffe4e6';ctx.fillText('POUNCE — MOVE!',attack.x,attack.y-35);ctx.restore();
   }
-  return Object.freeze({VERSION:'13.6.2',personality,profile,intent,retreat,retreatPoint,activeReaction,patrol,fieldPlan,beginAttack,resolveAttack,posture,drawWarning});
+  return Object.freeze({VERSION:'13.7',personality,profile,intent,retreat,retreatPoint,activeReaction,packPlans,packPoint,patrol,fieldPlan,beginAttack,resolveAttack,posture,drawWarning});
 });

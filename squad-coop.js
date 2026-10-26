@@ -2489,7 +2489,7 @@
     }
     if(sharedStoryFoundation){
       const family=window.TigerStrikeBattlefieldRenderer.storyFamilyForLevel(storyLevel);
-      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,clearZones:sceneryClearZones,now:Date.now(),weather:stormExtraction?'storm':'clear'});
+      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,clearZones:sceneryClearZones,now:Date.now(),weather:stormExtraction?'storm':'clear',tigers:snap.tigers});
       // Chapter color is owned by the shared foundation in both play modes.
       // Shared foundation textures the ground before roads and buildings.
       // Water was drawn beneath the foundation's roads, bridges and scenery.
