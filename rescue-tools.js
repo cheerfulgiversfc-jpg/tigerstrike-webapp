@@ -23,7 +23,7 @@
     return [...players.filter(p=>!p.downed&&p.hp>0&&p.hp<p.maxHp).map(p=>({target:p,kind:'soldier',ratio:p.hp/p.maxHp})),...civilians.filter(c=>!c.secured&&!c.evac&&c.alive!==false&&c.hp>0&&c.hp<c.hpMax).map(c=>({target:c,kind:'civilian',ratio:c.hp/c.hpMax}))].filter(row=>Math.hypot(row.target.x-player.x,row.target.y-player.y)<=360).sort((a,b)=>a.ratio-b.ratio||String(a.target.userId||a.target.id).localeCompare(String(b.target.userId||b.target.id)))[0]||null;
   }
   function preview(tool,players,civilians,player){
-    if(tool?.id==='smoke')return {x:player.x,y:player.y,r:300,label:'Smoke here • 300m cover • 8 seconds'};
+    if(tool?.id==='smoke')return {x:player.x,y:player.y,r:300,label:'Smoke here • 300m cover • 8 seconds • breaks sound investigations'};
     if(tool?.id==='med-drone'){
       const pick=healingTarget(players,civilians,player);
       if(!pick)return {label:'No injured target within 360m • no charge will be used'};

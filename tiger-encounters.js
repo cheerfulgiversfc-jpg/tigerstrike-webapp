@@ -16,7 +16,8 @@
     slowed:{head:2,ears:-.18,tail:6,crouch:1},drowsy:{head:5,ears:-.4,tail:10,crouch:2},
     windup:{head:1,ears:-.5,tail:9,crouch:5},alert:{head:-2,ears:-.18,tail:-3,crouch:0},
     retreating:{head:3,ears:-.32,tail:10,crouch:1},
-    circling:{head:1,ears:-.12,tail:6,crouch:2},approaching:{head:-1,ears:.08,tail:2,crouch:1}
+    circling:{head:1,ears:-.12,tail:6,crouch:2},approaching:{head:-1,ears:.08,tail:2,crouch:1},
+    investigating:{head:-2,ears:.2,tail:3,crouch:1},searching:{head:1,ears:.12,tail:-2,crouch:0}
   });
   const valid=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
   const bounded=(n,a,b)=>Math.max(a,Math.min(b,n));
@@ -63,6 +64,34 @@
     const moved=retreatPoint(point,{...reaction,at:reaction.at+1000},at,world);
     return {...moved,retreating:false,packRole:at>=reaction.at&&at<reaction.until?reaction.kind:''};
   }
+  function smokeBreaks(point,noise,smokes=[],at){
+    return smokes.some(s=>valid(s)&&Number(s.until)>at&&[point,noise].some(p=>valid(p)&&Math.hypot(s.x-p.x,s.y-p.y)<=300));
+  }
+  function investigationPlans(tigers=[],noises=[],at,options={}){
+    const clock=Number.isFinite(options.motionAt)?options.motionAt:at;
+    if(!Number.isFinite(at)||options.engaged||options.survival||options.requiredCapture||tigers.some(t=>Number(t.encounterCooldownUntil||t._encounterCooldownUntil||0)>clock))return [];
+    const events=noises.filter(n=>valid(n)&&n.source==='gunshot'&&Number.isFinite(n.at)&&n.at<=at&&at-n.at<=4000&&at<Number(n.expiresAt||n.at+4000)).sort((a,b)=>b.at-a.at||a.x-b.x||a.y-b.y);
+    for(const noise of events){
+      const candidates=tigers.filter(t=>valid(t)&&t.alive!==false&&!t.defeated&&!t.captured&&!t.boss&&t.faction!=='government'&&Number(t.hp)>Number(t.hpMax)*.35&&!t.tranqTagged&&!t.rubberSlowed&&at>=Number(t.holdUntil||0)&&at>=Number(t.staggerUntil||0)&&at>=Number(t.rubberSlowUntil||0)&&!t.attackWarnings?.length&&!t._battleAttack&&t.huntState!=='pounce'&&at>=Number(t.pounceWindupUntil||0)&&!t._encounterMotion&&t.id!==options.lockedId&&['Hunter','Ambusher'].includes(profile(t).key)&&!smokeBreaks(t,noise,options.smokes,at)).sort((a,b)=>Math.hypot(a.x-noise.x,a.y-noise.y)-Math.hypot(b.x-noise.x,b.y-noise.y)||String(a.id).localeCompare(String(b.id)));
+      for(const t of candidates){
+        const distance=Math.hypot(noise.x-t.x,noise.y-t.y);if(distance<100||distance>Math.min(360,Number(noise.radius)||360))continue;
+        const dx=(noise.x-t.x)/distance,dy=(noise.y-t.y)/distance;
+        const w=Math.max(48,Number(options.world?.width)||4800),h=Math.max(48,Number(options.world?.height)||2800),goal={x:bounded(t.x+dx*64,24,w-24),y:bounded(t.y+dy*64,24,h-24)};
+        // A lure must not lead toward a civilian or through their position.
+        if((options.civilians||[]).some(c=>valid(c)&&c.alive!==false&&!c.evac&&!c.secured&&(Math.hypot(c.x-noise.x,c.y-noise.y)<180||Math.hypot(c.x-goal.x,c.y-goal.y)<Math.min(160,Math.hypot(c.x-t.x,c.y-t.y)+12))))continue;
+        return [{id:t.id,kind:'investigate',at:clock,until:clock+6000,cooldownUntil:clock+14000,dx,dy,noiseX:noise.x,noiseY:noise.y,goal}];
+      }
+    }
+    return [];
+  }
+  function investigationPoint(point,reaction,at,world={width:4800,height:2800},breakAt=null){
+    if(!valid(point)||reaction?.kind!=='investigate')return {...point,investigating:false,searching:false};
+    const amount=time=>time<=reaction.at+600||time>=reaction.until?0:64*Math.sin(Math.PI*bounded((time-reaction.at-600)/Math.max(1,reaction.until-reaction.at-600),0,1))**2;
+    const broken=Number.isFinite(breakAt)&&breakAt>=reaction.at&&at>=breakAt;
+    const offset=broken?amount(breakAt)*(1-(1-Math.cos(Math.PI*bounded((at-breakAt)/600,0,1)))/2):amount(at);
+    const length=Math.max(1,Math.hypot(reaction.dx,reaction.dy));
+    return {x:bounded(point.x+reaction.dx/length*offset,24,Math.max(48,Number(world.width)||4800)-24),y:bounded(point.y+reaction.dy/length*offset,24,Math.max(48,Number(world.height)||2800)-24),investigating:!broken&&at>=reaction.at&&at<reaction.until,searching:broken&&at<Math.min(reaction.until,breakAt+1200)};
+  }
   function patrol(t,elapsed,world,territorial=false){
     const guard=territorial&&!t.boss&&t.faction!=='government'&&profile(t).key==='Sentinel';
     const radius=guard?1-.32*bounded(elapsed/4,0,1):1;
@@ -71,6 +100,12 @@
   function fieldPlan(t,threat,at,options={}){
     if(!valid(t)||!valid(threat)||options.engaged||options.survival||options.requiredCapture||t.boss||t.faction==='government'||t.captured||t.defeated||t.alive===false||!(t.hp>0)||t.tranqTagged||at<Number(t.holdUntil||0)||at<Number(t.staggerUntil||0)||t.huntState==='pounce'||at<Number(t._feintUntil||0))return null;
     const previous=options.previous;
+    if(previous?.kind==='investigate'&&at<previous.until){
+      if(Number(t.hp)<=Number(t.hpMax)*.35)return null;
+      if(smokeBreaks(t,{x:previous.noiseX,y:previous.noiseY},options.smokes,at))return {kind:'search',at,until:at+1200,goal:{x:t.x,y:t.y},waiting:true};
+      return {...previous,waiting:at<previous.at+600||Math.hypot(t.x-previous.goal.x,t.y-previous.goal.y)<8};
+    }
+    if(previous?.kind==='search'&&at<previous.until)return previous;
     if(['circle','approach'].includes(previous?.kind)&&at<previous.until){
       if(Number(t.hp)<=Number(t.hpMax)*.35||options.nearCivilian||options.guardBlocked)return null;
       return {...previous,waiting:at<previous.at+1000||Math.hypot(t.x-previous.goal.x,t.y-previous.goal.y)<8};
@@ -110,6 +145,8 @@
     if((t.encounterRetreating&&now<Number(t.encounterUntil||0))||(t._encounterMotion?.kind==='retreat'&&now<Number(t._encounterMotion.until||0)))return make('retreating','CAUTIOUS RETREAT');
     if(t.rubberSlowed||now<Number(t.rubberSlowUntil||0))return make('slowed','RUBBER • SLOWED',Number(t.rubberSlowUntil||0));
     if(t.huntState==='recover'&&now<Number(t.huntStateUntil||0))return make('recovering','RECOVERING',Number(t.huntStateUntil));
+    if(t.encounterSearching&&now<Number(t.encounterSearchUntil||0)||t._encounterMotion?.kind==='search'&&now<Number(t._encounterMotion.until||0))return make('searching','LOST THE TRAIL');
+    if(t.encounterInvestigating&&now<Number(t.encounterInvestigationUntil||0)||t._encounterMotion?.kind==='investigate'&&now<Number(t._encounterMotion.until||0))return make('investigating','INVESTIGATING SOUND');
     const packRole=t.encounterPackRole||t._encounterMotion?.kind;
     if(['circle','approach'].includes(packRole)&&now<Number(t.encounterPackUntil||t._encounterMotion?.until||0))return make(packRole==='circle'?'circling':'approaching',packRole==='circle'?'CIRCLING • WATCH':'APPROACHING • WATCH');
     const currentIntent=now<Number(t.intentUntil||0)?String(t.intent||'').toLowerCase():'';
@@ -153,5 +190,5 @@
     ctx.beginPath();ctx.moveTo(attack.x-20,attack.y-20);ctx.lineTo(attack.x+20,attack.y+20);ctx.moveTo(attack.x+20,attack.y-20);ctx.lineTo(attack.x-20,attack.y+20);ctx.stroke();
     ctx.font='900 12px system-ui';ctx.textAlign='center';ctx.fillStyle='#ffe4e6';ctx.fillText('POUNCE — MOVE!',attack.x,attack.y-35);ctx.restore();
   }
-  return Object.freeze({VERSION:'13.7',personality,profile,intent,retreat,retreatPoint,activeReaction,packPlans,packPoint,patrol,fieldPlan,beginAttack,resolveAttack,posture,drawWarning});
+  return Object.freeze({VERSION:'13.8',personality,profile,intent,retreat,retreatPoint,activeReaction,packPlans,packPoint,smokeBreaks,investigationPlans,investigationPoint,patrol,fieldPlan,beginAttack,resolveAttack,posture,drawWarning});
 });

@@ -1,6 +1,15 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V13.8 — Sound Investigation & Smoke Breaks
+
+- Uses actual gunfire and the existing Smoke secondary; no new lure button, free shot or changed ammunition/capture rule. One eligible nearby Hunter/Ambusher can investigate a recent recorded gunshot location after a 600ms preparation period. The response lasts at most six seconds with a shared 14-second cooldown. Footsteps cannot erase the recorded shot location. It does not continuously track a moving soldier or add full pursuit/pathfinding.
+- Solo steers toward a goal up to 64 units away using existing collision movement, stops on arrival and falls back when blocked. Smoke near the investigator or its sound source ends that steering and briefly shows Lost the Trail. Solo engagement/locked targets, the tutorial, Survival, bosses, capture-ready/tagged tigers and required-capture missions are excluded. Candidate sound goals avoid directing tigers into nearby civilians; the normal path/collision systems remain responsible for terrain.
+- Co-op follows a smooth offset capped at 64 units from the existing patrol, then returns continuously. Smoke breaks are recorded in existing player records and ease the offset back over 600ms rather than teleporting the tiger. Investigation/searching tigers do not start a new attack windup. Existing warnings, Rubber effects, tranquilizers and confirmed capture/death keep their presentation priority.
+- Both viewers use server-confirmed responses, stable run IDs and mission time. Pause/reconnect preserves the response phase; restart clears reactions, Smoke breaks and stored shots. Existing active rooms retain their current behavior until the next mission/restart. Response/break maps are validated and capped at 32 entries, with no extra background timer or new storage key. Network cue expiry prevents old investigation/search labels from persisting indefinitely.
+- Automated tests cover actual Co-op Rubber fire followed by movement, shared two-viewer positions, Smoke interruption without teleporting, pause/reconnect/restart, eligibility/civilian safety, bounded continuous motion, Solo steering and expired cues. `qa/sound-investigation.html` uses real shared functions for isolated artwork checks; it is not a recorded mission or physical two-phone acceptance test.
+- Health, damage, enemy counts, rewards, music and Solo coordinated-attacker limits remain unchanged. Larger pack pursuit/navigation remains separate work.
+
 ## V13.7 — Tiger Territory & Pack Teamwork, first release
 
 - A shared planner selects at most one nearby eligible pair: one short approach goal (16 units) and one lateral circling goal (24 units). A one-second preparation cue precedes movement; the whole response lasts three seconds with a shared 12-second cooldown. This is bounded repositioning, not an entire orbit, new pursuit pathfinding or a coordinated damage bonus. Only naturally nearby tigers can participate; missions do not gain new enemies to force an encounter.

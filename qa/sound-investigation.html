@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>Tiger Strike sound investigation preview</title>
+<style>body{margin:20px;background:#081b24;color:#eff9ef;font:16px system-ui}p{max-width:950px}button{padding:10px;margin:5px;background:#1c5142;color:white;border:1px solid #8db99b;border-radius:8px}canvas{max-width:100%;border:1px solid #648577;border-radius:12px}</style>
+<h1>V13.8 • Sound investigation & smoke breaks</h1>
+<p>Isolated visual check using the actual shared investigation movement, tiger artwork and Smoke effect. Fixed test actors, with no accounts or live mission. The tiger follows a short last-shot investigation, not endless pursuit.</p>
+<button id="watch">Investigate sound</button><button id="smoke">Deploy Smoke</button><button id="clear">Show return complete</button><output id="status"></output>
+<br><canvas id="preview" width="1000" height="620"></canvas>
+<script src="../water-terrain.js"></script><script src="../chapter-maps.js"></script><script src="../tiger-encounters.js"></script><script src="../rescue-tools.js"></script><script src="../shared-battlefield-renderer.js"></script>
+<script>
+const ctx=document.getElementById('preview').getContext('2d'),world={width:1000,height:760},tiger={id:'a',type:'Standard',x:650,y:320,hp:100,hpMax:100},shot={x:430,y:320,at:0,source:'gunshot'},soldier={x:340,y:390};
+const plan=TigerEncounters.investigationPlans([tiger],[shot],0,{world})[0],art=TigerStrikeBattlefieldRenderer;
+function show(at,breakAt=null){
+ ctx.clearRect(0,0,1000,620);ctx.fillStyle='#2c6440';ctx.fillRect(0,0,1000,620);art.drawGroundTexture(ctx,{x:0,y:0,w:1000,h:620},{family:'forest'});
+ art.drawMapHouse(ctx,70,85,130,85,{roof:'#8f5437'});art.drawMapTree(ctx,800,130,1.4,{});art.drawMapTree(ctx,820,470,1.3,{});
+ const p=TigerEncounters.investigationPoint(tiger,plan,at,world,breakAt),entity={...tiger,...p,encounterInvestigating:p.investigating,encounterSearching:p.searching,encounterInvestigationUntil:plan.until,encounterSearchUntil:breakAt+1200};
+ art.drawSoldier(ctx,soldier,{now:at,facing:1,scale:1.6,walking:false});art.drawTiger(ctx,entity,{now:at,facing:-1,scale:1.65,walking:at<6000,phase:2});
+ ctx.fillStyle='#fef3c7';ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.fillText(TigerEncounters.intent(entity,at).label,entity.x,entity.y-80);
+ ctx.fillStyle='#d4eacb';ctx.font='14px system-ui';ctx.fillText('Last gunshot location',shot.x,shot.y-60);ctx.beginPath();ctx.arc(shot.x,shot.y,7,0,Math.PI*2);ctx.fill();
+ if(breakAt!==null)TigerRescueTools.drawEffect(ctx,{kind:'smoke',x:soldier.x,y:soldier.y,until:breakAt+8000},at);
+ document.getElementById('status').textContent=breakAt===null?'Investigating the recorded sound':at<breakAt+1200?'Smoke breaks the trail; smooth return':'Investigation ended';
+ ctx.textAlign='left';ctx.fillStyle='#d7eddb';ctx.font='16px system-ui';ctx.fillText('Existing gunfire and Smoke controls; no extra lure button in missions.',40,570);
+}
+document.getElementById('watch').onclick=()=>show(3300);document.getElementById('smoke').onclick=()=>show(3600,3300);document.getElementById('clear').onclick=()=>show(4700,3300);show(3300);
+</script>

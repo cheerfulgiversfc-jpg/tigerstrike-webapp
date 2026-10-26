@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5255";
+const TS_BUILD = "5256";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -8,6 +8,7 @@ const PREMIUM_2D_GRAPHICS_VERSION = 13;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 let __livingTigerNoise = null;
+let __encounterGunshot = null;
 let __soloCombatPresentation=null;
 let __soloCombatReceipt=0;
 let __soloReactionPresentation=null;
@@ -39,6 +40,7 @@ function livingTigerBalance(target=null){
 }
 function recordTigerWorldNoise(x, y, intensity=1, source="movement", noiseMul=1){
   __livingTigerNoise = window.TigerLivingIntelligence?.noiseEvent?.({ x, y, intensity, source, noiseMul, at:Date.now() }) || null;
+  if(source==='gunshot')__encounterGunshot=__livingTigerNoise;
   return __livingTigerNoise;
 }
 function livingTigerVisual(value){
@@ -17907,7 +17909,7 @@ function clearTransientMissionRuntime(state, reason=""){
   state.extractionSequence = null;
   state.settlementDefense = null;
   state.missionTigerSpawnControl = null;
-  __livingTigerNoise = null;
+  __livingTigerNoise = null;__encounterGunshot=null;
   return state;
 }
 function stabilizeLoadedSaveState(state, sourceKey=""){
@@ -40185,7 +40187,7 @@ function setTigerHuntState(t, nextState, now=Date.now(), durationMs=640){
 
 function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
   ensureTigerHuntState(t, now);
-  if(['retreat','circle','approach'].includes(t._encounterMotion?.kind)&&now<t._encounterMotion.until)return;
+  if(['retreat','circle','approach','investigate','search'].includes(t._encounterMotion?.kind)&&now<t._encounterMotion.until)return;
   const livingBalance = livingTigerBalance(t);
   const hasTarget = Number.isFinite(targetDist) && targetDist < (motion.detect + 80);
   const inPounceBand = Number.isFinite(targetDist) && targetDist > 88 && targetDist < 340;
@@ -43064,7 +43066,7 @@ function deploy(opts={}){
   if(__startupComplete && !window.__TUTORIAL_MODE__) __gameplayLoadingGuardArmed = true;
   beginMissionTransitionGuard("deploy-begin", 2200);
   try{
-  __livingTigerNoise = null;
+  __livingTigerNoise = null;__encounterGunshot=null;
   const carryStats = !!opts.carryStats;
   const carryHp = clamp(Number.isFinite(opts.hp) ? opts.hp : S.hp, 0, 100);
   const carryArmor = clamp(Number.isFinite(opts.armor) ? opts.armor : S.armor, 0, S.armorCap || 100);
@@ -46840,7 +46842,10 @@ function roamTigers(){
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
-  const encounterPackPlans=window.TigerEncounters?.packPlans?.(aliveTigers,[S.me],now,{engaged:!!S.inBattle||!!S.paused||!!window.__TUTORIAL_MODE__,lockedId:S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,civilians:liveCivs,world:{width:worldWidth(S),height:worldHeight(S)}})||[];
+  const encounterSmokes=now<Number(S.secondarySmokeUntil||0)?[{...(S.secondarySmokeAt||S.me),until:S.secondarySmokeUntil}]:[];
+  const encounterOptions={engaged:!!S.inBattle||!!S.paused||!!window.__TUTORIAL_MODE__,lockedId:S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,civilians:liveCivs,smokes:encounterSmokes,world:{width:worldWidth(S),height:worldHeight(S)}};
+  let encounterPackPlans=window.TigerEncounters?.investigationPlans?.(aliveTigers,__encounterGunshot?[__encounterGunshot]:[],now,encounterOptions)||[];
+  if(!encounterPackPlans.length)encounterPackPlans=window.TigerEncounters?.packPlans?.(aliveTigers,[S.me],now,encounterOptions)||[];
   for(const plan of encounterPackPlans){
     const member=aliveTigers.find(t=>t.id===plan.id);
     if(member){member._encounterMotion=plan;member._encounterCooldownUntil=plan.cooldownUntil;}
@@ -47525,7 +47530,7 @@ function roamTigers(){
     }
 
     if(!t._encounterHome||!Number.isFinite(t._encounterHome.x)||!Number.isFinite(t._encounterHome.y))t._encounterHome={x:t.x,y:t.y};
-    const encounterSteering=window.TigerEncounters?.fieldPlan?.(t,S.me,now,{home:t._encounterHome,previous:t._encounterMotion,cooldownUntil:t._encounterCooldownUntil||0,guardBlocked:now<Number(t._encounterGuardBlockedUntil||0),engaged:!!S.inBattle||t.id===S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,nearCivilian:!!closestCiv&&closestCivDist<180,world:{width:worldWidth(S),height:worldHeight(S)}})||null;
+    const encounterSteering=window.TigerEncounters?.fieldPlan?.(t,S.me,now,{home:t._encounterHome,previous:t._encounterMotion,cooldownUntil:t._encounterCooldownUntil||0,guardBlocked:now<Number(t._encounterGuardBlockedUntil||0),engaged:!!S.inBattle||t.id===S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,nearCivilian:!!closestCiv&&closestCivDist<180,smokes:encounterSmokes,world:{width:worldWidth(S),height:worldHeight(S)}})||null;
     t._encounterMotion=encounterSteering;
     if(encounterSteering){
       t._encounterCooldownUntil=Math.max(Number(t._encounterCooldownUntil||0),Number(encounterSteering.cooldownUntil||0));
@@ -48367,7 +48372,7 @@ function fieldPounceTarget(t){
 }
 
 function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
-  if(['retreat','circle','approach'].includes(t?._encounterMotion?.kind)&&now<t._encounterMotion.until)return false;
+  if(['retreat','circle','approach','investigate','search'].includes(t?._encounterMotion?.kind)&&now<t._encounterMotion.until)return false;
   if(!t || !target || S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
   const smokeAt=S.secondarySmokeAt||S.me;
   if(now < Number(S.secondarySmokeUntil || 0) && (dist(t.x,t.y,smokeAt.x,smokeAt.y)<=300 || dist(target.x,target.y,smokeAt.x,smokeAt.y)<=300)) return false;

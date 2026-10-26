@@ -2581,6 +2581,7 @@ function normalizeSession(raw){
     encounterVersion:Number(raw.encounterVersion)===2?2:0,
     encounterRunAt:Math.max(0,Number(raw.encounterRunAt)||0),
     packVersion:Number(raw.packVersion)===1?1:0,
+    soundVersion:Number(raw.soundVersion)===1?1:0,
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -2651,6 +2652,13 @@ function newPlayer(user, slot=0){
   };
 }
 
+function normalizeEncounterReactions(raw){
+  return Object.fromEntries(Object.entries(raw||{}).filter(([id,r])=>{
+    if(!ALL_COOP_TIGERS.some(t=>t.id===id)||!r||![r.at,r.until,r.cooldownUntil,r.runAt,r.dx,r.dy].every(Number.isFinite)||r.at<0||r.until<=r.at||r.cooldownUntil<r.until||r.runAt<=0)return false;
+    const duration=r.kind==='investigate'?6000:['circle','approach'].includes(r.kind)?3000:1600;
+    return r.until<=r.at+duration&&r.cooldownUntil<=r.at+14000&&(r.kind!=='investigate'||[r.noiseX,r.noiseY].every(Number.isFinite));
+  }).slice(0,32).map(([id,r])=>[id,{at:r.at,until:r.until,cooldownUntil:r.cooldownUntil,runAt:r.runAt,dx:clamp(r.dx,-1,1),dy:clamp(r.dy,-1,1),...(['circle','approach','investigate'].includes(r.kind)?{kind:r.kind}:{}),...(r.kind==='investigate'?{noiseX:r.noiseX,noiseY:r.noiseY}:{})}]));
+}
 function normalizePlayer(raw, fallbackUser=null, slot=0){
   const base = newPlayer(fallbackUser || raw?.userId, slot);
   const src = raw && typeof raw === "object" ? raw : {};
@@ -2712,7 +2720,8 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     rubberSlowUntil,
     killSites,
     captureSites,
-    encounterReactions:Object.fromEntries(Object.entries(src.encounterReactions||{}).filter(([id,r])=>ALL_COOP_TIGERS.some(t=>t.id===id)&&r&&[r.at,r.until,r.cooldownUntil,r.runAt,r.dx,r.dy].every(Number.isFinite)&&r.at>=0&&r.until>r.at&&r.until<=r.at+(['circle','approach'].includes(r.kind)?3000:1600)&&r.cooldownUntil<=r.at+12000&&r.runAt>0).slice(0,32).map(([id,r])=>[id,{at:r.at,until:r.until,cooldownUntil:r.cooldownUntil,runAt:r.runAt,dx:clamp(r.dx,-1,1),dy:clamp(r.dy,-1,1),...(['circle','approach'].includes(r.kind)?{kind:r.kind}: {})}])),
+    encounterReactions:normalizeEncounterReactions(src.encounterReactions),
+    encounterBreaks:Object.fromEntries(Object.entries(src.encounterBreaks||{}).filter(([id,r])=>ALL_COOP_TIGERS.some(t=>t.id===id)&&r&&Number.isFinite(r.at)&&r.at>=0&&Number.isFinite(r.runAt)&&r.runAt>0).slice(0,32).map(([id,r])=>[id,{at:r.at,runAt:r.runAt}])),
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     debriefRecruitIds:Array.isArray(src.debriefRecruitIds)?[...new Set(src.debriefRecruitIds.map(id=>cleanText(id,24)).filter(id=>ALL_COOP_CIVILIANS.some(c=>c.id===id)))]:null,
     securedCivilianIds:[...new Set((Array.isArray(src.securedCivilianIds) ? src.securedCivilianIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
@@ -2742,6 +2751,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     lastNoiseY:clamp(src.lastNoiseY ?? base.lastNoiseY, 24, MAX_COOP_WORLD.height - 24),
     lastNoiseIntensity:clamp(src.lastNoiseIntensity, 0, 3),
     lastNoiseSource:cleanText(src.lastNoiseSource, 24),
+    lastGunshotNoise:src.lastGunshotNoise&&[src.lastGunshotNoise.x,src.lastGunshotNoise.y,src.lastGunshotNoise.at].every(Number.isFinite)?{x:src.lastGunshotNoise.x,y:src.lastGunshotNoise.y,at:src.lastGunshotNoise.at,source:'gunshot'}:null,
     lastHazardAt:Math.max(0, Number(src.lastHazardAt || 0)),
     lastFireAt:Math.max(0, Number(src.lastFireAt || 0)),
     rewardClaimed:!!src.rewardClaimed,
@@ -2787,8 +2797,12 @@ function tigerSnapshots(session, players, at=nowMs()){
     const windup=players.map(p=>p.pendingTigerAttack).find(a=>a&&a.tigerId===def.id&&a.runId===`${session.code}:${session.startedAt}`&&at<a.resolveAt+1800);
     const elapsed=Math.max(0,sessionClockNow(session,at)-session.startedAt);
     const reaction=session.encounterVersion===2?tigerEncounters.activeReaction(players.map(p=>p.encounterReactions?.[def.id]),session.encounterRunAt,elapsed):null;
+    const breaks=reaction?players.map(p=>p.encounterBreaks?.[def.id]).filter(b=>b?.runAt===session.encounterRunAt&&b.at>=reaction.at).map(b=>b.at):[];
+    const breakAt=breaks.length?Math.min(...breaks):null;
     if(!defeated&&!windup&&reaction){
-      const moved=['circle','approach'].includes(reaction.kind)
+      const moved=reaction.kind==='investigate'
+        ? tigerEncounters.investigationPoint(position,reaction,elapsed,missionDefinition(session).world,breakAt)
+        : ['circle','approach'].includes(reaction.kind)
         ? tigerEncounters.packPoint(position,reaction,elapsed,missionDefinition(session).world)
         : tigerEncounters.retreatPoint(position,reaction,elapsed,missionDefinition(session).world);
       position={...position,...moved};
@@ -2836,6 +2850,10 @@ function tigerSnapshots(session, players, at=nowMs()){
       encounterUntil:position.retreating?at+Math.max(0,reaction.until-elapsed):0,
       encounterPackRole:position.packRole||'',
       encounterPackUntil:position.packRole?at+Math.max(0,reaction.until-elapsed):0,
+      encounterInvestigating:!!position.investigating,
+      encounterSearching:!!position.searching,
+      encounterInvestigationUntil:position.investigating?at+Math.max(0,reaction.until-elapsed):0,
+      encounterSearchUntil:position.searching?at+Math.max(0,Math.min(reaction.until,breakAt+1200)-elapsed):0,
     };
     const cue=tigerEncounters.intent(snapshot,at,{server:true});
     // Ship a compact authoritative state, not duplicated per-frame pose data.
@@ -2844,6 +2862,19 @@ function tigerSnapshots(session, players, at=nowMs()){
 }
 
 async function readSession(code){ return normalizeSession(await getState(sessionKey(code))); }
+function recordSmokeBreaks(session,player,players,tigers,now){
+  if(session.soundVersion!==1)return false;
+  let changed=false;
+  const elapsed=Math.max(0,sessionClockNow(session,now)-session.startedAt),smokes=players.map(p=>p.rescueTool?.effect).filter(e=>e?.kind==='smoke');
+  for(const t of tigers){
+    const reaction=tigerEncounters.activeReaction(players.map(p=>p.encounterReactions?.[t.id]),session.encounterRunAt,elapsed);
+    if(reaction?.kind!=='investigate'||!tigerEncounters.smokeBreaks(t,{x:reaction.noiseX,y:reaction.noiseY},smokes,now))continue;
+    if(players.some(p=>{const b=p.encounterBreaks?.[t.id];return b?.runAt===session.encounterRunAt&&b.at>=reaction.at;}))continue;
+    player.encounterBreaks[t.id]={at:elapsed,runAt:session.encounterRunAt};
+    changed=true;
+  }
+  return changed;
+}
 async function writeSession(session){
   const clean = normalizeSession({ ...session, updatedAt:nowMs() });
   await setState(sessionKey(clean.code), clean);
@@ -3499,9 +3530,13 @@ async function updateOwnPresence(session, user, patch={}){
     if(session.packVersion===1){
       const elapsed=Math.max(0,sessionClockNow(session,now)-session.startedAt);
       const rows=players.map(p=>p.userId===player.userId?player:p);
-      const plans=tigerEncounters.packPlans(threats.map(t=>({...t,encounterCooldownUntil:Math.max(0,...rows.map(p=>p.encounterReactions?.[t.id]).filter(r=>r?.runAt===session.encounterRunAt).map(r=>r.cooldownUntil))})),rows,elapsed,{survival:session.launchType==='endless-survival',requiredCapture:Number(mission.captureRequired||0)>0,world:mission.world,civilians:civilianSnapshots(session,rows,rows.flatMap(p=>p.rescuedIds||[]),rows.flatMap(p=>p.securedCivilianIds||[]))});
-      for(const plan of plans)player.encounterReactions[plan.id]={at:plan.at,until:plan.until,cooldownUntil:plan.cooldownUntil,dx:plan.dx,dy:plan.dy,kind:plan.kind,runAt:session.encounterRunAt};
-      if(plans.length)threats=tigerSnapshots(session,rows,now);
+      const candidates=threats.map(t=>({...t,encounterCooldownUntil:Math.max(0,...rows.map(p=>p.encounterReactions?.[t.id]).filter(r=>r?.runAt===session.encounterRunAt).map(r=>r.cooldownUntil))}));
+      const options={survival:session.launchType==='endless-survival',requiredCapture:Number(mission.captureRequired||0)>0,world:mission.world,civilians:civilianSnapshots(session,rows,rows.flatMap(p=>p.rescuedIds||[]),rows.flatMap(p=>p.securedCivilianIds||[]))};
+      let plans=session.soundVersion===1?tigerEncounters.investigationPlans(candidates,rows.filter(p=>now-p.lastSeenAt<20000).map(p=>p.lastGunshotNoise||{x:p.lastNoiseX,y:p.lastNoiseY,at:p.lastNoiseAt,source:p.lastNoiseSource}),now,{...options,motionAt:elapsed,smokes:rows.map(p=>p.rescueTool?.effect).filter(e=>e?.kind==='smoke')}):[];
+      if(!plans.length)plans=tigerEncounters.packPlans(candidates,rows,elapsed,options);
+      for(const plan of plans)player.encounterReactions[plan.id]={at:plan.at,until:plan.until,cooldownUntil:plan.cooldownUntil,dx:plan.dx,dy:plan.dy,kind:plan.kind,runAt:session.encounterRunAt,...(plan.kind==='investigate'?{noiseX:plan.noiseX,noiseY:plan.noiseY}:{})};
+      const broke=recordSmokeBreaks(session,player,rows,threats,now);
+      if(plans.length||broke)threats=tigerSnapshots(session,rows,now);
     }
     let threat = threats
       .filter((t)=>!t.defeated)
@@ -3536,7 +3571,7 @@ async function updateOwnPresence(session, user, patch={}){
         if(resolution==='dodged')player.lastEvasion={id:`${attackRun}:${player.userId}:evade:${pending.startedAt}`,kind:'dodged',at:now,x:Number(player.x),y:Number(player.y)};
         player.pendingTigerAttack=null;player.lastHazardAt=now;
       }
-    }else if(threat&&!threat.encounterRetreating&&!threat.encounterPackRole&&threat.faction!=='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown){
+    }else if(threat&&!threat.encounterRetreating&&!threat.encounterPackRole&&!threat.encounterInvestigating&&!threat.encounterSearching&&threat.faction!=='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown){
       player.pendingTigerAttack=tigerEncounters.beginAttack(threat,player,now,players.length<=1,attackRun);
     }
     if(threat && (attackHit || (threat.faction==='government'&&distance(player,threat)<=huntRange&&now-player.lastHazardAt>=hazardCooldown))){
@@ -3691,6 +3726,7 @@ async function applyAction(session, user, action, payload={}){
     session.encounterVersion=2;
     session.encounterRunAt=now;
     session.packVersion=1;
+    session.soundVersion=1;
     session.completedAt = 0;
     session.failureReason = "";
     session.pausedAt = 0;
@@ -3731,6 +3767,8 @@ async function applyAction(session, user, action, payload={}){
       p.motionAt = now;
       p.ammoMode = session.launchType === "endless-survival" ? "real" : "rubber";
       p.encounterReactions={};
+      p.encounterBreaks={};
+      p.lastGunshotNoise=null;
       p.rescueTool=restartCheckpoint ? {...p.rescueTool,effect:null} : rescueTools.create(p.rescueTool?.id);
       if(!restartCheckpoint){
         p.civilianHealing={};
@@ -3836,6 +3874,10 @@ async function applyAction(session, user, action, payload={}){
       else{healTarget.target.hp=Math.min(healTarget.target.maxHp,healTarget.target.hp+effect.healed);await writePlayer(session.code,healTarget.target);}
     }
     player.rescueTool=rescueTools.used(tool,effect,message,now);
+    if(tool.id==='smoke'){
+      const rows=players.map(p=>p.userId===player.userId?player:p);
+      recordSmokeBreaks(session,player,rows,derived.tigers,now);
+    }
     player.lastSeenAt=now;await writePlayer(session.code,player);
   }else if(action === "ammo-mode"){
     if(session.launchType === "endless-survival") throw new Error("Endless Survival is kill-only and uses Real ammunition only.");
@@ -3889,6 +3931,7 @@ async function applyAction(session, user, action, payload={}){
     player.lastNoiseY = Number(player.y);
     player.lastNoiseIntensity = 1.35;
     player.lastNoiseSource = "gunshot";
+    player.lastGunshotNoise={x:Number(player.x),y:Number(player.y),at:now,source:'gunshot'};
     player.lastSeenAt = now;
     profile.ammo[ammoMode] -= 1;
     if(ammoMode === "real" && appliedHit >= Number(target.hp || 0)) profile.stats.kills += 1;

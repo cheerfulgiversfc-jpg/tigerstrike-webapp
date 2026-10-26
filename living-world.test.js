@@ -592,8 +592,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("PHANTOM RAGE WARD ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5255-pack-teamwork"));
-  assert(html.includes("V13.7 (Tiger Territory &amp; Pack Teamwork)"));
+  assert(html.includes("living-world.js?v=5256-sound-investigation"));
+  assert(html.includes("V13.8 (Sound Investigation &amp; Smoke Breaks)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
