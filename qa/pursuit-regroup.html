@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><title>Tiger Strike pursuit cycle check</title>
+<style>body{margin:20px;background:#0a1923;color:#e9f4ec;font:16px system-ui}p{max-width:1000px}button{padding:10px;margin:5px;border:1px solid #8ab4a0;border-radius:8px;background:#204d40;color:white}canvas{max-width:100%;border:1px solid #638879;border-radius:12px}</style>
+<h1>V13.9 • Pursuit, escape & regroup</h1><p>Isolated visual simulation of the actual shared state machine and artwork. No accounts or live mission. Chases have an eight-second deadline; Smoke breaks contact, followed by search and a return home.</p>
+<button id="chase">Show pursuit</button><button id="smoke">Show Smoke escape</button><button id="regroup">Show regroup</button><button id="rest">Show return complete</button><output id="phase"></output><br><canvas id="preview" width="1000" height="620"></canvas>
+<script src="../water-terrain.js?v=5257"></script><script src="../chapter-maps.js?v=5257"></script><script src="../tiger-encounters.js?v=5257"></script><script src="../tiger-pursuit.js?v=5257"></script><script src="../rescue-tools.js?v=5257"></script><script src="../shared-battlefield-renderer.js?v=5257"></script>
+<script>
+const ctx=document.getElementById('preview').getContext('2d'),art=TigerStrikeBattlefieldRenderer,player={userId:1,x:760,y:350};
+function show(end,smoke=false){let tiger={id:'a',type:'Standard',x:520,y:350,hp:100,hpMax:100},state=null;
+ for(let at=0;at<=end;at+=50){if(state)tiger={...tiger,...TigerPursuit.frame(state,at)};state=TigerPursuit.step(tiger,state,[player],at,{allowStart:at===0,runAt:1,world:{width:1000,height:760},smokes:smoke&&at>=3000?[{...player,until:11000}]:[]});}
+ ctx.fillStyle='#2b6240';ctx.fillRect(0,0,1000,620);art.drawGroundTexture(ctx,{x:0,y:0,w:1000,h:620},{family:'forest'});art.drawTerritoryClues(ctx,[{...tiger,baseX:520,baseY:350}],{x:0,y:0,w:1000,h:620});art.drawMapHouse(ctx,70,90,130,85,{roof:'#8f5437'});art.drawMapTree(ctx,840,150,1.5,{});
+ art.drawSoldier(ctx,player,{now:end,facing:-1,scale:1.5});art.drawTiger(ctx,{...tiger,_pursuit:state},{now:end,facing:state.phase==='regroup'?-1:1,walking:['pursuit','regroup'].includes(state.phase),phase:2,scale:1.5});
+ const cue=TigerEncounters.intent({...tiger,_pursuit:state},end);ctx.fillStyle='#fff0b5';ctx.font='bold 17px system-ui';ctx.textAlign='center';ctx.fillText(cue.label,tiger.x,tiger.y-85);ctx.fillStyle='#d8ebd5';ctx.font='14px system-ui';ctx.fillText('Home point',520,440);
+ if(smoke)TigerRescueTools.drawEffect(ctx,{kind:'smoke',...player,until:11000},end);
+ document.getElementById('phase').textContent=state.phase;ctx.textAlign='left';ctx.fillStyle='#d8ebd5';ctx.font='16px system-ui';ctx.fillText('Shared decisions; actual Solo movement still uses the existing collision engine.',35,570);
+}
+document.getElementById('chase').onclick=()=>show(4000);document.getElementById('smoke').onclick=()=>show(3500,true);document.getElementById('regroup').onclick=()=>show(11000);document.getElementById('rest').onclick=()=>show(17000);show(4000);
+</script>

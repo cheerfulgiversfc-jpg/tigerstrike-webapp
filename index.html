@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V13.8 (Sound Investigation &amp; Smoke Breaks)</title>
+  <title>Tiger Strike 🐅 — V13.9 (Pursuit, Escape &amp; Regroup)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5256-sound-investigation">
-  <link rel="stylesheet" href="./battlefield-awareness.css?v=5256-sound-investigation">
+  <link rel="stylesheet" href="./squad-coop.css?v=5257-pursuit-regroup">
+  <link rel="stylesheet" href="./battlefield-awareness.css?v=5257-pursuit-regroup">
 
   <style>
     :root{
@@ -2577,9 +2577,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V13.8</span> <span class="tag">Sound Investigation &amp; Smoke Breaks</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V13.9</span> <span class="tag">Pursuit, Escape &amp; Regroup</span></div>
       <div class="sub">
-        V13.8 — Sound Investigation &amp; Smoke Breaks: Recent gunfire can draw one nearby eligible tiger into a brief investigation of the recorded shot location. Move away to create a rescue opening; walking does not overwrite that sound. Smoke breaks the investigation and shows Lost the Trail. Solo uses existing collision movement; Co-op shares a smooth bounded investigation/return through pause and reconnect. No new lure button or free ammunition is added. Capture-ready tigers, bosses, required-capture missions, Survival and Solo engagement are protected. Existing active Co-op rooms adopt sound investigations on the next mission/restart. Enemy counts, health, damage, capture rules, music and rewards remain unchanged. This is short sound investigation, not full pack pursuit/pathfinding.<br>
+        V13.9 — Pursuit, Escape &amp; Regroup: Eligible nearby tigers warn before a limited chase. Breaking contact or using Smoke ends tracking; tigers search briefly, then move back toward their departure point and rest. Chases have an eight-second deadline and bounded movement goals. Solo adds at most one new pursuit at a time; Co-op allows two, with shared server positions through pause/reconnect. Capture-ready tigers, bosses, required-capture missions, Survival and Solo engagement are protected. Older active Co-op rooms adopt pursuit on the next mission/restart. Existing health, damage, enemy counts, capture rules, rewards and music are unchanged. Solo keeps its existing collision engine; this does not add obstacle-aware navigation to Co-op.<br>
         V13.5 off-screen guidance, live progress and optional Docked Controls remain available.<br>
         V13.4 targeting and attack-warning improvements remain active.<br>
         V13.3 performance and weak-link improvements remain active. Combined physical two-phone weak-connection validation is still outstanding.<br>
@@ -3642,38 +3642,39 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5256-sound-investigation"></script>
-  <script src="./engagement-rules.js?v=5256-sound-investigation"></script>
-  <script src="./smooth-play.js?v=5256-sound-investigation"></script>
-  <script src="./combat-feel.js?v=5256-sound-investigation"></script>
-  <script src="./combat-reactions.js?v=5256-sound-investigation"></script>
-  <script src="./chapter-maps.js?v=5256-sound-investigation"></script>
-  <script src="./extraction-geometry.js?v=5256-sound-investigation"></script>
-  <script src="./ammo-modes.js?v=5256-sound-investigation"></script>
-  <script src="./government-policy.js?v=5256-sound-investigation"></script>
-  <script src="./tiger-intelligence.js?v=5256-sound-investigation"></script>
-  <script src="./tiger-encounters.js?v=5256-sound-investigation"></script>
-  <script src="./living-world.js?v=5256-sound-investigation"></script>
-  <script src="./mission-map-truth.js?v=5256-sound-investigation"></script>
-  <script src="./post-campaign.js?v=5256-sound-investigation"></script>
-  <script src="./sanctuary.js?v=5256-sound-investigation"></script>
-  <script src="./player-experience.js?v=5256-sound-investigation"></script>
-  <script src="./battlefield-awareness.js?v=5256-sound-investigation"></script>
-  <script src="./field-radio.js?v=5256-sound-investigation"></script>
-  <script src="./civilian-rescue.js?v=5256-sound-investigation"></script>
-  <script src="./rescue-tools.js?v=5256-sound-investigation"></script>
-  <script src="./escort-teamwork.js?v=5256-sound-investigation"></script>
-  <script src="./chapter-milestones.js?v=5256-sound-investigation"></script>
-  <script src="./mission-debrief.js?v=5256-sound-investigation"></script>
-  <script src="./mastery-rewards.js?v=5256-sound-investigation"></script>
-  <script src="./shared-battlefield-renderer.js?v=5256-sound-investigation"></script>
-  <script src="./game.js?v=5256-sound-investigation"></script>
-  <script src="./story-cinematics.js?v=5256-sound-investigation"></script>
-  <script src="./field-systems.js?v=5256-sound-investigation"></script>
-  <script src="./tutorial.js?v=5256-sound-investigation"></script>
-  <script src="./squad-motion.js?v=5256-sound-investigation"></script>
-  <script src="./squad-coop.js?v=5256-sound-investigation"></script>
-  <script src="./extraction-qa.js?v=5256-sound-investigation"></script>
+  <script src="./water-terrain.js?v=5257-pursuit-regroup"></script>
+  <script src="./engagement-rules.js?v=5257-pursuit-regroup"></script>
+  <script src="./smooth-play.js?v=5257-pursuit-regroup"></script>
+  <script src="./combat-feel.js?v=5257-pursuit-regroup"></script>
+  <script src="./combat-reactions.js?v=5257-pursuit-regroup"></script>
+  <script src="./chapter-maps.js?v=5257-pursuit-regroup"></script>
+  <script src="./extraction-geometry.js?v=5257-pursuit-regroup"></script>
+  <script src="./ammo-modes.js?v=5257-pursuit-regroup"></script>
+  <script src="./government-policy.js?v=5257-pursuit-regroup"></script>
+  <script src="./tiger-intelligence.js?v=5257-pursuit-regroup"></script>
+  <script src="./tiger-encounters.js?v=5257-pursuit-regroup"></script>
+  <script src="./tiger-pursuit.js?v=5257-pursuit-regroup"></script>
+  <script src="./living-world.js?v=5257-pursuit-regroup"></script>
+  <script src="./mission-map-truth.js?v=5257-pursuit-regroup"></script>
+  <script src="./post-campaign.js?v=5257-pursuit-regroup"></script>
+  <script src="./sanctuary.js?v=5257-pursuit-regroup"></script>
+  <script src="./player-experience.js?v=5257-pursuit-regroup"></script>
+  <script src="./battlefield-awareness.js?v=5257-pursuit-regroup"></script>
+  <script src="./field-radio.js?v=5257-pursuit-regroup"></script>
+  <script src="./civilian-rescue.js?v=5257-pursuit-regroup"></script>
+  <script src="./rescue-tools.js?v=5257-pursuit-regroup"></script>
+  <script src="./escort-teamwork.js?v=5257-pursuit-regroup"></script>
+  <script src="./chapter-milestones.js?v=5257-pursuit-regroup"></script>
+  <script src="./mission-debrief.js?v=5257-pursuit-regroup"></script>
+  <script src="./mastery-rewards.js?v=5257-pursuit-regroup"></script>
+  <script src="./shared-battlefield-renderer.js?v=5257-pursuit-regroup"></script>
+  <script src="./game.js?v=5257-pursuit-regroup"></script>
+  <script src="./story-cinematics.js?v=5257-pursuit-regroup"></script>
+  <script src="./field-systems.js?v=5257-pursuit-regroup"></script>
+  <script src="./tutorial.js?v=5257-pursuit-regroup"></script>
+  <script src="./squad-motion.js?v=5257-pursuit-regroup"></script>
+  <script src="./squad-coop.js?v=5257-pursuit-regroup"></script>
+  <script src="./extraction-qa.js?v=5257-pursuit-regroup"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

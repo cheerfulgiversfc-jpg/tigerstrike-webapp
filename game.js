@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5256";
+const TS_BUILD = "5257";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -40187,7 +40187,7 @@ function setTigerHuntState(t, nextState, now=Date.now(), durationMs=640){
 
 function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
   ensureTigerHuntState(t, now);
-  if(['retreat','circle','approach','investigate','search'].includes(t._encounterMotion?.kind)&&now<t._encounterMotion.until)return;
+  if(['retreat','circle','approach','investigate','search','regroup','rest','held'].includes(t._encounterMotion?.kind)&&now<t._encounterMotion.until)return;
   const livingBalance = livingTigerBalance(t);
   const hasTarget = Number.isFinite(targetDist) && targetDist < (motion.detect + 80);
   const inPounceBand = Number.isFinite(targetDist) && targetDist > 88 && targetDist < 340;
@@ -46844,8 +46844,15 @@ function roamTigers(){
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
   const encounterSmokes=now<Number(S.secondarySmokeUntil||0)?[{...(S.secondarySmokeAt||S.me),until:S.secondarySmokeUntil}]:[];
   const encounterOptions={engaged:!!S.inBattle||!!S.paused||!!window.__TUTORIAL_MODE__,lockedId:S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,civilians:liveCivs,smokes:encounterSmokes,world:{width:worldWidth(S),height:worldHeight(S)}};
-  let encounterPackPlans=window.TigerEncounters?.investigationPlans?.(aliveTigers,__encounterGunshot?[__encounterGunshot]:[],now,encounterOptions)||[];
-  if(!encounterPackPlans.length)encounterPackPlans=window.TigerEncounters?.packPlans?.(aliveTigers,[S.me],now,encounterOptions)||[];
+  let pursuitSlots=aliveTigers.filter(t=>window.TigerPursuit?.normalize(t._pursuit)&&t._pursuit.phase!=='rest').length;
+  for(const t of [...aliveTigers].sort((a,b)=>String(a.id).localeCompare(String(b.id)))){
+    const saved=window.TigerPursuit?.normalize(t._pursuit),previous=saved?.runAt===(Number(S._missionStartAt)||1)?saved:null,next=window.TigerPursuit?.step(t,previous,[{...S.me,userId:'solo'}],now,{...encounterOptions,runAt:Number(S._missionStartAt)||1,allowStart:now-Number(S._missionStartAt||now)>=4000&&pursuitSlots<1,shortResponse:!!t._encounterMotion&&now<t._encounterMotion.until,blocked:now<Number(t._encounterGuardBlockedUntil||0)});
+    if(next){t._pursuit=next;if(!previous&&next.phase!=='rest')pursuitSlots++;}
+    else if(!previous)t._pursuit=null;
+  }
+  const shortCandidates=aliveTigers.filter(t=>!t._pursuit);
+  let encounterPackPlans=window.TigerEncounters?.investigationPlans?.(shortCandidates,__encounterGunshot?[__encounterGunshot]:[],now,encounterOptions)||[];
+  if(!encounterPackPlans.length)encounterPackPlans=window.TigerEncounters?.packPlans?.(shortCandidates,[S.me],now,encounterOptions)||[];
   for(const plan of encounterPackPlans){
     const member=aliveTigers.find(t=>t.id===plan.id);
     if(member){member._encounterMotion=plan;member._encounterCooldownUntil=plan.cooldownUntil;}
@@ -47530,7 +47537,7 @@ function roamTigers(){
     }
 
     if(!t._encounterHome||!Number.isFinite(t._encounterHome.x)||!Number.isFinite(t._encounterHome.y))t._encounterHome={x:t.x,y:t.y};
-    const encounterSteering=window.TigerEncounters?.fieldPlan?.(t,S.me,now,{home:t._encounterHome,previous:t._encounterMotion,cooldownUntil:t._encounterCooldownUntil||0,guardBlocked:now<Number(t._encounterGuardBlockedUntil||0),engaged:!!S.inBattle||t.id===S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,nearCivilian:!!closestCiv&&closestCivDist<180,smokes:encounterSmokes,world:{width:worldWidth(S),height:worldHeight(S)}})||null;
+    const encounterSteering=t._pursuit?(!S.inBattle&&t.id!==S.lockedTigerId?window.TigerPursuit?.steering(t._pursuit,now):null):window.TigerEncounters?.fieldPlan?.(t,S.me,now,{home:t._encounterHome,previous:t._encounterMotion,cooldownUntil:t._encounterCooldownUntil||0,guardBlocked:now<Number(t._encounterGuardBlockedUntil||0),engaged:!!S.inBattle||t.id===S.lockedTigerId,survival:S.mode==='Survival',requiredCapture:Number(currentModeMission()?.captureRequired||0)>0,nearCivilian:!!closestCiv&&closestCivDist<180,smokes:encounterSmokes,world:{width:worldWidth(S),height:worldHeight(S)}})||null;
     t._encounterMotion=encounterSteering;
     if(encounterSteering){
       t._encounterCooldownUntil=Math.max(Number(t._encounterCooldownUntil||0),Number(encounterSteering.cooldownUntil||0));
@@ -48372,7 +48379,7 @@ function fieldPounceTarget(t){
 }
 
 function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
-  if(['retreat','circle','approach','investigate','search'].includes(t?._encounterMotion?.kind)&&now<t._encounterMotion.until)return false;
+  if(['retreat','circle','approach','investigate','search','regroup','rest','held'].includes(t?._encounterMotion?.kind)&&now<t._encounterMotion.until)return false;
   if(!t || !target || S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
   const smokeAt=S.secondarySmokeAt||S.me;
   if(now < Number(S.secondarySmokeUntil || 0) && (dist(t.x,t.y,smokeAt.x,smokeAt.y)<=300 || dist(target.x,target.y,smokeAt.x,smokeAt.y)<=300)) return false;

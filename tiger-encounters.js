@@ -145,6 +145,11 @@
     if((t.encounterRetreating&&now<Number(t.encounterUntil||0))||(t._encounterMotion?.kind==='retreat'&&now<Number(t._encounterMotion.until||0)))return make('retreating','CAUTIOUS RETREAT');
     if(t.rubberSlowed||now<Number(t.rubberSlowUntil||0))return make('slowed','RUBBER • SLOWED',Number(t.rubberSlowUntil||0));
     if(t.huntState==='recover'&&now<Number(t.huntStateUntil||0))return make('recovering','RECOVERING',Number(t.huntStateUntil));
+    const pursuitPhase=now<Number(t.pursuitUntil||t._pursuit?.phaseUntil||0)?t.pursuitPhase||t._pursuit?.phase:'';
+    if(pursuitPhase==='warn')return make('watching','TRACKING • MOVE');
+    if(pursuitPhase==='pursuit')return make('stalking','PURSUING');
+    if(pursuitPhase==='search')return make('searching','SEARCHING LAST SIGHTING');
+    if(pursuitPhase==='regroup')return make('guarding','RETURNING TO TERRITORY');
     if(t.encounterSearching&&now<Number(t.encounterSearchUntil||0)||t._encounterMotion?.kind==='search'&&now<Number(t._encounterMotion.until||0))return make('searching','LOST THE TRAIL');
     if(t.encounterInvestigating&&now<Number(t.encounterInvestigationUntil||0)||t._encounterMotion?.kind==='investigate'&&now<Number(t._encounterMotion.until||0))return make('investigating','INVESTIGATING SOUND');
     const packRole=t.encounterPackRole||t._encounterMotion?.kind;
@@ -190,5 +195,5 @@
     ctx.beginPath();ctx.moveTo(attack.x-20,attack.y-20);ctx.lineTo(attack.x+20,attack.y+20);ctx.moveTo(attack.x+20,attack.y-20);ctx.lineTo(attack.x-20,attack.y+20);ctx.stroke();
     ctx.font='900 12px system-ui';ctx.textAlign='center';ctx.fillStyle='#ffe4e6';ctx.fillText('POUNCE — MOVE!',attack.x,attack.y-35);ctx.restore();
   }
-  return Object.freeze({VERSION:'13.8',personality,profile,intent,retreat,retreatPoint,activeReaction,packPlans,packPoint,smokeBreaks,investigationPlans,investigationPoint,patrol,fieldPlan,beginAttack,resolveAttack,posture,drawWarning});
+  return Object.freeze({VERSION:'13.9',personality,profile,intent,retreat,retreatPoint,activeReaction,packPlans,packPoint,smokeBreaks,investigationPlans,investigationPoint,patrol,fieldPlan,beginAttack,resolveAttack,posture,drawWarning});
 });
