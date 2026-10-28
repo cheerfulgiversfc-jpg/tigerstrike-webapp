@@ -7,7 +7,7 @@ test('Missions 1–10 share dry functional shelter locations and Map Truth parit
     for(const p of s)for(const dx of [-70,70])for(const dy of [-78,50])assert(map.waterZones.every(z=>!water.contains(z,p.x+dx,p.y+dy)));
     assert.deepEqual(s,routes.shelters(1,world));
   }
-  assert.deepEqual(routes.shelters(31,world),[]);assert.equal(routes.plan({level:31,world,from:{x:100,y:100},to:{x:400,y:400}}),null);
+  assert.deepEqual(routes.shelters(41,world),[]);assert.equal(routes.plan({level:41,world,from:{x:100,y:100},to:{x:400,y:400}}),null);
 });
 test('direct and shelter guidance reach the real destination through a bridge without cutting across water',()=>{
   const from={x:1000,y:1000},to={x:3800,y:2600};
@@ -27,13 +27,13 @@ test('cover uses the exact visible rectangle, never gives immunity, and firing r
   const s=routes.shelters(1,world)[0],options={level:1,world,point:s,now:10000};assert.equal(routes.damage(10,options),5);assert.equal(routes.damage(1,options),1);
   assert.equal(routes.damage(10,{...options,point:{x:s.x+61,y:s.y}}),10);assert.equal(routes.damage(10,{...options,lastShotAt:8000}),10);assert.equal(routes.damage(10,{...options,lastShotAt:7000}),5);
   assert.equal(routes.damage(10,{...options,point:{x:s.x,y:s.y+10}}),5);assert.equal(routes.damage(10,{...options,point:{x:s.x,y:s.y+11}}),10);
-  assert.equal(routes.damage(10,{...options,faction:'government'}),10);assert.equal(routes.damage(10,{...options,level:31}),10);
+  assert.equal(routes.damage(10,{...options,faction:'government'}),10);assert.equal(routes.damage(10,{...options,level:41}),10);
 });
 test('debriefs describe measured cover reduction and final guidance without inventing route completion or rewards',()=>{
   const debrief=require('./mission-debrief'),run=debrief.summary({id:'route-test',completed:true,scope:'solo',route:{choice:'shelter',preventedDamage:13}}),html=debrief.html(run,{});
   assert.equal(run.route.preventedDamage,13);assert.match(html,/Final route guidance: Shelter detour/);assert.match(html,/by 13 this attempt/);assert.match(html,/selection alone earns no completion credit/);
 });
-for(const level of [1,11,20,21,30])test(`Mission ${level}: Co-op route choices, shelter damage and restart use authoritative state`,async()=>{
+for(const level of [1,11,20,21,30,31,40])test(`Mission ${level}: Co-op route choices, shelter damage and restart use authoritative state`,async()=>{
   const server=require('./api/_lib/squad-session'),store=require('./api/_lib/metrics-store');assert.equal(store.storageMode(),'memory');
   const original=Date.now;let now=1800000600000;Date.now=()=>now;
   try{

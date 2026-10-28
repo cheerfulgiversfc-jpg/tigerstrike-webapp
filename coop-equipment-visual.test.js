@@ -55,9 +55,9 @@ test("co-op characters are detailed and living tigers have no oval target ring",
 });
 
 test("V11.4 uses one cache key for every gameplay module", () => {
-  assert(game.includes('const TS_BUILD = "5261"'));
+  assert(game.includes('const TS_BUILD = "5262"'));
   for(const file of ["game.js", "living-world.js", "squad-motion.js", "shared-battlefield-renderer.js", "squad-coop.js", "field-systems.js", "ammo-modes.js", "tutorial.js"]){
-    assert(html.includes(`${file}?v=5261-chapter3-field`), `stale cache key for ${file}`);
+    assert(html.includes(`${file}?v=5262-chapter4-field`), `stale cache key for ${file}`);
   }
 });
 
