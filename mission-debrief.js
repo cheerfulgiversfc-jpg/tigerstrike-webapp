@@ -18,6 +18,7 @@
       reward:raw.reward?{cash:number(raw.reward.cash),xp:number(raw.reward.xp),perkPoints:number(raw.reward.perkPoints),seasonPoints:number(raw.reward.seasonPoints)}:null,
       rewardState:['awarded','pending','already-claimed'].includes(raw.rewardState)?raw.rewardState:'pending',
       route:raw.route?{choice:raw.route.choice==='shelter'?'shelter':'direct',preventedDamage:number(raw.route.preventedDamage)}:null,
+      field:raw.field?{towerUses:number(raw.field.towerUses),collected:!!raw.field.collected,healed:number(raw.field.healed),armored:number(raw.field.armored),leadStatus:['pending','active','early','rescued','missed'].includes(raw.field.leadStatus)?raw.field.leadStatus:'not-offered'}:null,
       contributions:(raw.contributions||[]).slice(0,2).map(p=>({name:clean(p.name),recruited:p.recruited==null?null:number(p.recruited),captures:number(p.captures),kills:number(p.kills),damage:number(p.damage),revives:number(p.revives)}))};
   }
   function normalize(raw={}){
@@ -63,6 +64,7 @@
       <p>${run.scope==='coop'?'Co-op':'Solo'} • Time: ${esc(time(run.durationMs))}${run.restarts?` • Includes ${run.restarts} restart${run.restarts===1?'':'s'}`:''}</p>
       <p>Civilians saved: ${run.rescued}/${run.civilianTotal} • Captured: ${run.captures} • Killed: ${run.kills}</p><p>${payout}</p>
       ${run.route?`<p>Final route guidance: ${run.route.choice==='shelter'?'Shelter detour':'Direct'}. Shelter reduced incoming damage by ${run.route.preventedDamage} this attempt. Route selection alone earns no completion credit or payout.</p>`:''}
+      ${run.field?`<p>Field actions: ${run.field.towerUses} tower scans • mission cache ${run.field.collected?'collected':'not collected'} • ${run.field.healed} HP restored • ${run.field.armored} armor restored. Optional rescue lead: ${esc(({early:'civilian rescued before the lead',rescued:'civilian delivered during the window',missed:'window ended',pending:'not offered before this attempt ended',active:'still open when this attempt ended'})[run.field.leadStatus]||'not offered in this mission')}. Supplies expire after this attempt; no extra completion payout.</p>`:''}
       ${run.scope==='solo'?'<small>Other bonuses remain itemized in the existing reward breakdown.</small>':''}
       ${best?`<p>${changes.first?'First clear recorded.':changes.faster?'New fastest clear!':changes.betterRescue?'New best rescue result!':'Personal bests'} Fastest: ${esc(time(best.fastestMs))}${best.civilianTotal?` • Best rescue: ${best.bestRescued}/${best.civilianTotal}`:''} • ${best.clears} clear${best.clears===1?'':'s'}</p>`:''}
       ${medalNames.length?`<p>🏅 ${medalNames.map(esc).join(' • ')} <small>(recognition only; no extra payout)</small></p>`:''}

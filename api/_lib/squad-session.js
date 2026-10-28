@@ -10,6 +10,7 @@ const fieldRadio = require("../../field-radio");
 const tigerEncounters = require("../../tiger-encounters");
 const tigerPursuit = require("../../tiger-pursuit");
 const missionRoutes = require("../../mission-routes");
+const fieldOperations = require("../../field-operations");
 const civilianRescue = require("../../civilian-rescue");
 const rescueTools = require("../../rescue-tools");
 const escortTeamwork = require("../../escort-teamwork");
@@ -2586,6 +2587,8 @@ function normalizeSession(raw){
     soundVersion:Number(raw.soundVersion)===1?1:0,
     pursuitVersion:Number(raw.pursuitVersion)===1?1:0,
     routeVersion:Number(raw.routeVersion)===1?1:0,
+    fieldVersion:Number(raw.fieldVersion)===1?1:0,
+    fieldLeadRescuedAt:Number.isFinite(raw.fieldLeadRescuedAt)?raw.fieldLeadRescuedAt:null,
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -2727,6 +2730,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     encounterReactions:normalizeEncounterReactions(src.encounterReactions),
     routeChoice:missionRoutes.choice(src.routeChoice),
     routePrevented:clamp(Number(src.routePrevented||0),0,999999),
+    fieldOps:fieldOperations.normalize(src.fieldOps),
     pursuits:Object.fromEntries(Object.entries(src.pursuits||{}).filter(([id])=>ALL_COOP_TIGERS.some(t=>t.id===id)).slice(0,32).map(([id,s])=>[id,tigerPursuit.normalize(s)]).filter(([,s])=>s)),
     encounterBreaks:Object.fromEntries(Object.entries(src.encounterBreaks||{}).filter(([id,r])=>ALL_COOP_TIGERS.some(t=>t.id===id)&&r&&Number.isFinite(r.at)&&r.at>=0&&Number.isFinite(r.runAt)&&r.runAt>0).slice(0,32).map(([id,r])=>[id,{at:r.at,runAt:r.runAt}])),
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
@@ -3285,10 +3289,12 @@ async function maybeTransferDisconnectedLeader(session, players, at=nowMs()){
 
 function buildMissionDebrief(session,players,derived,viewerId,reward=null,rewardState='pending'){
   const mission=missionDefinition(session);
+  const fieldLead=fieldOperations.lead(session.storyMissionLevel,mission.civilians,Math.max(0,(session.status!=='active'&&session.completedAt?session.completedAt:sessionClockNow(session,nowMs()))-session.startedAt),session.fieldLeadRescuedAt);
   return missionDebrief.summary({
     id:`${session.code}:${session.startedAt}:${userIdOf(viewerId)}`,scope:'coop',
     campaignLevel:session.launchType==='shared-story'?session.storyMissionLevel:0,
     route:session.routeVersion===1&&session.launchType==='shared-story'&&missionRoutes.enabled(session.storyMissionLevel)?{choice:players.find(p=>p.userId===userIdOf(viewerId))?.routeChoice,preventedDamage:players.find(p=>p.userId===userIdOf(viewerId))?.routePrevented}:null,
+    field:session.fieldVersion===1&&session.launchType==='shared-story'&&fieldOperations.enabled(session.storyMissionLevel)?{...players.find(p=>p.userId===userIdOf(viewerId))?.fieldOps,leadStatus:fieldLead?.status||'not-offered'}:null,
     bossCaptures:mission.tigers.filter(tiger=>tiger.boss&&derived.capturedIds.includes(tiger.id)).length,
     missionKey:`${session.launchType}:${session.storyMissionLevel||0}:${session.postCampaignOperation?.responseId||''}:${mission.survival?session.survivalWavesCleared:''}`,
     title:mission.title||session.title,mode:mission.survival?'Survival':session.launchType==='shared-story'?'Story':'Special Operation',completed:session.status==='complete',
@@ -3381,6 +3387,10 @@ async function buildSnapshot(session, viewerId){
     },
     world:mission.world,
     routeVersion:session.routeVersion,
+    fieldVersion:session.fieldVersion,
+    fieldNow:Math.max(0,(session.status!=='active'&&session.completedAt?session.completedAt:sessionClockNow(session,at))-session.startedAt),
+    fieldTowerUntil:Math.max(0,...players.map(p=>p.fieldOps?.towerUntil||0)),
+    fieldLead:session.fieldVersion===1&&session.launchType==='shared-story'?fieldOperations.lead(session.storyMissionLevel,civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds),Math.max(0,(session.status!=='active'&&session.completedAt?session.completedAt:sessionClockNow(session,at))-session.startedAt),session.fieldLeadRescuedAt):null,
     chapterMapId:session.launchType==='shared-story'?chapterMaps.forMission(mission.level).id:null,
     spawns:mission.spawns,
     extraction:mission.extraction,
@@ -3641,6 +3651,14 @@ async function applyAction(session, user, action, payload={}){
   let player = await readPlayer(session.code, uid, user, slot);
   syncEscortOwnership(session,player);
   const now = nowMs();
+  if(action==='field-use'){
+    if(session.fieldVersion!==1||session.launchType!=='shared-story'||!fieldOperations.enabled(session.storyMissionLevel)||session.status!=='active'||sessionPaused(session)||player.downed)throw new Error('Field actions require an active, unpaused Story mission 1–10.');
+    const mission=missionDefinition(session),elapsed=Math.max(0,sessionClockNow(session,now)-session.startedAt);
+    const opportunity=fieldOperations.lead(session.storyMissionLevel,mission.civilians,elapsed,session.fieldLeadRescuedAt);
+    const result=fieldOperations.act(player.fieldOps,payload.kind,{level:session.storyMissionLevel,world:mission.world,player:{...player,armorCap:100},now:elapsed,lead:opportunity});
+    if(payload.kind==='cache'&&!await setStateIfAbsent(`live_squad_field_cache_${session.code}_${session.encounterRunAt}_${uid}`,{at:now}))throw new Error('Your supplies were already collected this attempt.');
+    player.fieldOps=result.state;player.hp=Math.min(player.maxHp,player.hp+result.heal);player.armor=Math.min(100,player.armor+result.armor);await writePlayer(session.code,player);return session;
+  }
   if(action==='route-choice'){
     if(session.launchType!=='shared-story'||session.routeVersion!==1||!missionRoutes.enabled(session.storyMissionLevel)||!['waiting','active'].includes(session.status))throw new Error('Route choices are available in active Shared Story missions 1–10.');
     if(!['direct','shelter'].includes(payload.choice))throw new Error('Choose Direct or Shelter route.');
@@ -3766,6 +3784,7 @@ async function applyAction(session, user, action, payload={}){
     session.soundVersion=1;
     session.pursuitVersion=1;
     session.routeVersion=1;
+    session.fieldVersion=1;session.fieldLeadRescuedAt=null;
     session.completedAt = 0;
     session.failureReason = "";
     session.pausedAt = 0;
@@ -3810,6 +3829,7 @@ async function applyAction(session, user, action, payload={}){
       p.lastGunshotNoise=null;
       p.pursuits={};
       p.routePrevented=0;
+      p.fieldOps=fieldOperations.normalize();
       p.rescueTool=restartCheckpoint ? {...p.rescueTool,effect:null} : rescueTools.create(p.rescueTool?.id);
       if(!restartCheckpoint){
         p.civilianHealing={};
@@ -4069,6 +4089,10 @@ async function applyAction(session, user, action, payload={}){
     if(!Array.isArray(player.securedCivilianIds)) player.securedCivilianIds = [];
     player.securedCivilianIds.push(...ownedFollowing);
     player.securedCivilianIds = [...new Set(player.securedCivilianIds)];
+    if(session.fieldVersion===1&&session.fieldLeadRescuedAt===null){
+      const elapsed=Math.max(0,sessionClockNow(session,now)-session.startedAt),lead=fieldOperations.lead(session.storyMissionLevel,rescueMission.civilians,elapsed,null);
+      if(lead&&ownedFollowing.includes(lead.id)){session.fieldLeadRescuedAt=elapsed;await writeSession(session);}
+    }
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
   }else if(action === "revive"){

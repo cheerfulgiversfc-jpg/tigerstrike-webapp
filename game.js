@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5258";
+const TS_BUILD = "5259";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -48,15 +48,23 @@ function livingTigerVisual(value){
 }
 function missionRouteOptions(){
   if(S.mode!=='Story'||window.__TUTORIAL_MODE__||!window.TigerMissionRoutes?.enabled(missionProgressForWorld(S)))return null;
-  const to=fieldNextObjective();if(!Number.isFinite(to?.x)||!Number.isFinite(to?.y))return null;
+  const field=fieldContext(),to=window.TigerFieldOperations?.destination(fieldNextObjective(),field?.lead,field?.state,field?.level,field?.world)||fieldNextObjective();if(!Number.isFinite(to?.x)||!Number.isFinite(to?.y))return null;
   ensureMapObstacleCache();
   return {level:missionProgressForWorld(S),world:{width:worldWidth(S),height:worldHeight(S)},from:S.me,to,waterZones:__mapWaterZones,selected:S._missionRoute?.choice||'direct',blockedRects:[...__mapObstacleRects,...__mapObstacleCircles.map(c=>({x:c.x-c.r,y:c.y-c.r,w:c.r*2,h:c.r*2})),...(window.TigerStrikeBattlefieldRenderer?.routeBlockers(S)||[]).map(c=>({x:c.x-c.r,y:c.y-c.r,w:c.r*2,h:c.r*2}))]};
 }
 function openMissionRoute(){
   if(!S._missionStartAt||S.missionEnded||S.mode!=='Story'||!window.TigerMissionRoutes?.enabled(missionProgressForWorld(S))){toast('Choose an active Story mission from 1–10 first.');return;}
   const options=missionRouteOptions();if(!options){toast('No navigable objective is available right now. Check mission guidance.');return;}
-  window.TigerMissionRoutes.open({level:options.level,current:options.selected,preview:Object.fromEntries(['direct','shelter'].map(selected=>[selected,window.TigerMissionRoutes.plan({...options,selected})])),choose:selected=>{S._missionRoute={...(S._missionRoute||{}),choice:selected};save();}});
+  const field=fieldContext();window.TigerMissionRoutes.open({level:options.level,current:options.selected,preview:Object.fromEntries(['direct','shelter'].map(selected=>{const route=window.TigerMissionRoutes.plan({...options,selected});return [selected,{...route,danger:field&&field.now<field.state.towerUntil?window.TigerFieldOperations.danger(route,S.tigers):null}];})),choose:selected=>{S._missionRoute={...(S._missionRoute||{}),choice:selected};save();}});
 }
+function fieldContext(){
+  const api=window.TigerFieldOperations,level=missionProgressForWorld(S);if(S.mode!=='Story'||window.__TUTORIAL_MODE__||!api?.enabled(level)||!S._missionStartAt)return null;
+  const now=S._debriefClock?(window.TigerMissionDebrief?.clock(S._debriefClock,Date.now(),!S.paused&&!document.hidden)?.elapsedMs??Date.now()-S._missionStartAt):Date.now()-S._missionStartAt;
+  S._fieldOps=api.normalize(S._fieldOps);let lead=api.lead(level,S.civilians||[],now,S._fieldLeadRescuedAt??null);
+  if(lead&&S._fieldLeadRescuedAt==null&&(S.civilians||[]).some(c=>c.id===lead.id&&c.evac)){S._fieldLeadRescuedAt=now;lead=api.lead(level,S.civilians,now,now);}
+  return {level,world:{width:worldWidth(S),height:worldHeight(S)},player:{...S.me,hp:S.hp,maxHp:100,armor:S.armor,armorCap:S.armorCap||100},now,state:S._fieldOps,lead,tigers:S.tigers||[]};
+}
+function openFieldActions(){const context=fieldContext();if(!context||S.missionEnded){toast('Choose an active Story mission from 1–10 first.');return;}window.TigerFieldOperations.open({...context,action:kind=>{const result=window.TigerFieldOperations.act(S._fieldOps,kind,fieldContext());S._fieldOps=result.state;S.hp=Math.min(100,S.hp+result.heal);S.armor=Math.min(S.armorCap||100,S.armor+result.armor);save();}});}
 function missionShelterDamage(amount,point,tiger){
   if(S.mode!=='Story'||window.__TUTORIAL_MODE__)return amount;
   if(point===S.me&&(shieldActiveNow()||Date.now()<Number(S.rollInvulnUntil||0)||Date.now()<Number(S.respawnPendingUntil||0)))return amount;
@@ -4920,6 +4928,7 @@ function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
   const duration=S._debriefClock?api.clock(S._debriefClock,Date.now(),false).elapsedMs:null;
   const report={id:S._missionRunId||`legacy:${S.mode}:${meta.number}:${Date.now()}`,scope:'solo',missionKey:`${S.mode}:${meta.storyVariant||''}:${meta.number}:${meta.runIndex||0}:${S.mode==='Arcade'&&S.arcadeWeeklySeedEnabled?S.arcadeWeeklySeedKey||'':''}`,title:currentMissionLabel(),mode:S.mode,completed:true,durationMs:duration,civilianTotal:civTotal,civilianLost:civDead,rescued:stats.evac,captures:stats.captures,kills:stats.kills,reward:{cash:stats.cashEarned},rewardState:'awarded'};
   if(S.mode==='Story'&&window.TigerMissionRoutes?.enabled(meta.number))report.route=S._missionRoute||{choice:'direct',preventedDamage:0};
+  const field=fieldContext();if(field)report.field={...field.state,leadStatus:field.lead?.status||'not-offered'};
   report.campaignLevel=S.mode==='Story'&&meta.storyVariant===STORY_VARIANTS.CAMPAIGN?meta.number:0;
   report.bossCaptures=(S.captureCages||[]).filter(cage=>(S.tigers||[]).some(tiger=>tiger.id===cage.tigerId&&isBossTiger(tiger))).length;
   S.missionDebriefs=api.record(S.missionDebriefs,report).state;
@@ -43215,6 +43224,7 @@ function deploy(opts={}){
   window.TigerFieldSystems?.resetMissionSecondaryForMission?.(S);
   S._missionStartAt = Date.now();
   S._missionRoute={choice:'direct',preventedDamage:0};
+  S._fieldOps=window.TigerFieldOperations?.normalize();S._fieldLeadRescuedAt=null;
   S._missionMapTruthProgress = {
     mission:(S.mode === "Story" ? Math.max(1, Math.floor(Number(storyMissionLevelForState(S) || S.storyLevel || 1))) : 0),
     engagedIds:[]
@@ -44117,6 +44127,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
+  if(document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
@@ -44272,6 +44283,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
+  if(document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -54434,6 +54446,7 @@ function drawMissionMapTruthOverlay(opts={}){
   ctx.save();
 
   const routeOptions=missionRouteOptions();
+  const field=fieldContext();if(field)window.TigerFieldOperations.draw(ctx,{...field,view:{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height}});
   if(routeOptions)window.TigerMissionRoutes.draw(ctx,window.TigerMissionRoutes.cached(routeOptions,`${S._missionStartAt}:${routeOptions.level}:${routeOptions.to.id||routeOptions.to.action}`));
   if(!routeOptions&&truth.route.length > 1){
     ctx.strokeStyle = "rgba(125,211,252,.82)";

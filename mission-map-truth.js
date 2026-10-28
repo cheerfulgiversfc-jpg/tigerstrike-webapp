@@ -1,8 +1,8 @@
 (function(root, factory){
-  const api = factory(typeof module==='object'&&module.exports?require('./mission-routes'):root.TigerMissionRoutes);
+  const api = factory(typeof module==='object'&&module.exports?require('./mission-routes'):root.TigerMissionRoutes,typeof module==='object'&&module.exports?require('./field-operations'):root.TigerFieldOperations);
   if(typeof module === "object" && module.exports) module.exports = api;
   if(root) root.TigerStrikeMissionMapTruth = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function(routes){
+})(typeof globalThis !== "undefined" ? globalThis : this, function(routes,fields){
   "use strict";
 
   const VERSION = "10.34";
@@ -338,6 +338,7 @@
       ...spec,
       routeChoices:routes?.enabled(level)?['direct','shelter']:[],
       routeShelters:routes?.shelters(level,{width:w,height:h})||[],
+      fieldFixtures:fields?.fixtures(level,{width:w,height:h})||[],
       landmarks:spec.landmarks.map((item)=>({ ...item, x:Math.round(item.x*w), y:Math.round(item.y*h) })),
       route:spec.route.map((item)=>({ x:Math.round(item.x*w), y:Math.round(item.y*h) })),
     };

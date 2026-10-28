@@ -1,8 +1,8 @@
 (function(root,factory){
-  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps,typeof module==='object'&&module.exports?require('./tiger-encounters'):root.TigerEncounters,typeof module==='object'&&module.exports?require('./mission-routes'):root.TigerMissionRoutes);
+  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps,typeof module==='object'&&module.exports?require('./tiger-encounters'):root.TigerEncounters,typeof module==='object'&&module.exports?require('./mission-routes'):root.TigerMissionRoutes,typeof module==='object'&&module.exports?require('./field-operations'):root.TigerFieldOperations);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root)root.TigerStrikeBattlefieldRenderer=api;
-})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain,chapterMaps,encounters,routes){
+})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain,chapterMaps,encounters,routes,fields){
   "use strict";
 
   const VERSION="10.22";
@@ -624,7 +624,7 @@
   }
 
   function drawStoryMapFoundation(ctx,options={}){
-    options={...options,clearZones:[...(options.clearZones||[]),...(routes?.shelters(options.routesEnabled===false?0:options.level,{width:options.worldW,height:options.worldH})||[]).map(s=>({...s,r:120,objective:true}))]};
+    options={...options,clearZones:[...(options.clearZones||[]),...(routes?.shelters(options.routesEnabled===false?0:options.level,{width:options.worldW,height:options.worldH})||[]).map(s=>({...s,r:120,objective:true})),...(fields?.fixtures(options.fieldsEnabled===false?0:options.level,{width:options.worldW,height:options.worldH})||[]).map(s=>({...s,r:100,objective:true}))]};
     const chapterMap=Number(options.level)>0?chapterMaps?.forMission(options.level):null;
     if(chapterMap)options={...options,family:chapterMap.family,waterZones:chapterMap.waterZones};
     const random=(i,salt)=>seeded(i+(chapterMap?.seed||0),salt);

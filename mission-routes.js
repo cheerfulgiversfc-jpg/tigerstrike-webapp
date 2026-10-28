@@ -34,7 +34,8 @@
     let best=null;for(const s of shelters(level,world)){const a=path(from,s,options),b=path(s,to,options);if(!a||!b)continue;const points=a.concat(b.slice(1)),n=length(points);if(!best||n<best.length)best={choice:'shelter',path:points,length:n,shelter:s,message:'Shelter detour • cover only while inside'};}
     return best||{choice:'shelter',path:[],message:'No verified shelter detour from here. Direct route remains available.'};
   }
-  function cached(options,key){const id=`${key}:${choice(options.selected)}:${Math.floor(options.to.x/80)}:${Math.floor(options.to.y/80)}:${JSON.stringify(options.blockedRects||[])}`;if(!cache.has(id)){if(cache.size>=12)cache.delete(cache.keys().next().value);cache.set(id,plan(options));}return cache.get(id);}
+  function cached(options,key){const id=`${key}:${choice(options.selected)}:${Math.floor(options.to.x/80)}:${Math.floor(options.to.y/80)}:${JSON.stringify(options.blockedRects||[])}`,old=cache.get(id);if(!old||distance(old.from,options.from)>240){if(cache.size>=12&&!old)cache.delete(cache.keys().next().value);cache.set(id,{from:{x:options.from.x,y:options.from.y},route:plan(options)});}return cache.get(id).route;}
+  function reset(){cache.clear();}
   function draw(ctx,route){if(!route?.path?.length)return;ctx.save();ctx.strokeStyle=route.choice==='shelter'?'rgba(134,239,172,.8)':'rgba(253,211,112,.8)';ctx.lineWidth=4;ctx.setLineDash([12,10]);ctx.beginPath();ctx.moveTo(route.path[0].x,route.path[0].y);for(const p of route.path.slice(1))ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();}
   function drawShelters(ctx,level,world,view){const art=globalThis.TigerStrikeBattlefieldRenderer;if(!art)return;for(const s of shelters(level,world)){if(s.x<view.x-140||s.x>view.x+view.w+140||s.y<view.y-140||s.y>view.y+view.h+140)continue;art.drawMapHouse(ctx,s.x-70,s.y-78,140,90,{roof:'#48755b',clearZones:[]});ctx.save();ctx.fillStyle='rgba(134,239,172,.16)';ctx.fillRect(s.x-60,s.y-50,120,60);ctx.strokeStyle='#86efac';ctx.lineWidth=2;ctx.strokeRect(s.x-60,s.y-50,120,60);ctx.fillStyle='#e2ffe8';ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillText(s.label,s.x,s.y-100);ctx.font='11px system-ui';ctx.fillText('Inside: 50% tiger damage • firing breaks cover',s.x,s.y+70);ctx.restore();}}
   function open({level,current='direct',choose,preview=null}={}){
@@ -49,12 +50,13 @@
       const button=document.createElement('button'),unavailable=!!preview?.[id]&&!preview[id].path?.length;
       button.type='button';button.style.cssText='display:block;width:100%;padding:14px;margin:10px 0;min-height:48px';
       button.textContent=`${choice(current)===id?'✓ ':''}${id==='direct'?'Direct route • no shelter stop':'Shelter detour • 50% cover inside'}${preview?.[id]?.length?` • ${Math.round(preview[id].length)}m`:''}${unavailable?` • ${preview[id].message}`:''}`;
+      if(!unavailable)button.textContent+=preview?.[id]?.danger==null?' • Unscouted: danger unknown':` • ${preview[id].danger} scouted threat${preview[id].danger===1?'':'s'} near route at opening`;
       button.disabled=unavailable;buttons.push({button,unavailable});
-      button.onclick=async()=>{buttons.forEach(b=>b.button.disabled=true);try{await choose(id);dialog.close();}catch(e){text.textContent=String(e.message||e);buttons.forEach(b=>b.button.disabled=b.unavailable);}};
+      button.onclick=async()=>{buttons.forEach(b=>b.button.disabled=true);try{await choose(id);reset();dialog.close();}catch(e){text.textContent=String(e.message||e);buttons.forEach(b=>b.button.disabled=b.unavailable);}};
       dialog.appendChild(button);
     }
     const close=document.createElement('button');close.textContent='Close';close.type='button';close.onclick=()=>dialog.close();close.style.cssText='padding:12px;min-height:44px';dialog.appendChild(close);
     globalThis.dispatchEvent?.(new Event('mission-route-open'));dialog.showModal();
   }
-  return Object.freeze({VERSION:'14.0',enabled,choice,shelters,inside,cover,damage,path,plan,cached,draw,drawShelters,open});
+  return Object.freeze({VERSION:'14.1',enabled,choice,shelters,inside,cover,damage,path,plan,cached,reset,draw,drawShelters,open});
 });
