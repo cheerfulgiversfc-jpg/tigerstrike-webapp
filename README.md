@@ -1,6 +1,14 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V14.3 — Chapter 3 Routes & Field Actions, Missions 21–30
+
+- Extends the V14.0/V14.1 features to Solo and Shared Story Missions 21–30. Research Trail Shelter, Deep Jungle Shelter, Jungle Watchtower and Research Supply Cache share four fixed Chapter 3 positions across all ten maps. Tests check their footprints against the river, jungle tracks and required landmarks; Solo, Co-op and Map Truth use the same coordinates. Chapter 1 and 2 positions stay unchanged; Missions 31–100 remain outside this extension.
+- Direct and Shelter guidance use the current destination and actual river bridge. No verified dry route means an explained unavailable choice, not a line through water. Shelter interiors halve incoming tiger damage (minimum 1), firing removes cover for three seconds and government damage stays unchanged. Selecting guidance does not complete an objective or award credit.
+- Standing within 110m of the tower enables a shared 30-second threat feed with a 45-second cooldown. Route previews show real nearby living threat counts at opening, or unknown danger before scouting. Each player can collect one personal mission medkit and plate per attempt, restoring up to 40 HP/armor through Field Actions. Claims, healing and armor use the authoritative server; permanent supplies remain unchanged.
+- Missions 21, 26 and 27 offer optional leads to existing civilians from 1:00 to 2:30. Actual delivery determines the recorded outcome; missing the window adds no failure, quota or payout. Checkpoints, triage, captures, helicopter boarding and the Stealth Tiger boss retain their original rules. Solo can do tasks sequentially; teammates can split them. There are no new forced road closures.
+- Per-player debriefs report actual shelter protection, scans, supply claims and restoration, plus shared lead delivery. Pause/resume, reconnection and restart use existing state and attempt cleanup. Tests cover all ten actual Chapter 3 rooms, bridge paths, personal supplies, exact cover, real lead deliveries, native client commands and prior chapter regressions. The isolated browser preview is available at `qa/field-operations.html?level=21`; it is not a physical two-phone test. Music, rewards, enemy counts and ammunition/capture rules are unchanged.
+
 ## V14.2 — Chapter 2 Routes & Field Actions, Missions 11–20
 
 - Extends both V14.0 and V14.1 to Solo and Shared Story Missions 11–20. Missions 1–10 retain their original positions and behavior; Missions 21–100 are not enabled by this release. Village Ranger Shelter, Forest Escort Shelter, Village Watchtower and Escort Supply Cache occupy the same four Chapter 2 positions in all ten missions. Placement checks keep their footprints clear of water, village roads and required landmarks; both modes render and expose Map Truth from the same shared coordinates.
