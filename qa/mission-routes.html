@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><title>Tiger Strike mission route pilot</title>
+<style>body{margin:20px;background:#081c25;color:#ecf8ef;font:16px system-ui}p{max-width:1100px}.views{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}canvas{width:100%;border:1px solid #709580;border-radius:12px}button{padding:12px;border:1px solid #9fc5ac;border-radius:9px;background:#1a4b38;color:white;margin:8px;min-height:44px}</style>
+<h1>V14.0 • Mission routes & useful shelters</h1><p>Isolated pilot preview using the actual chapter map, route planner, shelter cover function and route picker. No accounts or live mission. Paths below use a real bridge. Shelters reduce damage; they do not complete rescue objectives.</p>
+<button id="choose">Open Route Picker</button><output id="selection"></output>
+<div class="views"><section><h2>Chapter 1 route overview</h2><canvas id="map" width="960" height="560"></canvas></section><section><h2>Marked shelter cover</h2><canvas id="detail" width="800" height="460"></canvas></section></div>
+<script src="../water-terrain.js?v=5258"></script><script src="../chapter-maps.js?v=5258"></script><script src="../mission-routes.js?v=5258"></script><script src="../tiger-encounters.js?v=5258"></script><script src="../shared-battlefield-renderer.js?v=5258"></script>
+<script>
+const map=TigerChapterMaps.forMission(1),api=TigerMissionRoutes,art=TigerStrikeBattlefieldRenderer,from={x:1000,y:1000},to={x:3800,y:2600};let selected='direct';
+const preview=Object.fromEntries(['direct','shelter'].map(choice=>[choice,api.plan({level:1,world:map.world,from,to,selected:choice})]));
+function paint(){
+ let ctx=document.getElementById('map').getContext('2d');ctx.save();ctx.scale(.2,.2);art.drawStoryMapFoundation(ctx,{level:1,worldW:4800,worldH:2800,view:{x:0,y:0,w:4800,h:2800},heavy:true,now:0});api.draw(ctx,preview[selected]);ctx.restore();
+ ctx=document.getElementById('detail').getContext('2d');const s=api.shelters(1,map.world)[0],view={x:s.x-400,y:s.y-230,w:800,h:460};ctx.save();ctx.translate(-view.x,-view.y);art.drawStoryMapFoundation(ctx,{level:1,worldW:4800,worldH:2800,view,now:0});
+ const soldier={x:s.x,y:s.y};art.drawSoldier(ctx,soldier,{now:0,facing:1,scale:1.3});art.drawTiger(ctx,{id:'test',x:s.x+150,y:s.y+15,hp:100,hpMax:100},{now:0,facing:-1,scale:1.3});ctx.restore();ctx.fillStyle='#f0ffe7';ctx.font='bold 17px system-ui';ctx.fillText(`Example incoming damage: 20 → ${api.damage(20,{level:1,world:map.world,point:soldier,now:10000})}`,25,420);
+ document.getElementById('selection').textContent=`Guidance: ${selected==='shelter'?'Shelter detour':'Direct'} • ${Math.round(preview[selected].length)}m • same destination`;
+}
+document.getElementById('choose').onclick=()=>api.open({level:1,current:selected,preview,choose:choice=>{selected=choice;paint();}});paint();
+</script>

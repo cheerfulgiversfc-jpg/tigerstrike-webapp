@@ -298,6 +298,7 @@
       <button type="button" class="squadBtn" data-squad-command="inventory">🎒 Inventory</button>
       <button type="button" class="squadBtn" data-squad-command="combat-comfort">Combat Comfort</button>
       <button type="button" class="squadBtn" data-squad-command="smooth-play">Graphics</button>
+      ${state.snapshot?.routeVersion===1&&sharedStoryActive()&&window.TigerMissionRoutes?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="mission-route">Mission Route</button>':''}
       <button type="button" class="squadBtn" data-battlefield-layout data-squad-command="controls-layout">Controls: ${window.TigerBattlefieldAwareness?.layout()==='docked'?'Docked':'Overlay'}</button>
     </div>`;
   }
@@ -1258,6 +1259,7 @@
       inventory:()=>openEquipment("inventory"),
       'combat-comfort':()=>window.TigerCombatFeel?.openComfort(),
       'smooth-play':()=>window.TigerSmoothPlay?.open(),
+      'mission-route':()=>{const snap=state.snapshot,level=Number(state.storyMissionLevel),to=window.TigerFieldRadio?.guide(snap,viewerId()),mine=localSnapshotPlayer();window.TigerMissionRoutes?.open({level,current:mine?.routeChoice,preview:to?Object.fromEntries(['direct','shelter'].map(selected=>[selected,window.TigerMissionRoutes.plan({level,world:snap.world,from:state.local||mine,to,waterZones:snap.waterZones,selected})])):null,choose:async choice=>{state.routeBusy=true;try{await state.syncPromise?.catch(()=>{});await api('route-choice',{choice});}finally{state.routeBusy=false;}}});},
       "gear-back":()=>returnFromEquipment(),
       "gear-tab":()=>{ state.equipmentOpen = button?.dataset?.squadEquipment === "inventory" ? "inventory" : "shop"; render(); },
       "gear-buy":()=>gearCommand("gear-buy", button?.dataset?.squadItem),
@@ -1932,6 +1934,7 @@
   function stopPolling(){ state.polling = false; clearTimeout(state.pollTimer); state.pollTimer = 0; }
 
   async function sync(force=false){
+    if(state.routeBusy)return;
     if(state.syncBusy){
       if(!force) return;
       await state.syncPromise?.catch(()=>{});
@@ -2489,7 +2492,7 @@
     }
     if(sharedStoryFoundation){
       const family=window.TigerStrikeBattlefieldRenderer.storyFamilyForLevel(storyLevel);
-      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,clearZones:sceneryClearZones,now:Date.now(),weather:stormExtraction?'storm':'clear',tigers:snap.tigers});
+      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,clearZones:sceneryClearZones,now:Date.now(),weather:stormExtraction?'storm':'clear',tigers:snap.tigers,routesEnabled:snap.routeVersion===1});
       // Chapter color is owned by the shared foundation in both play modes.
       // Shared foundation textures the ground before roads and buildings.
       // Water was drawn beneath the foundation's roads, bridges and scenery.
@@ -2980,7 +2983,8 @@
     const checkpoints=snap.checkpoints||[];
     const palette={home:"#fbbf24",hut:"#fbbf24",farm:"#a3e635",clinic:"#fb7185",research:"#22d3ee",cage:"#67e8f9",den:"#fb923c",bridge:"#fdba74",river:"#38bdf8",trail:"#86efac",road:"#facc15",safe:"#4ade80",gate:"#f59e0b",barricade:"#fb923c",vehicle:"#60a5fa",caravan:"#60a5fa",helicopter:"#93c5fd",grass:"#bef264",forest:"#4ade80",blood:"#fb7185",boss:"#f87171",camp:"#cbd5e1",fire:"#fb923c"};
     ctx.save();
-    ctx.strokeStyle="rgba(125,211,252,.48)";ctx.lineWidth=6;ctx.setLineDash([16,12]);ctx.beginPath();ctx.moveTo(snap.mapTruthLandmarks[0].x,snap.mapTruthLandmarks[0].y);for(const item of snap.mapTruthLandmarks.slice(1))ctx.lineTo(item.x,item.y);ctx.stroke();ctx.setLineDash([]);
+    if(snap.routeVersion!==1||!window.TigerMissionRoutes?.enabled(snap.storyMissionLevel)){ctx.strokeStyle="rgba(125,211,252,.48)";ctx.lineWidth=6;ctx.setLineDash([16,12]);ctx.beginPath();ctx.moveTo(snap.mapTruthLandmarks[0].x,snap.mapTruthLandmarks[0].y);for(const item of snap.mapTruthLandmarks.slice(1))ctx.lineTo(item.x,item.y);ctx.stroke();ctx.setLineDash([]);}
+    else{const to=window.TigerFieldRadio?.guide(snap,viewerId());if(to)window.TigerMissionRoutes.draw(ctx,window.TigerMissionRoutes.cached({level:snap.storyMissionLevel,world:snap.world,from:state.local||localSnapshotPlayer(),to,waterZones:snap.waterZones,selected:localSnapshotPlayer()?.routeChoice},`${snap.code}:${snap.startedAt}:${viewerId()}:${to.id||to.action}`));}
     for(const item of snap.mapTruthLandmarks){
       const checkpoint=checkpoints.find((row)=>String(row.id)===`truth_${item.id}`||String(row.label)===String(item.label));
       const done=checkpoint?doneIds.has(String(checkpoint.id)):false;
@@ -3118,9 +3122,10 @@
   const isTypingTarget = (target)=>!!target?.closest?.("input,textarea,select,[contenteditable='true']");
   function clearPresentationInput(){state.keys.clear();Object.keys(state.move).forEach(key=>{state.move[key]=false;});state.joystick={active:false,pointerId:null,x:0,y:0};}
   window.addEventListener('combat-comfort-open',clearPresentationInput);
+  window.addEventListener('mission-route-open',()=>{clearPresentationInput();sync(true).catch(()=>{});});
   window.addEventListener('blur',clearPresentationInput);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPresentationInput();});
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });

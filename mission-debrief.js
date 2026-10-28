@@ -17,6 +17,7 @@
       rescued:number(raw.rescued),civilianTotal:number(raw.civilianTotal),civilianLost:number(raw.civilianLost),captures:number(raw.captures),kills:number(raw.kills),wipes:raw.wipes==null?null:number(raw.wipes),restarts:number(raw.restarts),
       reward:raw.reward?{cash:number(raw.reward.cash),xp:number(raw.reward.xp),perkPoints:number(raw.reward.perkPoints),seasonPoints:number(raw.reward.seasonPoints)}:null,
       rewardState:['awarded','pending','already-claimed'].includes(raw.rewardState)?raw.rewardState:'pending',
+      route:raw.route?{choice:raw.route.choice==='shelter'?'shelter':'direct',preventedDamage:number(raw.route.preventedDamage)}:null,
       contributions:(raw.contributions||[]).slice(0,2).map(p=>({name:clean(p.name),recruited:p.recruited==null?null:number(p.recruited),captures:number(p.captures),kills:number(p.kills),damage:number(p.damage),revives:number(p.revives)}))};
   }
   function normalize(raw={}){
@@ -61,6 +62,7 @@
     return `<section class="missionDebrief">${milestoneApi?.reportHtml(state,run)||''}<h3>${esc(run.title)} • ${run.completed?'Mission Debrief':'Attempt Debrief'}</h3>
       <p>${run.scope==='coop'?'Co-op':'Solo'} • Time: ${esc(time(run.durationMs))}${run.restarts?` • Includes ${run.restarts} restart${run.restarts===1?'':'s'}`:''}</p>
       <p>Civilians saved: ${run.rescued}/${run.civilianTotal} • Captured: ${run.captures} • Killed: ${run.kills}</p><p>${payout}</p>
+      ${run.route?`<p>Final route guidance: ${run.route.choice==='shelter'?'Shelter detour':'Direct'}. Shelter reduced incoming damage by ${run.route.preventedDamage} this attempt. Route selection alone earns no completion credit or payout.</p>`:''}
       ${run.scope==='solo'?'<small>Other bonuses remain itemized in the existing reward breakdown.</small>':''}
       ${best?`<p>${changes.first?'First clear recorded.':changes.faster?'New fastest clear!':changes.betterRescue?'New best rescue result!':'Personal bests'} Fastest: ${esc(time(best.fastestMs))}${best.civilianTotal?` • Best rescue: ${best.bestRescued}/${best.civilianTotal}`:''} • ${best.clears} clear${best.clears===1?'':'s'}</p>`:''}
       ${medalNames.length?`<p>🏅 ${medalNames.map(esc).join(' • ')} <small>(recognition only; no extra payout)</small></p>`:''}

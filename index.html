@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V13.9 (Pursuit, Escape &amp; Regroup)</title>
+  <title>Tiger Strike 🐅 — V14.0 (Mission Routes &amp; Useful Shelters)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5257-pursuit-regroup">
-  <link rel="stylesheet" href="./battlefield-awareness.css?v=5257-pursuit-regroup">
+  <link rel="stylesheet" href="./squad-coop.css?v=5258-mission-routes">
+  <link rel="stylesheet" href="./battlefield-awareness.css?v=5258-mission-routes">
 
   <style>
     :root{
@@ -2577,9 +2577,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V13.9</span> <span class="tag">Pursuit, Escape &amp; Regroup</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V14.0</span> <span class="tag">Mission Routes &amp; Useful Shelters</span></div>
       <div class="sub">
-        V13.9 — Pursuit, Escape &amp; Regroup: Eligible nearby tigers warn before a limited chase. Breaking contact or using Smoke ends tracking; tigers search briefly, then move back toward their departure point and rest. Chases have an eight-second deadline and bounded movement goals. Solo adds at most one new pursuit at a time; Co-op allows two, with shared server positions through pause/reconnect. Capture-ready tigers, bosses, required-capture missions, Survival and Solo engagement are protected. Older active Co-op rooms adopt pursuit on the next mission/restart. Existing health, damage, enemy counts, capture rules, rewards and music are unchanged. Solo keeps its existing collision engine; this does not add obstacle-aware navigation to Co-op.<br>
+        V14.0 — Mission Routes &amp; Useful Shelters, Missions 1–10: Choose Mission Route in the Solo menu or active Co-op gear bar. Direct guidance and a shelter detour lead to the same current objective; movement stays under your control. Dry routes use real bridges, and unverified routes are explained instead of drawn. Two shared shelter buildings have marked interiors that halve incoming tiger damage (minimum 1); firing removes your cover for 3 seconds. Shelters do not replace the Rescue House or complete objectives. Each Co-op player chooses independently. Debriefs show final guidance and measured soldier damage reduction for the attempt. Older active Co-op rooms adopt this on the next mission/restart. Enemy counts, rewards, capture rules and music remain unchanged. Watchtowers, supply-cache changes and new random events are not part of this first release.<br>
         V13.5 off-screen guidance, live progress and optional Docked Controls remain available.<br>
         V13.4 targeting and attack-warning improvements remain active.<br>
         V13.3 performance and weak-link improvements remain active. Combined physical two-phone weak-connection validation is still outstanding.<br>
@@ -2613,6 +2613,7 @@
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
       <button class="ghost" onclick="toggleMusic()">🎵 Music <span id="musicLbl">On</span></button>
       <button class="ghost" onclick="TigerCombatFeel.openComfort()">Combat Comfort</button>
+      <button class="ghost" onclick="openMissionRoute()">Mission Route • Story 1–10</button>
       <button class="ghost mobileCompactHide" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
       <button class="ghost mobileCompactHide" onclick="openBaseHQ()">🏠 HQ</button>
       <button class="ghost mobileCompactHide" onclick="openMode()">🎮 Mode</button>
@@ -3642,39 +3643,40 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5257-pursuit-regroup"></script>
-  <script src="./engagement-rules.js?v=5257-pursuit-regroup"></script>
-  <script src="./smooth-play.js?v=5257-pursuit-regroup"></script>
-  <script src="./combat-feel.js?v=5257-pursuit-regroup"></script>
-  <script src="./combat-reactions.js?v=5257-pursuit-regroup"></script>
-  <script src="./chapter-maps.js?v=5257-pursuit-regroup"></script>
-  <script src="./extraction-geometry.js?v=5257-pursuit-regroup"></script>
-  <script src="./ammo-modes.js?v=5257-pursuit-regroup"></script>
-  <script src="./government-policy.js?v=5257-pursuit-regroup"></script>
-  <script src="./tiger-intelligence.js?v=5257-pursuit-regroup"></script>
-  <script src="./tiger-encounters.js?v=5257-pursuit-regroup"></script>
-  <script src="./tiger-pursuit.js?v=5257-pursuit-regroup"></script>
-  <script src="./living-world.js?v=5257-pursuit-regroup"></script>
-  <script src="./mission-map-truth.js?v=5257-pursuit-regroup"></script>
-  <script src="./post-campaign.js?v=5257-pursuit-regroup"></script>
-  <script src="./sanctuary.js?v=5257-pursuit-regroup"></script>
-  <script src="./player-experience.js?v=5257-pursuit-regroup"></script>
-  <script src="./battlefield-awareness.js?v=5257-pursuit-regroup"></script>
-  <script src="./field-radio.js?v=5257-pursuit-regroup"></script>
-  <script src="./civilian-rescue.js?v=5257-pursuit-regroup"></script>
-  <script src="./rescue-tools.js?v=5257-pursuit-regroup"></script>
-  <script src="./escort-teamwork.js?v=5257-pursuit-regroup"></script>
-  <script src="./chapter-milestones.js?v=5257-pursuit-regroup"></script>
-  <script src="./mission-debrief.js?v=5257-pursuit-regroup"></script>
-  <script src="./mastery-rewards.js?v=5257-pursuit-regroup"></script>
-  <script src="./shared-battlefield-renderer.js?v=5257-pursuit-regroup"></script>
-  <script src="./game.js?v=5257-pursuit-regroup"></script>
-  <script src="./story-cinematics.js?v=5257-pursuit-regroup"></script>
-  <script src="./field-systems.js?v=5257-pursuit-regroup"></script>
-  <script src="./tutorial.js?v=5257-pursuit-regroup"></script>
-  <script src="./squad-motion.js?v=5257-pursuit-regroup"></script>
-  <script src="./squad-coop.js?v=5257-pursuit-regroup"></script>
-  <script src="./extraction-qa.js?v=5257-pursuit-regroup"></script>
+  <script src="./water-terrain.js?v=5258-mission-routes"></script>
+  <script src="./engagement-rules.js?v=5258-mission-routes"></script>
+  <script src="./smooth-play.js?v=5258-mission-routes"></script>
+  <script src="./combat-feel.js?v=5258-mission-routes"></script>
+  <script src="./combat-reactions.js?v=5258-mission-routes"></script>
+  <script src="./chapter-maps.js?v=5258-mission-routes"></script>
+  <script src="./mission-routes.js?v=5258-mission-routes"></script>
+  <script src="./extraction-geometry.js?v=5258-mission-routes"></script>
+  <script src="./ammo-modes.js?v=5258-mission-routes"></script>
+  <script src="./government-policy.js?v=5258-mission-routes"></script>
+  <script src="./tiger-intelligence.js?v=5258-mission-routes"></script>
+  <script src="./tiger-encounters.js?v=5258-mission-routes"></script>
+  <script src="./tiger-pursuit.js?v=5258-mission-routes"></script>
+  <script src="./living-world.js?v=5258-mission-routes"></script>
+  <script src="./mission-map-truth.js?v=5258-mission-routes"></script>
+  <script src="./post-campaign.js?v=5258-mission-routes"></script>
+  <script src="./sanctuary.js?v=5258-mission-routes"></script>
+  <script src="./player-experience.js?v=5258-mission-routes"></script>
+  <script src="./battlefield-awareness.js?v=5258-mission-routes"></script>
+  <script src="./field-radio.js?v=5258-mission-routes"></script>
+  <script src="./civilian-rescue.js?v=5258-mission-routes"></script>
+  <script src="./rescue-tools.js?v=5258-mission-routes"></script>
+  <script src="./escort-teamwork.js?v=5258-mission-routes"></script>
+  <script src="./chapter-milestones.js?v=5258-mission-routes"></script>
+  <script src="./mission-debrief.js?v=5258-mission-routes"></script>
+  <script src="./mastery-rewards.js?v=5258-mission-routes"></script>
+  <script src="./shared-battlefield-renderer.js?v=5258-mission-routes"></script>
+  <script src="./game.js?v=5258-mission-routes"></script>
+  <script src="./story-cinematics.js?v=5258-mission-routes"></script>
+  <script src="./field-systems.js?v=5258-mission-routes"></script>
+  <script src="./tutorial.js?v=5258-mission-routes"></script>
+  <script src="./squad-motion.js?v=5258-mission-routes"></script>
+  <script src="./squad-coop.js?v=5258-mission-routes"></script>
+  <script src="./extraction-qa.js?v=5258-mission-routes"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

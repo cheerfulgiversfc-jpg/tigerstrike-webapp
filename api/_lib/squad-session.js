@@ -9,6 +9,7 @@ const sanctuarySystem = require("../../sanctuary");
 const fieldRadio = require("../../field-radio");
 const tigerEncounters = require("../../tiger-encounters");
 const tigerPursuit = require("../../tiger-pursuit");
+const missionRoutes = require("../../mission-routes");
 const civilianRescue = require("../../civilian-rescue");
 const rescueTools = require("../../rescue-tools");
 const escortTeamwork = require("../../escort-teamwork");
@@ -2584,6 +2585,7 @@ function normalizeSession(raw){
     packVersion:Number(raw.packVersion)===1?1:0,
     soundVersion:Number(raw.soundVersion)===1?1:0,
     pursuitVersion:Number(raw.pursuitVersion)===1?1:0,
+    routeVersion:Number(raw.routeVersion)===1?1:0,
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -2723,6 +2725,8 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     killSites,
     captureSites,
     encounterReactions:normalizeEncounterReactions(src.encounterReactions),
+    routeChoice:missionRoutes.choice(src.routeChoice),
+    routePrevented:clamp(Number(src.routePrevented||0),0,999999),
     pursuits:Object.fromEntries(Object.entries(src.pursuits||{}).filter(([id])=>ALL_COOP_TIGERS.some(t=>t.id===id)).slice(0,32).map(([id,s])=>[id,tigerPursuit.normalize(s)]).filter(([,s])=>s)),
     encounterBreaks:Object.fromEntries(Object.entries(src.encounterBreaks||{}).filter(([id,r])=>ALL_COOP_TIGERS.some(t=>t.id===id)&&r&&Number.isFinite(r.at)&&r.at>=0&&Number.isFinite(r.runAt)&&r.runAt>0).slice(0,32).map(([id,r])=>[id,{at:r.at,runAt:r.runAt}])),
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
@@ -3284,6 +3288,7 @@ function buildMissionDebrief(session,players,derived,viewerId,reward=null,reward
   return missionDebrief.summary({
     id:`${session.code}:${session.startedAt}:${userIdOf(viewerId)}`,scope:'coop',
     campaignLevel:session.launchType==='shared-story'?session.storyMissionLevel:0,
+    route:session.routeVersion===1&&session.launchType==='shared-story'&&missionRoutes.enabled(session.storyMissionLevel)?{choice:players.find(p=>p.userId===userIdOf(viewerId))?.routeChoice,preventedDamage:players.find(p=>p.userId===userIdOf(viewerId))?.routePrevented}:null,
     bossCaptures:mission.tigers.filter(tiger=>tiger.boss&&derived.capturedIds.includes(tiger.id)).length,
     missionKey:`${session.launchType}:${session.storyMissionLevel||0}:${session.postCampaignOperation?.responseId||''}:${mission.survival?session.survivalWavesCleared:''}`,
     title:mission.title||session.title,mode:mission.survival?'Survival':session.launchType==='shared-story'?'Story':'Special Operation',completed:session.status==='complete',
@@ -3375,6 +3380,7 @@ async function buildSnapshot(session, viewerId){
       playerCount:Math.max(1, Number(mission.playerCount || session.memberIds.length || 1)),
     },
     world:mission.world,
+    routeVersion:session.routeVersion,
     chapterMapId:session.launchType==='shared-story'?chapterMaps.forMission(mission.level).id:null,
     spawns:mission.spawns,
     extraction:mission.extraction,
@@ -3606,7 +3612,10 @@ async function updateOwnPresence(session, user, patch={}){
         + Math.max(0, Number(livingWorldEffect.damageBonus || 0));
       const districtDefense = Math.max(0, Number(livingWorldEffect.support?.damageReduction || 0))
         + (threat?.boss ? Math.max(0, Number(livingWorldEffect.support?.stealthBossReduction || 0)) : 0);
-      damagePlayer(player, Math.max(5, Math.round((baseDamage + aggressionDamage - roleArmor - districtDefense) * livingBalance.damageMul * Number(mission.tigerDamageMultiplier || 1))));
+      const incoming=Math.max(5, Math.round((baseDamage + aggressionDamage - roleArmor - districtDefense) * livingBalance.damageMul * Number(mission.tigerDamageMultiplier || 1)));
+      const reduced=missionRoutes.damage(incoming,{level:session.routeVersion===1&&session.launchType==='shared-story'?mission.level:0,world:mission.world,point:player,lastShotAt:player.lastAttackAt,faction:threat.faction,now});
+      player.routePrevented=Number(player.routePrevented||0)+incoming-reduced;
+      damagePlayer(player,reduced);
       player.lastHazardAt = now;
       if(player.hp <= 0){
         player.downed = true;
@@ -3632,6 +3641,11 @@ async function applyAction(session, user, action, payload={}){
   let player = await readPlayer(session.code, uid, user, slot);
   syncEscortOwnership(session,player);
   const now = nowMs();
+  if(action==='route-choice'){
+    if(session.launchType!=='shared-story'||session.routeVersion!==1||!missionRoutes.enabled(session.storyMissionLevel)||!['waiting','active'].includes(session.status))throw new Error('Route choices are available in active Shared Story missions 1–10.');
+    if(!['direct','shelter'].includes(payload.choice))throw new Error('Choose Direct or Shelter route.');
+    player.routeChoice=payload.choice;await writePlayer(session.code,player);return session;
+  }
   if(action === 'tool-select'){
     if(session.status!=='waiting')throw new Error('Choose your rescue tool before deployment.');
     if(!rescueTools.DEFS[payload.toolId])throw new Error('Choose Smoke Grenade, Med Drone, or Signal Flare.');
@@ -3751,6 +3765,7 @@ async function applyAction(session, user, action, payload={}){
     session.packVersion=1;
     session.soundVersion=1;
     session.pursuitVersion=1;
+    session.routeVersion=1;
     session.completedAt = 0;
     session.failureReason = "";
     session.pausedAt = 0;
@@ -3794,6 +3809,7 @@ async function applyAction(session, user, action, payload={}){
       p.encounterBreaks={};
       p.lastGunshotNoise=null;
       p.pursuits={};
+      p.routePrevented=0;
       p.rescueTool=restartCheckpoint ? {...p.rescueTool,effect:null} : rescueTools.create(p.rescueTool?.id);
       if(!restartCheckpoint){
         p.civilianHealing={};

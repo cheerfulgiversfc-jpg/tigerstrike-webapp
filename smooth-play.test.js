@@ -66,10 +66,10 @@ test('Co-op camera approaches the same position over equal time at 30 and 60 FPS
 });
 test('graphics uses a native top-layer dialog and input guards; no multiplayer pause or music mutation',()=>{
   assert(html.indexOf('src="./smooth-play.js')<html.indexOf('src="./game.js'));
-  assert(html.includes('smooth-play.js?v=5257-pursuit-regroup'));
+  assert(html.includes('smooth-play.js?v=5258-mission-routes'));
   assert.match(html,/<dialog id="smoothPlayDialog"/);assert.match(html,/<select id="graphicsMode"/);assert.match(html,/<form method="dialog">/);
   assert.match(coop,/'smooth-play':\(\)=>window.TigerSmoothPlay\?\.open\(\)/);
-  assert.match(fn(game,'pollGamepadControls'),/smoothPlayDialog/);assert.match(game,/smoothPlayDialog'\)\?\.open\)return/);assert.match(coop,/smoothPlayDialog'\)\?\.open\)return/);
+  assert.match(fn(game,'pollGamepadControls'),/smoothPlayDialog/);const guarded=/smoothPlayDialog'\)\?\.open(?:\s*\|\|\s*document.getElementById\('missionRouteDialog'\)\?\.open)?\)return/;assert.match(game,guarded);assert.match(coop,guarded);
   const module=fs.readFileSync('smooth-play.js','utf8');assert(!/fetch\(|setInterval\(|setTimeout\(|\.paused\s*=|\.hp\s*=|\.funds\s*=/.test(module));
 });
 test('paused Solo world yields the screen to live squad before any HQ or mission rendering',()=>{

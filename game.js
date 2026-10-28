@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5257";
+const TS_BUILD = "5258";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -45,6 +45,24 @@ function recordTigerWorldNoise(x, y, intensity=1, source="movement", noiseMul=1)
 }
 function livingTigerVisual(value){
   return window.TigerLivingIntelligence?.visualFor?.(value) || { key:"calm", label:"Calm", color:"#4ade80", icon:"🟢", rank:0 };
+}
+function missionRouteOptions(){
+  if(S.mode!=='Story'||window.__TUTORIAL_MODE__||!window.TigerMissionRoutes?.enabled(missionProgressForWorld(S)))return null;
+  const to=fieldNextObjective();if(!Number.isFinite(to?.x)||!Number.isFinite(to?.y))return null;
+  ensureMapObstacleCache();
+  return {level:missionProgressForWorld(S),world:{width:worldWidth(S),height:worldHeight(S)},from:S.me,to,waterZones:__mapWaterZones,selected:S._missionRoute?.choice||'direct',blockedRects:[...__mapObstacleRects,...__mapObstacleCircles.map(c=>({x:c.x-c.r,y:c.y-c.r,w:c.r*2,h:c.r*2})),...(window.TigerStrikeBattlefieldRenderer?.routeBlockers(S)||[]).map(c=>({x:c.x-c.r,y:c.y-c.r,w:c.r*2,h:c.r*2}))]};
+}
+function openMissionRoute(){
+  if(!S._missionStartAt||S.missionEnded||S.mode!=='Story'||!window.TigerMissionRoutes?.enabled(missionProgressForWorld(S))){toast('Choose an active Story mission from 1–10 first.');return;}
+  const options=missionRouteOptions();if(!options){toast('No navigable objective is available right now. Check mission guidance.');return;}
+  window.TigerMissionRoutes.open({level:options.level,current:options.selected,preview:Object.fromEntries(['direct','shelter'].map(selected=>[selected,window.TigerMissionRoutes.plan({...options,selected})])),choose:selected=>{S._missionRoute={...(S._missionRoute||{}),choice:selected};save();}});
+}
+function missionShelterDamage(amount,point,tiger){
+  if(S.mode!=='Story'||window.__TUTORIAL_MODE__)return amount;
+  if(point===S.me&&(shieldActiveNow()||Date.now()<Number(S.rollInvulnUntil||0)||Date.now()<Number(S.respawnPendingUntil||0)))return amount;
+  const reduced=window.TigerMissionRoutes?.damage(amount,{level:missionProgressForWorld(S),world:{width:worldWidth(S),height:worldHeight(S)},point,lastShotAt:point===S.me?__encounterGunshot?.at||0:0,faction:tiger?.faction,now:Date.now()})??amount;
+  if(point===S.me&&reduced<amount){S._missionRoute=S._missionRoute||{choice:'direct'};S._missionRoute.preventedDamage=Number(S._missionRoute.preventedDamage||0)+amount-reduced;}
+  return reduced;
 }
 if(tg){
   try{
@@ -4901,6 +4919,7 @@ function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
   const api=window.TigerMissionDebrief;if(!api)return;
   const duration=S._debriefClock?api.clock(S._debriefClock,Date.now(),false).elapsedMs:null;
   const report={id:S._missionRunId||`legacy:${S.mode}:${meta.number}:${Date.now()}`,scope:'solo',missionKey:`${S.mode}:${meta.storyVariant||''}:${meta.number}:${meta.runIndex||0}:${S.mode==='Arcade'&&S.arcadeWeeklySeedEnabled?S.arcadeWeeklySeedKey||'':''}`,title:currentMissionLabel(),mode:S.mode,completed:true,durationMs:duration,civilianTotal:civTotal,civilianLost:civDead,rescued:stats.evac,captures:stats.captures,kills:stats.kills,reward:{cash:stats.cashEarned},rewardState:'awarded'};
+  if(S.mode==='Story'&&window.TigerMissionRoutes?.enabled(meta.number))report.route=S._missionRoute||{choice:'direct',preventedDamage:0};
   report.campaignLevel=S.mode==='Story'&&meta.storyVariant===STORY_VARIANTS.CAMPAIGN?meta.number:0;
   report.bossCaptures=(S.captureCages||[]).filter(cage=>(S.tigers||[]).some(tiger=>tiger.id===cage.tigerId&&isBossTiger(tiger))).length;
   S.missionDebriefs=api.record(S.missionDebriefs,report).state;
@@ -43195,6 +43214,7 @@ function deploy(opts={}){
   beginMissionStatRun("deploy");
   window.TigerFieldSystems?.resetMissionSecondaryForMission?.(S);
   S._missionStartAt = Date.now();
+  S._missionRoute={choice:'direct',preventedDamage:0};
   S._missionMapTruthProgress = {
     mission:(S.mode === "Story" ? Math.max(1, Math.floor(Number(storyMissionLevelForState(S) || S.storyLevel || 1))) : 0),
     engagedIds:[]
@@ -44097,7 +44117,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
-  if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open) return;
+  if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
 
@@ -44252,7 +44272,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open)return;
+  if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
   const key = e.key.toLowerCase();
@@ -46560,7 +46580,7 @@ function tickCiviliansAndThreats(){
       const shieldMult = civilianShielded(best) ? 0 : 1;
       const personaDmgMul = best.aiState === "panicked" ? 1.08 : (best.aiState === "cooperative" ? 0.94 : 1.12);
       const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * personaDmgMul * perkCivMul() * storyCivilianDamageMul() * livingWorldCivilianDamageMul(S) * liveOpsMissionModifierValue("civilianDamageMul", 1, S);
-      const dmg = shieldMult ? Math.max(1, Math.round(scaled)) : 0;
+      const dmg = missionShelterDamage(shieldMult ? Math.max(1, Math.round(scaled)) : 0,best,t);
       const prevHp = best.hp;
       best.hp = clamp(best.hp - dmg, 0, best.hpMax);
       if(best.hp > 0 && (best.hp / Math.max(1, best.hpMax)) <= 0.55){
@@ -48066,7 +48086,7 @@ function survivalPressureTick(){
     S._pressTick=0;
     const dmg=Math.min(8, Math.round((S._pressure||0)));
     S._pressure=0;
-    if(dmg>0) applyPlayerDamage(dmg,true);
+    if(dmg>0) applyPlayerDamage(missionShelterDamage(dmg,S.me,null),true);
   }
 }
 
@@ -48427,14 +48447,14 @@ function resolveTigerFieldPounce(t, now=Date.now()){
       setTigerIntent(t, "Missed", 640);
       return;
     }
-    const dmg = tigerFieldPounceDamage(t, "player");
+    const dmg = missionShelterDamage(tigerFieldPounceDamage(t, "player"),S.me,t);
     applyCombatKnockback(S.me, t.x, t.y, isBossTiger(t) ? 34 : 24, 16);
     triggerCombatInteraction("player_hit", { tiger:t, target:S.me, x:S.me.x, y:S.me.y - 8, label:"AMBUSH", heavy:isBossTiger(t) || t.type === "Alpha", damage:dmg });
     applyPlayerDamage(dmg, true);
     return;
   }
   if(targetKind === "civilian" && target.alive && !target.evac){
-    const dmg = tigerFieldPounceDamage(t, "civilian");
+    const dmg = missionShelterDamage(tigerFieldPounceDamage(t, "civilian"),target,t);
     target.hp = clamp(Number(target.hp || 0) - dmg, 0, Number(target.hpMax || 100));
     target.riskState = target.hp <= target.hpMax * 0.28 ? "critical" : "threatened";
     target.helpWanted = true;
@@ -50700,6 +50720,7 @@ function tigerTurn(t, softened=false, opts={}){
   if(softened) dmg=Math.floor(dmg*0.85);
   const maxDamage = (opts.kind === "charge") ? 92 : 75;
   dmg=clamp(dmg,6,maxDamage);
+  dmg=missionShelterDamage(dmg,S.me,t);
   if(opts.kind === "charge") setTigerIntent(t, "Charge", 520);
   else if(opts.kind === "pounce") setTigerIntent(t, "Pounce", 480);
   else setTigerIntent(t, "Strike", 440);
@@ -54412,7 +54433,9 @@ function drawMissionMapTruthOverlay(opts={}){
   const mobileFast = !!opts.mobileFast;
   ctx.save();
 
-  if(truth.route.length > 1){
+  const routeOptions=missionRouteOptions();
+  if(routeOptions)window.TigerMissionRoutes.draw(ctx,window.TigerMissionRoutes.cached(routeOptions,`${S._missionStartAt}:${routeOptions.level}:${routeOptions.to.id||routeOptions.to.action}`));
+  if(!routeOptions&&truth.route.length > 1){
     ctx.strokeStyle = "rgba(125,211,252,.82)";
     ctx.lineWidth = mobileFast ? 7 : 10;
     ctx.setLineDash(mobileFast ? [14,11] : [22,14]);
@@ -65178,6 +65201,7 @@ function draw(){
 
 // ===================== INIT =====================
 window.addEventListener('battlefield-layout-change',()=>{resetControlInputState('controls-layout');renderCombatControls();});
+window.addEventListener('mission-route-open',()=>resetControlInputState('mission-route'));
 function missionStateLooksEmpty(){
   return !!missionEntityStateInvalid(S);
 }
