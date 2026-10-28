@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const pursuit=require('./tiger-pursuit'),cues=require('./tiger-encounters');
 const tiger={id:'a',x:500,y:500,hp:100,hpMax:100,alive:true},player={userId:1,x:720,y:500},options={allowStart:true,runAt:1,world:{width:4800,height:2800}};
 test('the shared pursuit module loads before Solo and uses the release cache key',()=>{
-  const fs=require('node:fs'),html=fs.readFileSync('index.html','utf8');assert(html.includes('tiger-pursuit.js?v=5259-field-actions'));assert(html.indexOf('tiger-pursuit.js?')<html.indexOf('game.js?'));
+  const fs=require('node:fs'),html=fs.readFileSync('index.html','utf8');assert(html.includes('tiger-pursuit.js?v=5260-chapter2-field'));assert(html.indexOf('tiger-pursuit.js?')<html.indexOf('game.js?'));
 });
 test('pursuit warns, follows last sighting for a fixed duration, searches and returns without teleporting',()=>{
   let t={...tiger},s=null;const phases=new Set();let home;

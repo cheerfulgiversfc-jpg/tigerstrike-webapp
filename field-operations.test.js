@@ -12,14 +12,14 @@ test('cached guidance refreshes its origin after a field detour and explicit dia
 });
 test('all ten pilot maps share dry tower/cache geometry with Map Truth and retain required objectives',()=>{
   for(let level=1;level<=10;level++){assert.deepEqual(ops.fixtures(level,world),sites);assert.deepEqual(truth.scale(level,4800,2800).fieldFixtures,sites);assert.deepEqual(truth.scale(level,4800,2800).requiredActionIds,truth.get(level).requiredActionIds);for(const p of sites)assert(maps.forMission(level).waterZones.every(z=>!water.contains(z,p.x,p.y)));}
-  assert.deepEqual(ops.fixtures(11,world),[]);
+  assert.deepEqual(ops.fixtures(21,world),[]);
 });
 test('field supplies are limited, usable equipment, not permanent profile loot or repeatable healing',()=>{
   let state=ops.act({},'cache',{level:1,world,player}).state;assert.equal(state.medkits,1);assert.equal(state.armor,1);assert.throws(()=>ops.act(state,'cache',{level:1,world,player}),/already/);
   let r=ops.act(state,'medkit',{level:1,world,player});assert.equal(r.heal,40);state=r.state;assert.equal(state.healed,40);assert.throws(()=>ops.act(state,'medkit',{level:1,world,player}),/required/);
   r=ops.act(state,'armor',{level:1,world,player});assert.equal(r.armor,40);assert.equal(r.state.armor,0);assert.equal(r.state.armored,40);
   assert.throws(()=>ops.act({},'cache',{level:1,world,player:{...player,x:100,y:100}}),/110m/);assert.throws(()=>ops.act({},'cache',{level:1,world,player:{...player,hp:0}}),/standing/);
-  assert.throws(()=>ops.act({},'cache',{level:11,world,player}),/1–10/);
+  assert.throws(()=>ops.act({},'cache',{level:21,world,player}),/1–20/);
 });
 test('tower scans and live path danger use real living threats and expire',()=>{
   const result=ops.act({},'tower',{level:1,world,player:{...player,...sites[0]},now:5000});assert.equal(result.state.towerUntil,35000);assert.equal(result.state.towerReadyAt,50000);assert.throws(()=>ops.act(result.state,'tower',{level:1,world,player:{...player,...sites[0]},now:6000}),/recharging/);
@@ -29,10 +29,11 @@ test('optional rescue leads have stable real civilian identities, fair windows a
   const civilians=[{id:'b',x:300,y:300},{id:'a',x:200,y:200}];assert.equal(ops.lead(1,civilians,59000).status,'pending');assert.equal(ops.lead(1,civilians,60000).status,'active');assert.equal(ops.lead(1,civilians,150001).status,'missed');assert.equal(ops.lead(1,civilians,90000,80000).status,'rescued');assert.equal(ops.lead(1,civilians,90000,50000).status,'early');assert.equal(ops.lead(1,civilians,90000).id,'a');assert.equal(ops.lead(3,civilians,90000),null);
   const located=ops.act({},'locate-tower',{level:1,world,player}).state;assert.equal(ops.destination({action:'Rescue civilian'},null,located,1,world).id,sites[0].id);assert.equal(ops.destination({action:'Revive teammate'},null,located,1,world).action,'Revive teammate');
 });
-test('real Co-op tower, per-player cache, healing, armor, pause, rescue delivery and restart work together',async()=>{
+for(const level of [1,11,16,17])test(`Mission ${level}: real Co-op tower, personal supplies, pause, rescue delivery and restart work together`,async()=>{
+  const sites=ops.fixtures(level,world);
   const server=require('./api/_lib/squad-session'),store=require('./api/_lib/metrics-store');assert.equal(store.storageMode(),'memory');const original=Date.now;let now=1800000700000;Date.now=()=>now;
   try{
-    const host={id:983991},mate={id:983992};let room=await server.createSession(host,{launchType:'shared-story',storyMissionLevel:1});room=await server.joinSession(room.code,mate);room=await server.applyAction(room,host,'start');assert.equal(room.fieldVersion,1);
+    const host={id:983991+level*10},mate={id:983992+level*10};let room=await server.createSession(host,{launchType:'shared-story',storyMissionLevel:level});room=await server.joinSession(room.code,mate);room=await server.applyAction(room,host,'start');assert.equal(room.fieldVersion,1);
     const key=u=>`live_squad_player_${room.code}_${u.id}`,patch=async(u,fields)=>store.setState(key(u),{...await store.getState(key(u)),...fields});
     const profileBefore=await server.readCoopProfile(host);await patch(host,{x:sites[0].x,y:sites[0].y});await server.applyAction(room,host,'field-use',{kind:'tower'});
     let snap=await server.buildSnapshot(room,mate.id);assert.equal(snap.fieldTowerUntil,30000);assert.equal(snap.players.find(p=>p.userId===mate.id).fieldOps.towerUses,0);
@@ -48,9 +49,10 @@ test('real Co-op tower, per-player cache, healing, armor, pause, rescue delivery
     room=await server.applyAction(room,host,'restart');p=await store.getState(key(host));assert.equal(p.fieldOps.collected,false);assert.equal(p.fieldOps.medkits,0);assert.equal(room.fieldLeadRescuedAt,null);
   }finally{Date.now=original;}
 });
-test('the real Co-op Field Actions command uses current health and applies the server response',async()=>{
+for(const level of [1,11,20])test(`Mission ${level}: Co-op Field Actions uses current health and applies the server response`,async()=>{
+  const sites=ops.fixtures(level,world);
   const server=require('./api/_lib/squad-session'),store=require('./api/_lib/metrics-store'),{createHarness}=require('./qa/coop-harness');assert.equal(store.storageMode(),'memory');
-  const host={id:983993},mate={id:983994};let room=await server.createSession(host,{launchType:'shared-story',storyMissionLevel:1});room=await server.joinSession(room.code,mate);room=await server.applyAction(room,host,'start');const key=`live_squad_player_${room.code}_${host.id}`;await store.setState(key,{...await store.getState(key),x:sites[0].x,y:sites[0].y,hp:50});
+  const host={id:983993+level*10},mate={id:983994+level*10};let room=await server.createSession(host,{launchType:'shared-story',storyMissionLevel:level});room=await server.joinSession(room.code,mate);room=await server.applyAction(room,host,'start');const key=`live_squad_player_${room.code}_${host.id}`;await store.setState(key,{...await store.getState(key),x:sites[0].x,y:sites[0].y,hp:50});
   const h=createHarness({userId:host.id,snapshot:await server.buildSnapshot(room,host.id),transport:async request=>{room=await server.applyAction(await server.readSession(room.code),host,request.action,request);return {ok:true,snapshot:await server.buildSnapshot(room,host.id)};}});h.qa.state.local.hp=100;let opened;h.ctx.TigerFieldOperations={...h.ctx.TigerFieldOperations,open:o=>{opened=o;}};h.qa.render();assert(h.element('squadBody').innerHTML.includes('data-squad-command="field-actions"'));await h.qa.dispatchCommand('field-actions');assert.equal(opened.player.hp,50);await opened.action('tower');assert.equal(h.requests.at(-1).action,'field-use');assert(h.qa.state.snapshot.fieldTowerUntil>h.qa.state.snapshot.fieldNow);
   const html=fs.readFileSync('index.html','utf8');assert(html.indexOf('field-operations.js?')<html.indexOf('shared-battlefield-renderer.js?'));assert(fs.readFileSync('api/squad/session.js','utf8').includes('"field-use"'));
 });

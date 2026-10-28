@@ -1,18 +1,22 @@
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.TigerFieldOperations=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const enabled=n=>Number.isInteger(Number(n))&&n>=1&&n<=10;
+  const enabled=n=>Number.isInteger(Number(n))&&n>=1&&n<=20;
   const valid=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y),dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const number=n=>Math.max(0,Math.min(999999,Math.floor(Number(n)||0))),clock=n=>Math.max(0,Math.min(9e12,Number(n)||0));
   function normalize(raw={}){return {collected:!!raw.collected,medkits:Math.min(1,number(raw.medkits)),armor:Math.min(1,number(raw.armor)),towerUntil:clock(raw.towerUntil),towerReadyAt:clock(raw.towerReadyAt),towerUses:number(raw.towerUses),healed:number(raw.healed),armored:number(raw.armored),leadTracked:!!raw.leadTracked,destination:['tower','cache'].includes(raw.destination)?raw.destination:''};}
-  function fixtures(level,world){return enabled(level)?[{id:'ranger_tower',kind:'tower',label:'Ranger Watchtower',x:world.width*.38,y:world.height*.37},{id:'field_cache',kind:'cache',label:'Mission Supply Cache',x:world.width*.67,y:world.height*.55}]:[];}
+  function fixtures(level,world){
+    if(!enabled(level))return [];
+    const chapterTwo=Number(level)>10;
+    return [{id:'ranger_tower',kind:'tower',label:chapterTwo?'Village Watchtower':'Ranger Watchtower',x:world.width*(chapterTwo?.57:.38),y:world.height*.37},{id:'field_cache',kind:'cache',label:chapterTwo?'Escort Supply Cache':'Mission Supply Cache',x:world.width*(chapterTwo?.39:.67),y:world.height*(chapterTwo?.64:.55)}];
+  }
   function lead(level,civilians=[],elapsed=0,rescuedAt=null){
-    if(![1,4,7].includes(Number(level))||!civilians.length)return null;
+    if(![1,4,7,11,16,17].includes(Number(level))||!civilians.length)return null;
     const target=[...civilians].sort((a,b)=>String(a.id).localeCompare(String(b.id)))[0];
     const status=rescuedAt!==null&&Number.isFinite(rescuedAt)?rescuedAt<60000?'early':rescuedAt<=150000?'rescued':'missed':elapsed<60000?'pending':elapsed<=150000?'active':'missed';
     return {id:target.id,x:target.x,y:target.y,name:target.name||'Civilian',status,remaining:Math.max(0,150000-elapsed)};
   }
   function act(raw,kind,{level,world,player,now=0,lead:opportunity=null}={}){
-    if(!enabled(level))throw Error('Field actions are available in Story missions 1–10.');
+    if(!enabled(level))throw Error('Field actions are available in Story missions 1–20.');
     if(!(player?.hp>0)||player.downed)throw Error('Your soldier must be standing to use field actions.');
     const s=normalize(raw),site=fixtures(level,world).find(p=>p.kind===kind);let heal=0,armor=0;
     if(site&&(!valid(player)||dist(player,site)>110))throw Error(`Move within 110m of ${site.label}.`);
@@ -50,5 +54,5 @@
       const b=document.createElement('button');b.type='button';b.style.cssText='display:block;width:100%;min-height:44px;margin:8px 0;padding:12px';b.textContent=kind==='locate-tower'?'Locate watchtower on route':kind==='locate-cache'?'Locate supply cache on route':kind==='tower'?`Scan watchtower • ${range}m${now<s.towerReadyAt?` • ready in ${Math.ceil((s.towerReadyAt-now)/1000)}s`:''}`:kind==='cache'?`Collect mission supplies • ${range}m${s.collected?' • collected':''}`:kind==='medkit'?`Use field medkit • ${s.medkits} left • up to 40 HP`:kind==='armor'?`Use field plate • ${s.armor} left • up to 40 armor`:opportunity?.status==='active'?`Locate optional rescue lead • ${Math.ceil(opportunity.remaining/1000)}s`:'No optional rescue lead active';b.disabled=!!blocked;rows.push({b,blocked:!!blocked});b.onclick=async()=>{rows.forEach(r=>r.b.disabled=true);try{await action(kind);d.close();}catch(e){status.textContent=String(e.message||e);rows.forEach(r=>r.b.disabled=r.blocked);}};d.appendChild(b);}
     d.addEventListener('close',()=>globalThis.TigerMissionRoutes?.reset?.(),{once:true});const close=document.createElement('button');close.type='button';close.textContent='Close';close.style.cssText='min-height:44px;padding:12px';close.onclick=()=>d.close();d.appendChild(close);globalThis.dispatchEvent?.(new Event('mission-route-open'));d.showModal();
   }
-  return Object.freeze({VERSION:'14.1',enabled,normalize,fixtures,lead,act,danger,destination,draw,open});
+  return Object.freeze({VERSION:'14.2',enabled,normalize,fixtures,lead,act,danger,destination,draw,open});
 });

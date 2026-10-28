@@ -1,6 +1,15 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V14.2 — Chapter 2 Routes & Field Actions, Missions 11–20
+
+- Extends both V14.0 and V14.1 to Solo and Shared Story Missions 11–20. Missions 1–10 retain their original positions and behavior; Missions 21–100 are not enabled by this release. Village Ranger Shelter, Forest Escort Shelter, Village Watchtower and Escort Supply Cache occupy the same four Chapter 2 positions in all ten missions. Placement checks keep their footprints clear of water, village roads and required landmarks; both modes render and expose Map Truth from the same shared coordinates.
+- Direct and Shelter route guidance use the chapter's actual bridges and current destination. Unverified dry paths remain disabled with an explanation. Shelter cover halves incoming tiger damage with a minimum of 1; firing removes it for three seconds, and government damage is unaffected. Cover does not replace the Rescue House, checkpoints or capture requirements.
+- Scouting within 110m reveals threats for 30 seconds with a 45-second cooldown, shared with the teammate. Route previews count real living threats at opening; unscouted danger remains unknown. Each player may collect one personal mission medkit and plate per attempt, usable through Field Actions for up to 40 HP and 40 armor. Duplicate claims are rejected and permanent Shop/profile supplies remain unchanged.
+- Optional leads in Missions 11, 16 and 17 highlight a real existing civilian from 1:00 to 2:30. Only actual delivery records success. Required checkpoint and delivery rules still apply; the lead adds no quota, payout or failure condition. The doctor mission retains its original VIP rules, and the Blood Tiger boss mission gains field support without changing its completion requirements. Solo can perform tasks sequentially; Co-op can split tasks.
+- Per-player debriefs record actual shelter damage reduction, scans, collection and restoration; delivery outcomes are shared. Pause, reconnect state and restart cleanup use the existing authoritative systems. No new forced road-closure events, enemy counts, capture-rule changes or music changes.
+- Automated tests cover all ten Chapter 2 rooms, shared map geometry, real bridge paths, exact shelter damage, personal supplies, unchanged profiles, actual lead deliveries, pause/resume, debriefs and restart. `qa/field-operations.html?level=11` is an isolated shared-code preview, not a physical two-phone acceptance test.
+
 ## V14.1 — Field Actions & Route Intelligence, Missions 1–10
 
 - Completes this mission-variety pilot with optional watchtowers, personal field supplies and timed rescue leads. Solo can do each task sequentially; Co-op can split them. The original mission objectives and rescue ownership still apply. This release chooses optional rescue opportunities, not new forced route closures, and does not expand the pilot beyond Missions 1–10.

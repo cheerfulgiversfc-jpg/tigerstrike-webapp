@@ -7,7 +7,7 @@ test('Missions 1–10 share dry functional shelter locations and Map Truth parit
     for(const p of s)for(const dx of [-70,70])for(const dy of [-78,50])assert(map.waterZones.every(z=>!water.contains(z,p.x+dx,p.y+dy)));
     assert.deepEqual(s,routes.shelters(1,world));
   }
-  assert.deepEqual(routes.shelters(11,world),[]);assert.equal(routes.plan({level:11,world,from:{x:100,y:100},to:{x:400,y:400}}),null);
+  assert.deepEqual(routes.shelters(21,world),[]);assert.equal(routes.plan({level:21,world,from:{x:100,y:100},to:{x:400,y:400}}),null);
 });
 test('direct and shelter guidance reach the real destination through a bridge without cutting across water',()=>{
   const from={x:1000,y:1000},to={x:3800,y:2600};
@@ -27,20 +27,20 @@ test('cover uses the exact visible rectangle, never gives immunity, and firing r
   const s=routes.shelters(1,world)[0],options={level:1,world,point:s,now:10000};assert.equal(routes.damage(10,options),5);assert.equal(routes.damage(1,options),1);
   assert.equal(routes.damage(10,{...options,point:{x:s.x+61,y:s.y}}),10);assert.equal(routes.damage(10,{...options,lastShotAt:8000}),10);assert.equal(routes.damage(10,{...options,lastShotAt:7000}),5);
   assert.equal(routes.damage(10,{...options,point:{x:s.x,y:s.y+10}}),5);assert.equal(routes.damage(10,{...options,point:{x:s.x,y:s.y+11}}),10);
-  assert.equal(routes.damage(10,{...options,faction:'government'}),10);assert.equal(routes.damage(10,{...options,level:11}),10);
+  assert.equal(routes.damage(10,{...options,faction:'government'}),10);assert.equal(routes.damage(10,{...options,level:21}),10);
 });
 test('debriefs describe measured cover reduction and final guidance without inventing route completion or rewards',()=>{
   const debrief=require('./mission-debrief'),run=debrief.summary({id:'route-test',completed:true,scope:'solo',route:{choice:'shelter',preventedDamage:13}}),html=debrief.html(run,{});
   assert.equal(run.route.preventedDamage,13);assert.match(html,/Final route guidance: Shelter detour/);assert.match(html,/by 13 this attempt/);assert.match(html,/selection alone earns no completion credit/);
 });
-test('actual Co-op route choices remain personal and shelter damage/restart/debrief use authoritative state',async()=>{
+for(const level of [1,11,20])test(`Mission ${level}: Co-op route choices, shelter damage and restart use authoritative state`,async()=>{
   const server=require('./api/_lib/squad-session'),store=require('./api/_lib/metrics-store');assert.equal(store.storageMode(),'memory');
   const original=Date.now;let now=1800000600000;Date.now=()=>now;
   try{
-    const host={id:983981,first_name:'Route Host'},mate={id:983982,first_name:'Route Mate'};
-    let room=await server.createSession(host,{launchType:'shared-story',storyMissionLevel:1});room=await server.joinSession(room.code,mate);room=await server.applyAction(room,host,'start');assert.equal(room.routeVersion,1);
+    const host={id:983981+level*10,first_name:'Route Host'},mate={id:983982+level*10,first_name:'Route Mate'};
+    let room=await server.createSession(host,{launchType:'shared-story',storyMissionLevel:level});room=await server.joinSession(room.code,mate);room=await server.applyAction(room,host,'start');assert.equal(room.routeVersion,1);
     await server.applyAction(room,host,'route-choice',{choice:'shelter'});await assert.rejects(()=>server.applyAction(room,host,'route-choice',{choice:'fake'}),/Choose Direct/);
-    const key=`live_squad_player_${room.code}_${host.id}`,mateKey=`live_squad_player_${room.code}_${mate.id}`,s=routes.shelters(1,world)[0];
+    const key=`live_squad_player_${room.code}_${host.id}`,mateKey=`live_squad_player_${room.code}_${mate.id}`,s=routes.shelters(level,world)[0];
     let snap=await server.buildSnapshot(room,host.id),t=snap.tigers[0];assert.equal(snap.players.find(p=>p.userId===host.id).routeChoice,'shelter');assert.equal(snap.players.find(p=>p.userId===mate.id).routeChoice,'direct');
     async function hit(point){now+=1000;const p=await store.getState(key);await store.setState(key,{...p,...point,hp:100,armor:0,pendingTigerAttack:{tigerId:t.id,tigerX:point.x,tigerY:point.y,x:point.x,y:point.y,startedAt:now-700,resolveAt:now-1,runId:`${room.code}:${room.startedAt}`}});await server.updateOwnPresence(room,host,{});return store.getState(key);}
     let p=await hit(s),inside=100-p.hp;assert(p.routePrevented>0);const saved=p.routePrevented;
