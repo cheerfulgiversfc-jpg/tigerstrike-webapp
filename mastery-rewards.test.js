@@ -89,7 +89,7 @@ test('cosmetic writes cannot overwrite concurrent gameplay progress',async()=>{
 });
 test('release loads rewards before gameplay; both identity renderers and authenticated endpoint are wired',()=>{
   const fs=require('node:fs'),html=fs.readFileSync('index.html','utf8'),game=fs.readFileSync('game.js','utf8'),client=fs.readFileSync('squad-coop.js','utf8'),route=fs.readFileSync('api/squad/session.js','utf8');
-  assert(html.indexOf('mastery-rewards.js?v=5264-chapter6-field')<html.indexOf('game.js?v=5264-chapter6-field'));
+  assert(html.indexOf('mastery-rewards.js?v=5265-chapter7-field')<html.indexOf('game.js?v=5265-chapter7-field'));
   assert(game.includes('function missionMasteryRewardCommand'));assert(game.includes('const missionTitle=window.TigerMasteryRewards?.identity'));
   assert(client.includes("'mastery-equip':()=>masteryRewardCommand"));assert(client.includes('drawMasteryIdentity(ctx,p,draw.x'));
   assert(route.indexOf('validateTelegramInitData(initData, botToken)')<route.indexOf("if(action === 'mastery-equip')"));
