@@ -1,6 +1,14 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V14.9 — Chapter 9 Routes & Field Actions, Missions 81–90
+
+- Extends the V14.0/V14.1 features to Solo and Shared Story Missions 81–90. Expedition Shelter, Ruins Trail Shelter, Hidden Rim Watchtower and Expedition Supply Cache occupy four fixed Chapter 9 positions shared by all ten maps. Tests check dry footprints and clearance from roads and required landmarks; Solo, Co-op and Map Truth use the same coordinates. Chapters 1–8 retain their positions and behavior; Missions 91–100 remain outside this extension.
+- Direct and Shelter guidance use the current objective and the chapter's actual river bridges. Unverified dry routes remain unavailable with an explanation. Shelter interiors halve incoming tiger damage (minimum 1), firing removes cover for three seconds and government damage stays unchanged. Guidance and shelter use do not complete objectives or replace civilian extraction. No new forced road closures are added.
+- Scouting within 110m enables a shared 30-second threat feed with a 45-second cooldown. Route previews count actual nearby living threats at opening, or show unknown danger before scouting. Each player can collect one personal mission medkit and plate per attempt, usable through Field Actions for up to 40 HP and 40 armor. Server validation rejects duplicate collection; permanent Shop/profile supplies stay unchanged.
+- Missions 81, 84 and 86 offer optional leads to existing civilians from 1:00 to 2:30. Actual delivery determines the recorded outcome; missing the lead adds no failure, quota or payout. Original surveys, rare-habitat encounters, Shadeclaw capture, ruins escort, excavation tasks, helicopter boarding, preparation stations and Phantom Tiger requirements remain intact. Solo can perform tasks sequentially and teammates can split them.
+- Per-player debriefs report measured shelter protection, scans, supplies and restoration, plus shared rescue-lead delivery. Tests cover all ten actual Chapter 9 rooms, bridge paths, dry placements, exact cover, personal supplies, actual deliveries, pause/resume, debriefs, restart and earlier chapter regressions. The isolated preview at `qa/field-operations.html?level=81` is not a physical two-phone acceptance test. Music, rewards, enemy counts and ammunition/capture rules remain unchanged.
+
 ## V14.8 — Chapter 8 Routes & Field Actions, Missions 71–80
 
 - Extends the V14.0/V14.1 features to Solo and Shared Story Missions 71–80. West Front Shelter, East Front Shelter, Warfront Watchtower and Evacuation Supply Cache occupy four fixed Chapter 8 positions shared by all ten maps. Tests check dry footprints and clearance from streets and required landmarks; Solo, Co-op and Map Truth use the same coordinates. Chapters 1–7 retain their positions and behavior; Missions 81–100 remain outside this extension.

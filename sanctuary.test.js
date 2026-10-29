@@ -78,8 +78,8 @@ test("government path visibly changes the same headquarters identity",()=>{
 });
 
 test("game integration makes sanctuary persistent, useful, and reachable",()=>{
-  assert(html.includes("sanctuary.js?v=5266-chapter8-field"));
-  assert(html.indexOf("sanctuary.js?v=5266-chapter8-field")<html.indexOf("game.js?v=5266-chapter8-field"));
+  assert(html.includes("sanctuary.js?v=5267-chapter9-field"));
+  assert(html.indexOf("sanctuary.js?v=5267-chapter9-field")<html.indexOf("game.js?v=5267-chapter9-field"));
   assert(game.includes('"cosmeticCollection","sanctuary","achievements"'));
   assert(game.includes("recordSanctuaryCapture(tiger, source)"));
   assert(game.includes("advanceSanctuaryAfterMission(S._missionRunId, missionStats)"));
@@ -99,8 +99,8 @@ test("Shared Story keeps a separate server-backed sanctuary and read-only leader
 });
 
 test("V11.4 cache key reaches every gameplay asset",()=>{
-  assert(html.includes("V14.8 (Chapter 8 Routes &amp; Field Actions)"));
+  assert(html.includes("V14.9 (Chapter 9 Routes &amp; Field Actions)"));
   for(const file of ["extraction-geometry.js","ammo-modes.js","government-policy.js","tiger-intelligence.js","living-world.js","mission-map-truth.js","post-campaign.js","sanctuary.js","game.js","story-cinematics.js","field-systems.js","tutorial.js","squad-motion.js","shared-battlefield-renderer.js","squad-coop.js","extraction-qa.js","squad-coop.css"]){
-    assert(html.includes(`${file}?v=5266-chapter8-field`),`stale cache key for ${file}`);
+    assert(html.includes(`${file}?v=5267-chapter9-field`),`stale cache key for ${file}`);
   }
 });
