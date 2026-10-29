@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V14.5 (Chapter 5 Routes &amp; Field Actions)</title>
+  <title>Tiger Strike 🐅 — V14.6 (Chapter 6 Routes &amp; Field Actions)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5263-chapter5-field">
-  <link rel="stylesheet" href="./battlefield-awareness.css?v=5263-chapter5-field">
+  <link rel="stylesheet" href="./squad-coop.css?v=5264-chapter6-field">
+  <link rel="stylesheet" href="./battlefield-awareness.css?v=5264-chapter6-field">
 
   <style>
     :root{
@@ -2577,9 +2577,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V14.5</span> <span class="tag">Chapter 5 Routes &amp; Field Actions</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V14.6</span> <span class="tag">Chapter 6 Routes &amp; Field Actions</span></div>
       <div class="sub">
-        V14.5 — Chapter 5 Routes &amp; Field Actions: Missions 41–50 now have Direct or Shelter route guidance, North and South Bank shelters, a River Watchtower and a Riverbank Supply Cache at fixed Chapter 5 locations clear of water, roads and required landmarks. Routes use the real river bridges and explain unavailable dry paths, including water destinations. Shelter interiors halve incoming tiger damage (minimum 1); firing removes cover for 3 seconds. Scan within 110m for a shared 30-second threat feed and route danger counts (45-second cooldown). Each player can collect one mission-only medkit and armor plate per attempt, restoring up to 40 HP and 40 armor through Field Actions. Optional rescue leads in Missions 41, 44 and 47 highlight an existing civilian from 1:00 to 2:30 without adding a failure or rescue requirement. Solo can perform tasks sequentially; Co-op can split them. Debriefs record actual cover, scans, supplies and delivery. Missions 1–40 retain their features. Open Mission Route or Field Actions in the Solo menu or Co-op gear bar. Original mission requirements, permanent supplies, rewards, capture rules and music stay unchanged. No new forced road closures.<br>
+        V14.6 — Chapter 6 Routes &amp; Field Actions: Missions 51–60 now have Direct or Shelter route guidance, Ridge and Highland shelters, a Mountain Watchtower and a Highland Supply Cache at fixed Chapter 6 locations clear of water, roads and required landmarks. Routes use the real river bridge and explain unavailable dry paths. Shelter interiors halve incoming tiger damage (minimum 1); firing removes cover for 3 seconds. Scan within 110m for a shared 30-second threat feed and route danger counts (45-second cooldown). Each player can collect one mission-only medkit and armor plate per attempt, restoring up to 40 HP and 40 armor through Field Actions. Optional rescue leads in Missions 51, 54 and 56 highlight an existing civilian from 1:00 to 2:30 without adding a failure or rescue requirement. Solo can perform tasks sequentially; Co-op can split them. Debriefs record actual cover, scans, supplies and delivery. Missions 1–50 retain their features. Open Mission Route or Field Actions in the Solo menu or Co-op gear bar. Original mission requirements, permanent supplies, rewards, capture rules and music stay unchanged. No new forced road closures.<br>
         V13.5 off-screen guidance, live progress and optional Docked Controls remain available.<br>
         V13.4 targeting and attack-warning improvements remain active.<br>
         V13.3 performance and weak-link improvements remain active. Combined physical two-phone weak-connection validation is still outstanding.<br>
@@ -2613,8 +2613,8 @@
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
       <button class="ghost" onclick="toggleMusic()">🎵 Music <span id="musicLbl">On</span></button>
       <button class="ghost" onclick="TigerCombatFeel.openComfort()">Combat Comfort</button>
-      <button class="ghost" onclick="openMissionRoute()">Mission Route • Story 1–50</button>
-      <button class="ghost" onclick="openFieldActions()">Field Actions • Story 1–50</button>
+      <button class="ghost" onclick="openMissionRoute()">Mission Route • Story 1–60</button>
+      <button class="ghost" onclick="openFieldActions()">Field Actions • Story 1–60</button>
       <button class="ghost mobileCompactHide" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
       <button class="ghost mobileCompactHide" onclick="openBaseHQ()">🏠 HQ</button>
       <button class="ghost mobileCompactHide" onclick="openMode()">🎮 Mode</button>
@@ -3644,41 +3644,41 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5263-chapter5-field"></script>
-  <script src="./engagement-rules.js?v=5263-chapter5-field"></script>
-  <script src="./smooth-play.js?v=5263-chapter5-field"></script>
-  <script src="./combat-feel.js?v=5263-chapter5-field"></script>
-  <script src="./combat-reactions.js?v=5263-chapter5-field"></script>
-  <script src="./chapter-maps.js?v=5263-chapter5-field"></script>
-  <script src="./mission-routes.js?v=5263-chapter5-field"></script>
-  <script src="./field-operations.js?v=5263-chapter5-field"></script>
-  <script src="./extraction-geometry.js?v=5263-chapter5-field"></script>
-  <script src="./ammo-modes.js?v=5263-chapter5-field"></script>
-  <script src="./government-policy.js?v=5263-chapter5-field"></script>
-  <script src="./tiger-intelligence.js?v=5263-chapter5-field"></script>
-  <script src="./tiger-encounters.js?v=5263-chapter5-field"></script>
-  <script src="./tiger-pursuit.js?v=5263-chapter5-field"></script>
-  <script src="./living-world.js?v=5263-chapter5-field"></script>
-  <script src="./mission-map-truth.js?v=5263-chapter5-field"></script>
-  <script src="./post-campaign.js?v=5263-chapter5-field"></script>
-  <script src="./sanctuary.js?v=5263-chapter5-field"></script>
-  <script src="./player-experience.js?v=5263-chapter5-field"></script>
-  <script src="./battlefield-awareness.js?v=5263-chapter5-field"></script>
-  <script src="./field-radio.js?v=5263-chapter5-field"></script>
-  <script src="./civilian-rescue.js?v=5263-chapter5-field"></script>
-  <script src="./rescue-tools.js?v=5263-chapter5-field"></script>
-  <script src="./escort-teamwork.js?v=5263-chapter5-field"></script>
-  <script src="./chapter-milestones.js?v=5263-chapter5-field"></script>
-  <script src="./mission-debrief.js?v=5263-chapter5-field"></script>
-  <script src="./mastery-rewards.js?v=5263-chapter5-field"></script>
-  <script src="./shared-battlefield-renderer.js?v=5263-chapter5-field"></script>
-  <script src="./game.js?v=5263-chapter5-field"></script>
-  <script src="./story-cinematics.js?v=5263-chapter5-field"></script>
-  <script src="./field-systems.js?v=5263-chapter5-field"></script>
-  <script src="./tutorial.js?v=5263-chapter5-field"></script>
-  <script src="./squad-motion.js?v=5263-chapter5-field"></script>
-  <script src="./squad-coop.js?v=5263-chapter5-field"></script>
-  <script src="./extraction-qa.js?v=5263-chapter5-field"></script>
+  <script src="./water-terrain.js?v=5264-chapter6-field"></script>
+  <script src="./engagement-rules.js?v=5264-chapter6-field"></script>
+  <script src="./smooth-play.js?v=5264-chapter6-field"></script>
+  <script src="./combat-feel.js?v=5264-chapter6-field"></script>
+  <script src="./combat-reactions.js?v=5264-chapter6-field"></script>
+  <script src="./chapter-maps.js?v=5264-chapter6-field"></script>
+  <script src="./mission-routes.js?v=5264-chapter6-field"></script>
+  <script src="./field-operations.js?v=5264-chapter6-field"></script>
+  <script src="./extraction-geometry.js?v=5264-chapter6-field"></script>
+  <script src="./ammo-modes.js?v=5264-chapter6-field"></script>
+  <script src="./government-policy.js?v=5264-chapter6-field"></script>
+  <script src="./tiger-intelligence.js?v=5264-chapter6-field"></script>
+  <script src="./tiger-encounters.js?v=5264-chapter6-field"></script>
+  <script src="./tiger-pursuit.js?v=5264-chapter6-field"></script>
+  <script src="./living-world.js?v=5264-chapter6-field"></script>
+  <script src="./mission-map-truth.js?v=5264-chapter6-field"></script>
+  <script src="./post-campaign.js?v=5264-chapter6-field"></script>
+  <script src="./sanctuary.js?v=5264-chapter6-field"></script>
+  <script src="./player-experience.js?v=5264-chapter6-field"></script>
+  <script src="./battlefield-awareness.js?v=5264-chapter6-field"></script>
+  <script src="./field-radio.js?v=5264-chapter6-field"></script>
+  <script src="./civilian-rescue.js?v=5264-chapter6-field"></script>
+  <script src="./rescue-tools.js?v=5264-chapter6-field"></script>
+  <script src="./escort-teamwork.js?v=5264-chapter6-field"></script>
+  <script src="./chapter-milestones.js?v=5264-chapter6-field"></script>
+  <script src="./mission-debrief.js?v=5264-chapter6-field"></script>
+  <script src="./mastery-rewards.js?v=5264-chapter6-field"></script>
+  <script src="./shared-battlefield-renderer.js?v=5264-chapter6-field"></script>
+  <script src="./game.js?v=5264-chapter6-field"></script>
+  <script src="./story-cinematics.js?v=5264-chapter6-field"></script>
+  <script src="./field-systems.js?v=5264-chapter6-field"></script>
+  <script src="./tutorial.js?v=5264-chapter6-field"></script>
+  <script src="./squad-motion.js?v=5264-chapter6-field"></script>
+  <script src="./squad-coop.js?v=5264-chapter6-field"></script>
+  <script src="./extraction-qa.js?v=5264-chapter6-field"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

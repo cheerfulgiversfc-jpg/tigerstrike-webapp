@@ -1,13 +1,13 @@
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps);if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.TigerMissionRoutes=api;})(typeof globalThis!=='undefined'?globalThis:this,function(water,maps){
   'use strict';
   const valid=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y),distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-  const enabled=level=>Number.isInteger(Number(level))&&level>=1&&level<=50;
+  const enabled=level=>Number.isInteger(Number(level))&&level>=1&&level<=60;
   const choice=value=>value==='shelter'?'shelter':'direct';
   const length=path=>path.slice(1).reduce((sum,p,i)=>sum+distance(path[i],p),0);
   const cache=new Map();
   function shelters(level,world){
     if(!enabled(level))return [];
-    const layout=[[['Ranger Shelter',.32,.38],['Trail Shelter',.72,.60]],[['Village Ranger Shelter',.38,.35],['Forest Escort Shelter',.60,.65]],[['Research Trail Shelter',.21,.36],['Deep Jungle Shelter',.70,.59]],[['North Block Shelter',.42,.24],['South Block Shelter',.62,.69]],[['North Bank Shelter',.37,.34],['South Bank Shelter',.61,.68]]][Math.floor((Number(level)-1)/10)];
+    const layout=[[['Ranger Shelter',.32,.38],['Trail Shelter',.72,.60]],[['Village Ranger Shelter',.38,.35],['Forest Escort Shelter',.60,.65]],[['Research Trail Shelter',.21,.36],['Deep Jungle Shelter',.70,.59]],[['North Block Shelter',.42,.24],['South Block Shelter',.62,.69]],[['North Bank Shelter',.37,.34],['South Bank Shelter',.61,.68]],[['Ridge Shelter',.36,.32],['Highland Shelter',.64,.66]]][Math.floor((Number(level)-1)/10)];
     return layout.map(([label,x,y],i)=>({id:i?'south_refuge':'north_refuge',label,x:world.width*x,y:world.height*y,w:140,h:80}));
   }
   function inside(p,s){return valid(p)&&Math.abs(p.x-s.x)<=60&&p.y>=s.y-50&&p.y<=s.y+10;}
@@ -62,5 +62,5 @@
     const close=document.createElement('button');close.textContent='Close';close.type='button';close.onclick=()=>dialog.close();close.style.cssText='padding:12px;min-height:44px';dialog.appendChild(close);
     globalThis.dispatchEvent?.(new Event('mission-route-open'));dialog.showModal();
   }
-  return Object.freeze({VERSION:'14.5',enabled,choice,shelters,inside,cover,damage,path,plan,cached,reset,draw,drawShelters,open});
+  return Object.freeze({VERSION:'14.6',enabled,choice,shelters,inside,cover,damage,path,plan,cached,reset,draw,drawShelters,open});
 });

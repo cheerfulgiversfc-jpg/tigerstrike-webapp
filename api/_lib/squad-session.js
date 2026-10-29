@@ -3652,7 +3652,7 @@ async function applyAction(session, user, action, payload={}){
   syncEscortOwnership(session,player);
   const now = nowMs();
   if(action==='field-use'){
-    if(session.fieldVersion!==1||session.launchType!=='shared-story'||!fieldOperations.enabled(session.storyMissionLevel)||session.status!=='active'||sessionPaused(session)||player.downed)throw new Error('Field actions require an active, unpaused Story mission 1–50.');
+    if(session.fieldVersion!==1||session.launchType!=='shared-story'||!fieldOperations.enabled(session.storyMissionLevel)||session.status!=='active'||sessionPaused(session)||player.downed)throw new Error('Field actions require an active, unpaused Story mission 1–60.');
     const mission=missionDefinition(session),elapsed=Math.max(0,sessionClockNow(session,now)-session.startedAt);
     const opportunity=fieldOperations.lead(session.storyMissionLevel,mission.civilians,elapsed,session.fieldLeadRescuedAt);
     const result=fieldOperations.act(player.fieldOps,payload.kind,{level:session.storyMissionLevel,world:mission.world,player:{...player,armorCap:100},now:elapsed,lead:opportunity});
@@ -3660,7 +3660,7 @@ async function applyAction(session, user, action, payload={}){
     player.fieldOps=result.state;player.hp=Math.min(player.maxHp,player.hp+result.heal);player.armor=Math.min(100,player.armor+result.armor);await writePlayer(session.code,player);return session;
   }
   if(action==='route-choice'){
-    if(session.launchType!=='shared-story'||session.routeVersion!==1||!missionRoutes.enabled(session.storyMissionLevel)||!['waiting','active'].includes(session.status))throw new Error('Route choices are available in active Shared Story missions 1–50.');
+    if(session.launchType!=='shared-story'||session.routeVersion!==1||!missionRoutes.enabled(session.storyMissionLevel)||!['waiting','active'].includes(session.status))throw new Error('Route choices are available in active Shared Story missions 1–60.');
     if(!['direct','shelter'].includes(payload.choice))throw new Error('Choose Direct or Shelter route.');
     player.routeChoice=payload.choice;await writePlayer(session.code,player);return session;
   }

@@ -16,7 +16,7 @@ test('Chapter 5 fixtures share one map and leave water, river roads and mission 
       for(const mark of spec.landmarks)assert(distance(p,mark)>180,`Mission ${level}: ${p.label} must not cover ${mark.label}`);
     }
   }
-  for(const n of [0,51,100,11.5]){assert.equal(routes.enabled(n),false);assert.equal(ops.enabled(n),false);}
+  for(const n of [0,61,100,11.5]){assert.equal(routes.enabled(n),false);assert.equal(ops.enabled(n),false);}
 });
 test('all Chapter 5 routes cross actual bridges and shelters retain exact cover rules',()=>{
   const from={x:1200,y:1000},to={x:4080,y:2640};
