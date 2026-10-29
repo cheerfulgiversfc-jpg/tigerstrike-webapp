@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5262";
+const TS_BUILD = "5263";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -53,7 +53,7 @@ function missionRouteOptions(){
   return {level:missionProgressForWorld(S),world:{width:worldWidth(S),height:worldHeight(S)},from:S.me,to,waterZones:__mapWaterZones,selected:S._missionRoute?.choice||'direct',blockedRects:[...__mapObstacleRects,...__mapObstacleCircles.map(c=>({x:c.x-c.r,y:c.y-c.r,w:c.r*2,h:c.r*2})),...(window.TigerStrikeBattlefieldRenderer?.routeBlockers(S)||[]).map(c=>({x:c.x-c.r,y:c.y-c.r,w:c.r*2,h:c.r*2}))]};
 }
 function openMissionRoute(){
-  if(!S._missionStartAt||S.missionEnded||S.mode!=='Story'||!window.TigerMissionRoutes?.enabled(missionProgressForWorld(S))){toast('Choose an active Story mission from 1–40 first.');return;}
+  if(!S._missionStartAt||S.missionEnded||S.mode!=='Story'||!window.TigerMissionRoutes?.enabled(missionProgressForWorld(S))){toast('Choose an active Story mission from 1–50 first.');return;}
   const options=missionRouteOptions();if(!options){toast('No navigable objective is available right now. Check mission guidance.');return;}
   const field=fieldContext();window.TigerMissionRoutes.open({level:options.level,current:options.selected,preview:Object.fromEntries(['direct','shelter'].map(selected=>{const route=window.TigerMissionRoutes.plan({...options,selected});return [selected,{...route,danger:field&&field.now<field.state.towerUntil?window.TigerFieldOperations.danger(route,S.tigers):null}];})),choose:selected=>{S._missionRoute={...(S._missionRoute||{}),choice:selected};save();}});
 }
@@ -64,7 +64,7 @@ function fieldContext(){
   if(lead&&S._fieldLeadRescuedAt==null&&(S.civilians||[]).some(c=>c.id===lead.id&&c.evac)){S._fieldLeadRescuedAt=now;lead=api.lead(level,S.civilians,now,now);}
   return {level,world:{width:worldWidth(S),height:worldHeight(S)},player:{...S.me,hp:S.hp,maxHp:100,armor:S.armor,armorCap:S.armorCap||100},now,state:S._fieldOps,lead,tigers:S.tigers||[]};
 }
-function openFieldActions(){const context=fieldContext();if(!context||S.missionEnded){toast('Choose an active Story mission from 1–40 first.');return;}window.TigerFieldOperations.open({...context,action:kind=>{const result=window.TigerFieldOperations.act(S._fieldOps,kind,fieldContext());S._fieldOps=result.state;S.hp=Math.min(100,S.hp+result.heal);S.armor=Math.min(S.armorCap||100,S.armor+result.armor);save();}});}
+function openFieldActions(){const context=fieldContext();if(!context||S.missionEnded){toast('Choose an active Story mission from 1–50 first.');return;}window.TigerFieldOperations.open({...context,action:kind=>{const result=window.TigerFieldOperations.act(S._fieldOps,kind,fieldContext());S._fieldOps=result.state;S.hp=Math.min(100,S.hp+result.heal);S.armor=Math.min(S.armorCap||100,S.armor+result.armor);save();}});}
 function missionShelterDamage(amount,point,tiger){
   if(S.mode!=='Story'||window.__TUTORIAL_MODE__)return amount;
   if(point===S.me&&(shieldActiveNow()||Date.now()<Number(S.rollInvulnUntil||0)||Date.now()<Number(S.respawnPendingUntil||0)))return amount;
