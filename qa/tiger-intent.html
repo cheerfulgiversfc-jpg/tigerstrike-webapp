@@ -3,7 +3,7 @@
 <h1>V13.6 • Tiger intent & body language</h1>
 <p>First-slice artwork preview using the actual shared renderer. These are fixed test states, not evidence of new Co-op chase/retreat AI. No game accounts are used.</p>
 <div id="states"></div><canvas id="preview" width="1000" height="440"></canvas>
-<script src="../tiger-encounters.js"></script><script src="../shared-battlefield-renderer.js"></script>
+<script src="../tiger-encounters.js"></script><script src="../vehicle-art.js"></script><script src="../shared-battlefield-renderer.js"></script>
 <script>
 const ctx=document.getElementById('preview').getContext('2d'),names=['Hunter','Ambusher','Sentinel','Fury'];
 const states={watching:{awarenessState:'suspicious'},stalking:{huntState:'stalk',huntStateUntil:2000},guarding:{intent:'Guard Wounded',intentUntil:2000},slowed:{hp:20,rubberSlowed:true},tagged:{tranqTagged:true},windup:{attackWarnings:[{startedAt:900,resolveAt:1600,x:120,y:250}]},caged:{hp:0,captured:true}};

@@ -68,5 +68,5 @@ test("polished attack faces civilians and deploys two soldiers from the helicopt
   assert(source.includes("const drop1=")&&source.includes("drop2="));
   assert(source.includes("c.lineTo(s1.x,s1.y-46)")&&source.includes("c.lineTo(s2.x,s2.y-46)"));
   assert(source.includes('drawSoldier(c,500,390')&&source.includes('drawSoldier(c,565,394'));
-  assert(source.includes('c.arc(-4,-21,1.8')&&source.includes('c.arc(-4,-25,1.8'));
+  assert(source.includes('TigerStrikeBattlefieldRenderer.drawCivilian(')&&source.includes('TigerStrikeBattlefieldRenderer.drawSoldier('));
 });

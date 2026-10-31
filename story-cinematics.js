@@ -75,28 +75,27 @@
     const radius=Math.min(r,w/2,h/2);context.beginPath();context.moveTo(x+radius,y);context.arcTo(x+w,y,x+w,y+h,radius);context.arcTo(x+w,y+h,x,y+h,radius);context.arcTo(x,y+h,x,y,radius);context.arcTo(x,y,x+w,y,radius);context.closePath();
   }
   function drawHouse(c,x,y,scale=1,lights=false){
-    c.save();c.translate(x,y);c.scale(scale,scale);c.fillStyle="rgba(0,0,0,.22)";c.fillRect(-60,34,120,12);c.fillStyle="#f2d3a0";rounded(c,-55,-24,110,66,6);c.fill();c.fillStyle="#9a4d2e";c.beginPath();c.moveTo(-66,-22);c.lineTo(0,-68);c.lineTo(66,-22);c.closePath();c.fill();c.fillStyle="#6b3b25";c.fillRect(-12,6,24,36);c.fillStyle=lights?"#fde68a":"#93c5fd";c.fillRect(-43,-7,23,20);c.fillRect(22,-7,23,20);c.restore();
+    root.TigerStrikeBattlefieldRenderer.drawMapHouse(c,x-55*scale,y-24*scale,110*scale,66*scale,{roof:'#8f5437',roofRise:44*scale});
   }
-  function drawTree(c,x,y,scale=1){
-    c.save();c.translate(x,y);c.scale(scale,scale);c.fillStyle="#6b4423";c.fillRect(-7,12,14,42);c.fillStyle="#0f6b3f";c.beginPath();c.arc(-18,2,25,0,Math.PI*2);c.arc(15,-5,29,0,Math.PI*2);c.arc(0,-25,27,0,Math.PI*2);c.fill();c.fillStyle="#22c55e";c.beginPath();c.arc(5,-29,16,0,Math.PI*2);c.fill();c.restore();
-  }
+  function drawTree(c,x,y,scale=1){root.TigerStrikeBattlefieldRenderer.drawMapTree(c,x,y+30*scale,scale*1.6);}
   function drawCivilian(c,x,y,scale=1,run=0,color="#f59e0b"){
-    c.save();c.translate(x,y);c.scale(scale,scale);c.lineCap="round";c.strokeStyle="#172033";c.lineWidth=7;c.beginPath();c.moveTo(0,21);c.lineTo(-9+run*8,43);c.moveTo(1,21);c.lineTo(12-run*8,43);c.stroke();c.fillStyle=color;rounded(c,-15,-8,30,34,8);c.fill();c.strokeStyle="#d99b6c";c.lineWidth=6;c.beginPath();c.moveTo(-13,2);c.lineTo(-25-run*7,21);c.moveTo(13,2);c.lineTo(25+run*7,18);c.stroke();c.fillStyle="#b77950";c.beginPath();c.arc(0,-21,13,0,Math.PI*2);c.fill();c.fillStyle="#18212f";c.beginPath();c.arc(0,-25,13,Math.PI,Math.PI*2);c.fill();c.fillStyle="#111827";c.beginPath();c.arc(-4,-21,1.8,0,Math.PI*2);c.arc(4,-21,1.8,0,Math.PI*2);c.fill();c.strokeStyle="#5b2d24";c.lineWidth=1.8;c.beginPath();c.arc(0,-16,4,.15,Math.PI-.15);c.stroke();c.restore();
+    root.TigerStrikeBattlefieldRenderer.drawCivilian(c,{x,y:y+12*scale,face:Math.PI,shirt:color,look:'field'},{scale:scale*1.2,walking:true,phase:run*1.5});
   }
   function drawSoldier(c,x,y,scale=1,run=0,uniform="#3f5c35"){
-    c.save();c.translate(x,y);c.scale(scale,scale);c.lineCap="round";c.strokeStyle="#18212f";c.lineWidth=8;c.beginPath();c.moveTo(-5,22);c.lineTo(-13+run*7,49);c.moveTo(6,22);c.lineTo(14-run*7,49);c.stroke();c.fillStyle=uniform;rounded(c,-18,-12,36,42,8);c.fill();c.fillStyle="#202c20";c.fillRect(-18,9,36,8);c.strokeStyle="#1f2937";c.lineWidth=7;c.beginPath();c.moveTo(-10,0);c.lineTo(-29-run*4,22);c.moveTo(11,1);c.lineTo(30+run*4,18);c.stroke();c.fillStyle="#a87352";c.beginPath();c.arc(0,-26,14,0,Math.PI*2);c.fill();c.fillStyle="#40523a";c.beginPath();c.arc(0,-31,17,Math.PI,Math.PI*2);c.lineTo(17,-27);c.lineTo(-17,-27);c.closePath();c.fill();c.fillStyle="#0f172a";c.beginPath();c.arc(-4,-25,1.8,0,Math.PI*2);c.arc(4,-25,1.8,0,Math.PI*2);c.fill();c.strokeStyle="#5b2d24";c.lineWidth=1.8;c.beginPath();c.moveTo(-3,-19);c.quadraticCurveTo(0,-17,3,-19);c.stroke();c.strokeStyle="#111827";c.lineWidth=6;c.beginPath();c.moveTo(9,4);c.lineTo(39,11);c.stroke();c.restore();
+    root.TigerStrikeBattlefieldRenderer.drawSoldier(c,{x,y:y+11*scale,face:0,eliteAppearance:root.TigerEliteArmory?.appearance()},{scale:scale*1.4,walking:true,phase:run*1.5,showMarker:false,uniformPalette:{body:uniform,light:'#86a287',dark:'#233b37',vest:'#2c4943',helmet:uniform,trim:'#d4d8a7'}});
   }
   function drawTiger(c,x,y,scale=1,step=0,direction=1){
-    c.save();c.translate(x,y);c.scale(scale*(direction<0?-1:1),scale);const leg=Math.sin(step)*7;c.strokeStyle="#e97817";c.lineWidth=12;c.lineCap="round";c.beginPath();c.moveTo(-22,18);c.lineTo(-29+leg,43);c.moveTo(20,18);c.lineTo(28-leg,43);c.stroke();c.fillStyle="#f38b20";c.beginPath();c.ellipse(0,0,53,29,0,0,Math.PI*2);c.fill();c.beginPath();c.arc(48,-10,25,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(35,-29);c.lineTo(41,-48);c.lineTo(54,-31);c.moveTo(53,-31);c.lineTo(67,-47);c.lineTo(70,-23);c.fill();c.strokeStyle="#de7814";c.lineWidth=10;c.beginPath();c.moveTo(-47,-5);c.quadraticCurveTo(-88,-22,-82,17);c.stroke();c.strokeStyle="#1f2937";c.lineWidth=5;[-30,-12,7,25].forEach((stripe)=>{c.beginPath();c.moveTo(stripe,-21);c.lineTo(stripe+7,10);c.stroke();});c.lineWidth=3;c.beginPath();c.moveTo(41,-23);c.lineTo(49,-6);c.moveTo(57,-27);c.lineTo(58,-8);c.stroke();c.fillStyle="#fff7ed";c.beginPath();c.ellipse(61,0,14,10,0,0,Math.PI*2);c.fill();c.fillStyle="#111827";c.beginPath();c.arc(58,-14,3,0,Math.PI*2);c.arc(72,-1,3,0,Math.PI*2);c.fill();c.strokeStyle="#7f1d1d";c.lineWidth=2;c.beginPath();c.moveTo(64,5);c.quadraticCurveTo(70,10,77,5);c.stroke();c.restore();
+    root.TigerStrikeBattlefieldRenderer.drawTiger(c,{id:'intro-tiger',x,y,face:direction<0?Math.PI:0,hp:100,hpMax:100},{scale:scale*1.4,facing:direction,walking:true,phase:step,now:step*130});
   }
   function drawHelicopter(c,x,y,scale=1){
-    c.save();c.translate(x,y);c.scale(scale,scale);c.strokeStyle="#111827";c.lineWidth=5;c.beginPath();c.moveTo(-70,-30);c.lineTo(54,-30);c.moveTo(-8,-29);c.lineTo(-8,-54);c.moveTo(-58,-54);c.lineTo(43,-54);c.stroke();c.fillStyle="#334a3a";c.beginPath();c.ellipse(0,0,58,27,0,0,Math.PI*2);c.fill();c.fillRect(48,-8,75,13);c.fillStyle="#6b8c78";c.beginPath();c.moveTo(118,-8);c.lineTo(142,-30);c.lineTo(136,15);c.closePath();c.fill();c.fillStyle="#93c5fd";c.beginPath();c.ellipse(22,-5,24,15,0,Math.PI,Math.PI*2);c.fill();c.strokeStyle="#1f2937";c.lineWidth=4;c.beginPath();c.moveTo(-30,22);c.lineTo(-38,39);c.lineTo(35,39);c.lineTo(29,23);c.stroke();c.restore();
+    root.TigerStrikeBattlefieldRenderer.drawVehicle(c,{type:'helicopter',x,y},{scale:scale*1.25,now:typeof performance==='object'?performance.now():Date.now(),livery:root.TigerEliteArmory?.appearance().extraction});
   }
   function drawScene(context,elapsed){
     const c=context,w=c.canvas.width,h=c.canvas.height,scene=sceneAt(elapsed),p=sceneProgress(scene,elapsed);c.clearRect(0,0,w,h);
     const sky=c.createLinearGradient(0,0,0,h);sky.addColorStop(0,scene.id==="dawn"?"#f59e72":"#60a5fa");sky.addColorStop(.45,"#bae6fd");sky.addColorStop(.46,"#38a169");sky.addColorStop(1,"#166534");c.fillStyle=sky;c.fillRect(0,0,w,h);
     c.fillStyle="rgba(255,244,194,.86)";c.beginPath();c.arc(130,82,38,0,Math.PI*2);c.fill();
-    c.fillStyle="#246b3e";for(let x=-30;x<w+60;x+=115)c.fillRect(x,265,92,165);
+    root.TigerStrikeBattlefieldRenderer.drawGroundTexture(c,{x:0,y:235,w,h:h-235},{family:'forest'});
+    for(let x=0;x<w;x+=130)root.TigerStrikeBattlefieldRenderer.drawMapTree(c,x,260,.65);
     drawTree(c,85,265,.8);drawTree(c,350,250,1);drawTree(c,850,245,.9);drawHouse(c,220,280,1.05,true);drawHouse(c,748,265,1.1,true);
     c.fillStyle="#475569";c.fillRect(0,360,w,145);c.strokeStyle="#facc15";c.lineWidth=6;c.setLineDash([36,26]);c.beginPath();c.moveTo(0,432);c.lineTo(w,432);c.stroke();c.setLineDash([]);
     c.fillStyle="#315a3c";c.fillRect(0,505,w,35);

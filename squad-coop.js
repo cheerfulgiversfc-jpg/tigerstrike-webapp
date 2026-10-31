@@ -2083,41 +2083,14 @@
   }
 
   function drawConvoyTruck(ctx,x,y,angle=0,color="#2f855a",damaged=false){
-    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
-    ctx.fillStyle="rgba(2,6,23,.32)";ctx.beginPath();ctx.ellipse(0,24,72,16,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle=color;roundRect(ctx,-62,-24,82,48,8);ctx.fill();ctx.strokeStyle="#d1fae5";ctx.lineWidth=3;ctx.stroke();
-    ctx.fillStyle="#334155";roundRect(ctx,20,-20,44,40,8);ctx.fill();ctx.strokeStyle="#cbd5e1";ctx.stroke();
-    ctx.fillStyle="#93c5fd";ctx.fillRect(38,-14,19,14);
-    ctx.fillStyle="#111827";for(const wheelX of [-40,39]){ctx.beginPath();ctx.arc(wheelX,25,10,0,Math.PI*2);ctx.fill();ctx.fillStyle="#94a3b8";ctx.beginPath();ctx.arc(wheelX,25,4,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";}
-    ctx.fillStyle="#facc15";ctx.fillRect(-48,-4,16,7);ctx.fillRect(-23,-4,16,7);ctx.fillRect(2,-4,12,7);
-    if(damaged){ctx.strokeStyle="#fb7185";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(-12,-22);ctx.lineTo(14,18);ctx.moveTo(10,-18);ctx.lineTo(-18,18);ctx.stroke();ctx.fillStyle="rgba(71,85,105,.46)";ctx.beginPath();ctx.arc(-18,-48,18,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(-6,-70,25,0,Math.PI*2);ctx.fill();}
-    window.TigerEliteArmory?.extractionDecal(ctx,squadExtractionAppearance());
-    ctx.restore();
+    window.TigerStrikeBattlefieldRenderer.drawVehicle(ctx,{type:'truck',x,y,angle},{now:Date.now(),color,damaged,scale:1,livery:squadExtractionAppearance()?.extraction});
   }
-
   function squadExtractionAppearance(){const players=state.snapshot?.players||[];return [...players].sort((a,b)=>(Number(b.userId)===Number(state.snapshot?.hostId))-(Number(a.userId)===Number(state.snapshot?.hostId))||Number(a.userId)-Number(b.userId)).find(p=>p.eliteAppearance?.extraction==='extraction')?.eliteAppearance;}
   function drawRescueBoat(ctx,x,y,size=1,departed=false){
-    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
-    ctx.strokeStyle="rgba(186,230,253,.72)";ctx.lineWidth=5;
-    for(const offset of [-38,-18,6]){ctx.beginPath();ctx.moveTo(-92,offset+36);ctx.quadraticCurveTo(-45,offset+24,5,offset+37);ctx.quadraticCurveTo(48,offset+49,98,offset+34);ctx.stroke();}
-    ctx.fillStyle="#e2e8f0";ctx.strokeStyle="#0f172a";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-82,5);ctx.lineTo(82,5);ctx.lineTo(55,43);ctx.lineTo(-58,43);ctx.closePath();ctx.fill();ctx.stroke();
-    ctx.fillStyle="#0284c7";roundRect(ctx,-30,-38,67,43,6);ctx.fill();ctx.strokeStyle="#bae6fd";ctx.stroke();ctx.fillStyle="#7dd3fc";ctx.fillRect(-18,-28,18,14);ctx.fillRect(8,-28,18,14);
-    ctx.strokeStyle="#334155";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(45,-3);ctx.lineTo(45,-50);ctx.stroke();ctx.fillStyle="#facc15";ctx.beginPath();ctx.moveTo(48,-48);ctx.lineTo(80,-36);ctx.lineTo(48,-24);ctx.closePath();ctx.fill();
-    ctx.fillStyle="#0f172a";ctx.beginPath();ctx.arc(-51,16,8,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(56,16,8,0,Math.PI*2);ctx.fill();
-    window.TigerEliteArmory?.extractionDecal(ctx,squadExtractionAppearance());
-    ctx.fillStyle="#e0f2fe";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(departed?"RESCUE BOAT DEPARTING":"RESCUE BOAT READY",0,65);ctx.restore();
+    window.TigerStrikeBattlefieldRenderer.drawVehicle(ctx,{type:'boat',x,y},{now:Date.now(),scale:size,moving:departed,livery:squadExtractionAppearance()?.extraction});
   }
-
   function drawRescueHelicopter(ctx,x,y,size=1){
-    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
-    ctx.fillStyle="rgba(2,6,23,.34)";ctx.beginPath();ctx.ellipse(0,34,86,19,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle="#475569";ctx.strokeStyle="#bae6fd";ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,0,55,31,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-    ctx.fillStyle="#38bdf8";ctx.beginPath();ctx.ellipse(25,-7,20,16,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#e0f2fe";ctx.lineWidth=3;ctx.stroke();
-    ctx.fillStyle="#334155";ctx.fillRect(-88,-7,48,14);ctx.beginPath();ctx.moveTo(-86,-7);ctx.lineTo(-105,-31);ctx.lineTo(-76,-7);ctx.closePath();ctx.fill();
-    ctx.strokeStyle="#e2e8f0";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(-92,-34);ctx.lineTo(-92,27);ctx.moveTo(-117,-5);ctx.lineTo(-67,-5);ctx.stroke();
-    ctx.strokeStyle="#cbd5e1";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(-84,-43);ctx.lineTo(84,-43);ctx.moveTo(0,-47);ctx.lineTo(0,35);ctx.stroke();
-    window.TigerEliteArmory?.extractionDecal(ctx,squadExtractionAppearance());
-    ctx.fillStyle="#0f172a";ctx.fillRect(-40,28,82,7);ctx.fillStyle="#e0f2fe";ctx.font="950 11px system-ui";ctx.textAlign="center";ctx.fillText("MOUNTAIN RESCUE",0,57);ctx.restore();
+    window.TigerStrikeBattlefieldRenderer.drawVehicle(ctx,{type:'helicopter',x,y},{now:Date.now(),scale:size,livery:squadExtractionAppearance()?.extraction});
   }
 
   function drawHighlandPeak(ctx,x,y,size=1){
@@ -2322,13 +2295,8 @@
   }
 
   function drawSquadTransportMovie(progress=0){
-    const canvas=$("squadTransportCanvas");if(!canvas)return;
-    const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,p=clamp(progress,0,1),count=Math.max(1,Math.min(5,(state.snapshot?.capturedIds||[]).length));
-    ctx.clearRect(0,0,w,h);ctx.fillStyle="#155e48";ctx.fillRect(0,0,w,h);ctx.fillStyle="#334155";ctx.fillRect(0,118,w,92);ctx.strokeStyle="#facc15";ctx.lineWidth=4;ctx.setLineDash([24,18]);ctx.beginPath();ctx.moveTo(0,167);ctx.lineTo(w,167);ctx.stroke();ctx.setLineDash([]);
-    const arrive=clamp(p/.25,0,1),depart=clamp((p-.7)/.3,0,1),tx=p<.7?-250+arrive*365:115+depart*540;
-    ctx.save();ctx.translate(tx,0);ctx.fillStyle="#e2e8f0";ctx.fillRect(0,82,220,66);ctx.fillStyle="#15803d";ctx.fillRect(220,96,72,52);ctx.fillStyle="#0f172a";for(const x of [35,180,242,278]){ctx.beginPath();ctx.arc(x,151,13,0,Math.PI*2);ctx.fill();}
-    for(let i=0;i<count;i++){const loaded=clamp((p-(.25+i*.07))/.14,0,1),gx=318+i*37,cx=gx+(22+i*36-gx)*loaded,cy=137+(116-137)*loaded;ctx.strokeStyle="#cbd5e1";ctx.lineWidth=2;ctx.strokeRect(cx,cy-14,29,27);ctx.fillStyle="#d97706";ctx.fillRect(cx+6,cy-3,17,8);}
-    ctx.restore();ctx.fillStyle="#ecfdf5";ctx.font="900 13px system-ui";ctx.textAlign="left";ctx.fillText(p<.25?"Recovery truck arriving…":(p<.7?"Loading live tiger cages…":"Cages secured • departing"),13,24);
+    const canvas=$('squadTransportCanvas');if(!canvas)return;
+    window.TigerShowcaseScene.drawTransfer(canvas.getContext('2d'),{progress,count:(state.snapshot?.capturedIds||[]).length,now:Date.now()});
   }
   function startSquadTransportMovie(){
     if(!(state.snapshot?.capturedIds||[]).length || !$('squadTransportCanvas')) return;

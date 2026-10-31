@@ -3,7 +3,7 @@
 <h1>V14.0 • Mission routes & useful shelters</h1><p>Isolated pilot preview using the actual chapter map, route planner, shelter cover function and route picker. No accounts or live mission. Paths below use a real bridge. Shelters reduce damage; they do not complete rescue objectives.</p>
 <button id="choose">Open Route Picker</button><output id="selection"></output>
 <div class="views"><section><h2>Chapter 1 route overview</h2><canvas id="map" width="960" height="560"></canvas></section><section><h2>Marked shelter cover</h2><canvas id="detail" width="800" height="460"></canvas></section></div>
-<script src="../water-terrain.js?v=5258"></script><script src="../chapter-maps.js?v=5258"></script><script src="../mission-routes.js?v=5258"></script><script src="../tiger-encounters.js?v=5258"></script><script src="../shared-battlefield-renderer.js?v=5258"></script>
+<script src="../water-terrain.js?v=5258"></script><script src="../chapter-maps.js?v=5258"></script><script src="../mission-routes.js?v=5258"></script><script src="../tiger-encounters.js?v=5258"></script><script src="../vehicle-art.js"></script><script src="../shared-battlefield-renderer.js?v=5258"></script>
 <script>
 const map=TigerChapterMaps.forMission(1),api=TigerMissionRoutes,art=TigerStrikeBattlefieldRenderer,from={x:1000,y:1000},to={x:3800,y:2600};let selected='direct';
 const preview=Object.fromEntries(['direct','shelter'].map(choice=>[choice,api.plan({level:1,world:map.world,from,to,selected:choice})]));

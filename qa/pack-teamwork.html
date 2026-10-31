@@ -4,7 +4,7 @@
 <p>Isolated visual check using the actual shared planner, movement envelope and artwork. Fixed test actors; no accounts or live missions. Both viewpoints use the same position calculation. This is a short circling step, not a full pathfinding demonstration.</p>
 <button id="replay">Replay movement</button><button id="midpoint">Show mid-step</button><label>Mission time <input id="time" type="range" min="0" max="3200" value="0" step="10"></label><output id="phase"></output>
 <br><canvas id="preview" width="1000" height="620"></canvas>
-<script src="../water-terrain.js"></script><script src="../chapter-maps.js"></script><script src="../tiger-encounters.js"></script><script src="../shared-battlefield-renderer.js"></script>
+<script src="../water-terrain.js"></script><script src="../chapter-maps.js"></script><script src="../tiger-encounters.js"></script><script src="../vehicle-art.js"></script><script src="../shared-battlefield-renderer.js"></script>
 <script>
 const canvas=document.getElementById('preview'),ctx=canvas.getContext('2d'),slider=document.getElementById('time');
 const player={userId:1,x:360,y:320},tigers=[{id:'a',type:'Standard',hp:100,hpMax:100,x:560,y:320,baseX:520,baseY:240},{id:'b',type:'Scout',hp:100,hpMax:100,x:600,y:450,baseX:600,baseY:450}],world={width:1000,height:760};

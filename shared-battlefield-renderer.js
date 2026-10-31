@@ -1,8 +1,8 @@
 (function(root,factory){
-  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps,typeof module==='object'&&module.exports?require('./tiger-encounters'):root.TigerEncounters,typeof module==='object'&&module.exports?require('./mission-routes'):root.TigerMissionRoutes,typeof module==='object'&&module.exports?require('./field-operations'):root.TigerFieldOperations);
+  const api=factory(typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps,typeof module==='object'&&module.exports?require('./tiger-encounters'):root.TigerEncounters,typeof module==='object'&&module.exports?require('./mission-routes'):root.TigerMissionRoutes,typeof module==='object'&&module.exports?require('./field-operations'):root.TigerFieldOperations,typeof module==='object'&&module.exports?require('./vehicle-art'):root.TigerVehicleArt);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root)root.TigerStrikeBattlefieldRenderer=api;
-})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain,chapterMaps,encounters,routes,fields){
+})(typeof globalThis!=="undefined"?globalThis:this,function(waterTerrain,chapterMaps,encounters,routes,fields,vehicleArt){
   "use strict";
 
   const VERSION="10.22";
@@ -695,6 +695,19 @@
     return {family};
   }
 
+  function drawVehicle(ctx,entity={},options={}){return vehicleArt.draw(ctx,entity,options);}
+  function drawCaptureCage(ctx,x,y,scale=1,options={}){
+    ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
+    ellipse(ctx,3,25,41,8,'rgba(3,16,22,.3)');
+    ctx.fillStyle='#334f55';rounded(ctx,-37,16,76,9,2);ctx.fill();
+    drawTiger(ctx,{x:0,y:3,face:0,hp:1,hpMax:100,captured:true,id:'transport-cage'},{now:options.now,scale:.53,phase:0,showState:false});
+    ctx.strokeStyle='#bad0c8';ctx.lineWidth=2;ctx.strokeRect(-38,-27,76,49);
+    for(let x=-30;x<38;x+=10)line(ctx,'#91b0b0',2,[[x,-25],[x,21]]);
+    line(ctx,'#d1ddd1',2,[[-38,-8],[38,-8]]);line(ctx,'#728e90',3,[[-38,-28],[38,-28]]);
+    ctx.fillStyle='#e3cf92';rounded(ctx,28,-5,7,9,1);ctx.fill();
+    ctx.fillStyle='#dfebdb';rounded(ctx,-22,-34,44,9,1);ctx.fill();ctx.fillStyle='#285448';ctx.font='bold 6px system-ui';ctx.textAlign='center';ctx.fillText('LIVE • SECURED',0,-27);
+    ctx.restore();
+  }
   function drawBattlefieldFinish(ctx,view={},options={}){
     const x=Number(view.x)||0,y=Number(view.y)||0,w=Math.max(1,Number(view.w)||1),h=Math.max(1,Number(view.h)||1),now=Number(options.now)||0;
     ctx.save();
@@ -703,5 +716,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });

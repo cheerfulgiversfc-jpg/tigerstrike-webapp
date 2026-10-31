@@ -4,7 +4,7 @@
 <p>Isolated visual check using the actual shared investigation movement, tiger artwork and Smoke effect. Fixed test actors, with no accounts or live mission. The tiger follows a short last-shot investigation, not endless pursuit.</p>
 <button id="watch">Investigate sound</button><button id="smoke">Deploy Smoke</button><button id="clear">Show return complete</button><output id="status"></output>
 <br><canvas id="preview" width="1000" height="620"></canvas>
-<script src="../water-terrain.js"></script><script src="../chapter-maps.js"></script><script src="../tiger-encounters.js"></script><script src="../rescue-tools.js"></script><script src="../shared-battlefield-renderer.js"></script>
+<script src="../water-terrain.js"></script><script src="../chapter-maps.js"></script><script src="../tiger-encounters.js"></script><script src="../rescue-tools.js"></script><script src="../vehicle-art.js"></script><script src="../shared-battlefield-renderer.js"></script>
 <script>
 const ctx=document.getElementById('preview').getContext('2d'),world={width:1000,height:760},tiger={id:'a',type:'Standard',x:650,y:320,hp:100,hpMax:100},shot={x:430,y:320,at:0,source:'gunshot'},soldier={x:340,y:390};
 const plan=TigerEncounters.investigationPlans([tiger],[shot],0,{world})[0],art=TigerStrikeBattlefieldRenderer;

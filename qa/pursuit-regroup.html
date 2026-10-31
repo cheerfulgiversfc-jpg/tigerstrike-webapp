@@ -2,7 +2,7 @@
 <style>body{margin:20px;background:#0a1923;color:#e9f4ec;font:16px system-ui}p{max-width:1000px}button{padding:10px;margin:5px;border:1px solid #8ab4a0;border-radius:8px;background:#204d40;color:white}canvas{max-width:100%;border:1px solid #638879;border-radius:12px}</style>
 <h1>V13.9 • Pursuit, escape & regroup</h1><p>Isolated visual simulation of the actual shared state machine and artwork. No accounts or live mission. Chases have an eight-second deadline; Smoke breaks contact, followed by search and a return home.</p>
 <button id="chase">Show pursuit</button><button id="smoke">Show Smoke escape</button><button id="regroup">Show regroup</button><button id="rest">Show return complete</button><output id="phase"></output><br><canvas id="preview" width="1000" height="620"></canvas>
-<script src="../water-terrain.js?v=5257"></script><script src="../chapter-maps.js?v=5257"></script><script src="../tiger-encounters.js?v=5257"></script><script src="../tiger-pursuit.js?v=5257"></script><script src="../rescue-tools.js?v=5257"></script><script src="../shared-battlefield-renderer.js?v=5257"></script>
+<script src="../water-terrain.js?v=5257"></script><script src="../chapter-maps.js?v=5257"></script><script src="../tiger-encounters.js?v=5257"></script><script src="../tiger-pursuit.js?v=5257"></script><script src="../rescue-tools.js?v=5257"></script><script src="../vehicle-art.js"></script><script src="../shared-battlefield-renderer.js?v=5257"></script>
 <script>
 const ctx=document.getElementById('preview').getContext('2d'),art=TigerStrikeBattlefieldRenderer,player={userId:1,x:760,y:350};
 function show(end,smoke=false){let tiger={id:'a',type:'Standard',x:520,y:350,hp:100,hpMax:100},state=null;

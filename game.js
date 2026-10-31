@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5270";
+const TS_BUILD = "5271";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -28895,36 +28895,10 @@ function renderMissionCinematicOutroCard(summary={}){
 let __wildlifeTransportFrame = 0;
 let __wildlifeTransportScene = null;
 function drawWildlifeTransportFrame(progress=0){
-  const canvas = document.getElementById("wildlifeTransportCanvas");
-  if(!canvas || !__wildlifeTransportScene) return;
-  const c = canvas.getContext("2d");
-  const w = canvas.width, h = canvas.height;
-  const p = clamp(Number(progress || 0), 0, 1);
-  c.clearRect(0,0,w,h);
-  const sky = c.createLinearGradient(0,0,0,h);
-  sky.addColorStop(0,"#164e63");sky.addColorStop(.55,"#166534");sky.addColorStop(1,"#14532d");c.fillStyle=sky;c.fillRect(0,0,w,h);
-  c.fillStyle="#166534";c.fillRect(0,95,w,82);
-  for(let x=24;x<w;x+=72){c.fillStyle="#14532d";c.fillRect(x,66,8,54);c.fillStyle="#22c55e";c.beginPath();c.arc(x+4,61,23,0,Math.PI*2);c.fill();}
-  c.fillStyle="#334155";c.fillRect(0,177,w,123);c.strokeStyle="#facc15";c.lineWidth=5;c.setLineDash([30,22]);c.beginPath();c.moveTo(0,244);c.lineTo(w,244);c.stroke();c.setLineDash([]);
-  const arrive = clamp(p/.24,0,1), depart = clamp((p-.68)/.32,0,1);
-  const truckX = p < .68 ? (-330 + arrive*510) : (180 + depart*690);
-  c.save();c.translate(truckX,0);
-  c.fillStyle="#e2e8f0";c.fillRect(0,139,290,87);c.strokeStyle="#64748b";c.lineWidth=4;c.strokeRect(0,139,290,87);
-  c.fillStyle="#15803d";c.fillRect(290,158,92,68);c.fillStyle="#86efac";c.fillRect(307,168,48,24);c.fillStyle="#dcfce7";c.font="900 14px system-ui";c.textAlign="center";c.fillText("WILDLIFE",145,163);c.fillText("RECOVERY",145,181);
-  c.fillStyle="#0f172a";for(const wx of [45,245,320,362]){c.beginPath();c.arc(wx,228,18,0,Math.PI*2);c.fill();c.fillStyle="#94a3b8";c.beginPath();c.arc(wx,228,7,0,Math.PI*2);c.fill();c.fillStyle="#0f172a";}
-  const count = Math.max(1,Math.min(6,Number(__wildlifeTransportScene.count||1)));
-  for(let i=0;i<count;i++){
-    const loadStart=.24+i*(.40/Math.max(1,count));
-    const loaded=clamp((p-loadStart)/.12,0,1);
-    const groundX=410+i*48, targetX=28+i*43;
-    const cx=groundX+(targetX-groundX)*loaded, cy=208+(185-208)*loaded;
-    c.fillStyle="rgba(180,83,9,.95)";c.beginPath();c.ellipse(cx+16,cy,15,7,0,0,Math.PI*2);c.fill();
-    c.strokeStyle="#cbd5e1";c.lineWidth=2;c.strokeRect(cx,cy-16,34,30);for(let bx=6;bx<34;bx+=7){c.beginPath();c.moveTo(cx+bx,cy-16);c.lineTo(cx+bx,cy+14);c.stroke();}
-  }
-  c.restore();
-  c.fillStyle="#dbeafe";c.font="900 16px system-ui";c.textAlign="left";c.fillText(p<.24?"Transport arriving…":(p<.68?"Officials loading secured cages…":"Cages secured • truck departing"),18,28);
-  c.fillStyle="#bbf7d0";c.font="800 13px system-ui";c.fillText(`${__wildlifeTransportScene.count} live tiger${__wildlifeTransportScene.count===1?"":"s"} transferred without blood scent`,18,50);
+  const canvas=document.getElementById('wildlifeTransportCanvas');if(!canvas||!__wildlifeTransportScene)return;
+  window.TigerShowcaseScene.drawTransfer(canvas.getContext('2d'),{progress,count:__wildlifeTransportScene.count,now:Date.now()});
 }
+
 function playWildlifeTransportCinematic(){
   if(!__wildlifeTransportScene) return;
   cancelAnimationFrame(__wildlifeTransportFrame);
@@ -51981,113 +51955,9 @@ function drawExtractionVehicle(ex, now=Date.now()){
   ctx.save();
   drawSoftEllipse(x, y + 18, ex.key === "helicopter" ? 42 : 48, ex.key === "boat" ? 14 : 18, "rgba(0,0,0,.30)", 1 - departPct * 0.35);
   ctx.translate(x, y);
-  ctx.rotate(angle);
   ctx.scale(vehicleScale, vehicleScale);
   ctx.globalAlpha = 0.98 - (departPct * 0.34);
-  if(ex.key === "boat"){
-    ctx.save();
-    ctx.globalAlpha = 0.65;
-    ctx.strokeStyle = "rgba(186,230,253,.55)";
-    ctx.lineWidth = 2;
-    for(let i=0;i<4;i++){
-      ctx.beginPath();
-      ctx.moveTo(-35 - i*13, -13 + i*5);
-      ctx.bezierCurveTo(-51 - i*10, -17 + i*3, -60 - i*9, -12 + i*4, -72 - i*8, -14 + i*3);
-      ctx.stroke();
-    }
-    ctx.restore();
-    ctx.fillStyle = "rgba(15,48,78,.98)";
-    ctx.beginPath();
-    ctx.moveTo(30,0); ctx.lineTo(14,13); ctx.lineTo(-26,11); ctx.lineTo(-32,0); ctx.lineTo(-26,-11); ctx.lineTo(14,-13); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = "rgba(226,232,240,.72)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = "rgba(5,15,28,.35)";
-    ctx.beginPath(); ctx.ellipse(-6, 0, 21, 7, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(226,232,240,.96)";
-    roundedRectFill(-10,-10,20,20,4);
-    ctx.fillStyle = "rgba(34,211,238,.86)";
-    roundedRectFill(-5,-7,10,6,2);
-    drawVehicleBeacon(11, -10, "rgba(96,165,250,.96)", now);
-    ctx.strokeStyle = "rgba(125,211,252,.65)";
-    ctx.lineWidth = 2;
-    for(let i=0;i<3;i++){
-      ctx.beginPath(); ctx.moveTo(-35 - i*10,-12+i*4); ctx.lineTo(-48-i*10,-12+i*4); ctx.stroke();
-    }
-  }else if(ex.key === "helicopter"){
-    ctx.save();
-    ctx.globalAlpha = 0.22 + Math.sin(now / 150) * 0.04;
-    ctx.strokeStyle = "rgba(226,232,240,.60)";
-    ctx.lineWidth = 2;
-    for(let i=0;i<3;i++){
-      ctx.beginPath();
-      ctx.ellipse(0, 22, 44 + i * 16 + departPct * 30, 10 + i * 5, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-    ctx.fillStyle = "rgba(42,78,60,.98)";
-    ctx.beginPath(); ctx.ellipse(0,0,25,13,0,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle = "rgba(15,23,42,.85)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = "rgba(125,211,252,.72)";
-    ctx.beginPath(); ctx.ellipse(8,-3,9,6,0,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle = "rgba(226,232,240,.88)";
-    ctx.lineWidth = 3;
-    const rotor = now / 90;
-    ctx.beginPath(); ctx.moveTo(Math.cos(rotor)*36,Math.sin(rotor)*8); ctx.lineTo(-Math.cos(rotor)*36,-Math.sin(rotor)*8); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(-43,0); ctx.lineTo(-49,-8); ctx.stroke();
-    ctx.strokeStyle = "rgba(15,23,42,.9)";
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-16,15); ctx.lineTo(17,15); ctx.moveTo(-12,11); ctx.lineTo(-16,15); ctx.moveTo(13,11); ctx.lineTo(17,15); ctx.stroke();
-    drawVehicleBeacon(-2, -13, "rgba(248,113,113,.96)", now);
-  }else{
-    ctx.save();
-    ctx.globalAlpha = 0.52;
-    ctx.fillStyle = "rgba(251,191,36,.18)";
-    ctx.beginPath();
-    ctx.moveTo(28, -7);
-    ctx.lineTo(70, -26);
-    ctx.lineTo(70, 26);
-    ctx.lineTo(28, 7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    if(ex.key === "plane"){
-      ctx.fillStyle = "rgba(210,213,225,.96)";
-      ctx.beginPath();
-      ctx.moveTo(46, 0); ctx.lineTo(4, 12); ctx.lineTo(-42, 9); ctx.lineTo(-52, 0); ctx.lineTo(-42, -9); ctx.lineTo(4, -12); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "rgba(148,163,184,.88)";
-      ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(-34,-25); ctx.lineTo(-18,0); ctx.lineTo(-34,25); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "rgba(96,165,250,.74)";
-      roundedRectFill(12,-6,14,5,2);
-      drawVehicleBeacon(-18, -14, "rgba(196,181,253,.96)", now);
-    }else if(ex.key === "bus"){
-      roundedRectFill(-44,-16,88,32,9, "rgba(232,176,36,.98)", "rgba(39,30,12,.92)");
-      ctx.fillStyle = "rgba(219,234,254,.72)";
-      for(let i=0;i<5;i++) roundedRectFill(-32 + i*13,-12,10,8,3);
-      ctx.fillStyle = "rgba(15,23,42,.96)";
-      ctx.beginPath(); ctx.arc(-28,17,7,0,Math.PI*2); ctx.arc(28,17,7,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = "rgba(16,185,129,.88)";
-      roundedRectFill(-6,-10,12,22,3);
-      drawVehicleBeacon(38, -13, "rgba(248,113,113,.96)", now);
-    }else{
-      const suv = ex.key === "suv" || ex.key === "street" || ex.key === "safe_hold";
-      ctx.fillStyle = suv ? "rgba(39,88,67,.98)" : "rgba(92,69,42,.98)";
-      roundedRectFill(suv ? -33 : -30, suv ? -15 : -14, suv ? 66 : 60, suv ? 30 : 28, 8);
-      ctx.strokeStyle = "rgba(226,232,240,.34)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(suv ? -27 : -25, -10, suv ? 54 : 50, 20);
-      ctx.fillStyle = "rgba(203,213,225,.82)";
-      roundedRectFill(8,-10,16,11,3);
-      ctx.fillStyle = "rgba(15,23,42,.96)";
-      ctx.beginPath(); ctx.arc(-18,15,7,0,Math.PI*2); ctx.arc(18,15,7,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = suv ? "rgba(52,211,153,.94)" : "rgba(74,222,128,.94)";
-      roundedRectFill(-20,-8,19,15,3);
-      drawVehicleBeacon(-24, -12, "rgba(251,191,36,.96)", now);
-      drawVehicleBeacon(25, -12, "rgba(248,113,113,.96)", now + 180);
-    }
-  }
+  window.TigerStrikeBattlefieldRenderer.drawVehicle(ctx,{type:ex.key,x:0,y:0,angle},{now,scale:.62,shadow:false,moving:ex.departing,livery:window.TigerEliteArmory?.appearance().extraction});
   if(ex.departing){
     const departedPassengers = Math.min(8, Math.max(0, Math.floor(Number(ex.boardedCount || 0))));
     for(let i=0;i<departedPassengers;i++){
@@ -52125,8 +51995,6 @@ function drawExtractionVehicle(ex, now=Date.now()){
     ctx.lineWidth = 1.4;
     ctx.stroke();
   }
-  window.TigerEliteArmory?.extractionDecal(ctx,window.TigerEliteArmory.appearance());
-  ctx.rotate(-angle);
   ctx.globalAlpha = 0.96;
   ctx.fillStyle = "rgba(5,12,20,.88)";
   roundedRectFill(-72,-50,144,22,9);
