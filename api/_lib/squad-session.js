@@ -1,3 +1,4 @@
+const eliteStore = require('./elite-store');
 const crypto = require("crypto");
 const { getState, setState, setStateIfAbsent } = require("./metrics-store");
 const ammoRules = require("../../ammo-modes");
@@ -2540,7 +2541,7 @@ function normalizeSession(raw){
   const rawPausedBy = raw.pausedBy && typeof raw.pausedBy === "object" ? raw.pausedBy : {};
   for(const memberId of memberIds){
     const reason = cleanText(rawPausedBy[String(memberId)] || rawPausedBy[memberId], 20).toLowerCase();
-    if(reason) pausedBy[String(memberId)] = ["inventory","controls"].includes(reason) ? reason : "shop";
+    if(reason) pausedBy[String(memberId)] = ["inventory","controls","elite"].includes(reason) ? reason : "shop";
   }
   const activePause = raw.status === "active" && Object.keys(pausedBy).length > 0;
   const requestedStoryMissionLevel = clamp(Math.floor(Number(raw.storyMissionLevel || 0)), 0, 100);
@@ -3314,6 +3315,7 @@ async function buildSnapshot(session, viewerId){
   const profileIds=[...new Set([userIdOf(viewerId),session.hostId,...players.map(player=>player.userId)])];
   const profiles=new Map(await Promise.all(profileIds.map(async id=>[id,await readCoopProfile(id)])));
   const viewerProfile=profiles.get(userIdOf(viewerId)),leaderProfile=profiles.get(session.hostId);
+  const eliteIdentities=new Map(await Promise.all(players.map(async p=>[p.userId,await eliteStore.visual(p.userId)])));
   const masteryIdentities=new Map(players.map(player=>[player.userId,masteryRewards.identity(profiles.get(player.userId).missionDebriefs,'coop')]));
   const leaderSanctuaryState = sanctuarySystem.syncLegacyCaptures(leaderProfile.sanctuary, leaderProfile.stats.captures);
   const leaderSanctuarySummary = sanctuarySystem.collectionSummary(leaderSanctuaryState);
@@ -3424,7 +3426,7 @@ async function buildSnapshot(session, viewerId){
     },
     gearCatalog:COOP_GEAR_CATALOG,
     extractionReadyIds:derived.extractionReadyIds,
-    players:players.map((p)=>({ ...p, masteryIdentity:masteryIdentities.get(p.userId), online:at - p.lastSeenAt <= 15000 })),
+    players:players.map((p)=>({ ...p, eliteAppearance:eliteIdentities.get(p.userId), masteryIdentity:masteryIdentities.get(p.userId), online:at - p.lastSeenAt <= 15000 })),
   };
 }
 
@@ -3706,7 +3708,7 @@ async function applyAction(session, user, action, payload={}){
     if(action === "pause"){
       if(!sessionPaused(session)) session.pausedAt = now;
       const reason=cleanText(payload.reason,20).toLowerCase();
-      session.pausedBy[String(uid)] = ["inventory","controls"].includes(reason)?reason:"shop";
+      session.pausedBy[String(uid)] = ["inventory","controls","elite"].includes(reason)?reason:"shop";
       player.lastSeenAt = now;
       await writePlayer(session.code, player);
       return writeSession(session);

@@ -298,6 +298,7 @@
       <button type="button" class="squadBtn" data-squad-command="inventory">🎒 Inventory</button>
       <button type="button" class="squadBtn" data-squad-command="combat-comfort">Combat Comfort</button>
       <button type="button" class="squadBtn" data-squad-command="smooth-play">Graphics</button>
+      <button type="button" class="squadBtn" data-squad-command="elite-armory">Elite Armory</button>
       <button type="button" class="squadBtn" data-squad-command="arrange-controls">Arrange Controls</button>
       ${state.snapshot?.routeVersion===1&&sharedStoryActive()&&window.TigerMissionRoutes?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="mission-route">Mission Route</button>':''}
       ${active&&state.snapshot?.fieldVersion===1&&sharedStoryActive()&&window.TigerFieldOperations?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="field-actions">Field Actions</button>':''}
@@ -1102,7 +1103,7 @@
   function pauseSummary(){
     const pausedBy = state.snapshot?.pausedBy || [];
     if(!pausedBy.length) return "Squad mission paused for gear changes.";
-    const labels = pausedBy.map((row)=>`${Number(row.userId) === viewerId() ? "You" : row.name} opened ${row.reason === "controls" ? "Arrange Controls" : row.reason === "inventory" ? "Inventory" : "the Shop"}`);
+    const labels = pausedBy.map((row)=>`${Number(row.userId) === viewerId() ? "You" : row.name} opened ${row.reason === "elite" ? "Elite Armory" : row.reason === "controls" ? "Arrange Controls" : row.reason === "inventory" ? "Inventory" : "the Shop"}`);
     return `⏸️ ${labels.join(" • ")}. The mission resumes after every open gear or control screen is closed.`;
   }
 
@@ -1256,6 +1257,7 @@
       'escort-recover':()=>escortCommand('escort-recover'),
       'radio-locate':()=>{ radioLocateUntil=Date.now()+7000;updateFieldRadio(); },
       'radio-mute':()=>{ radioMuted=!radioMuted;try{localStorage.setItem('ts_field_radio_muted',radioMuted?'1':'0');}catch(e){}updateFieldRadio(); },
+      'elite-armory':async()=>{clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'elite'});window.TigerEliteArmory?.open({onEquip:async()=>{},onClose:()=>{if(active&&state.snapshot?.status==='active')api('resume').catch(e=>setMessage(e.message,true));}});},
       'arrange-controls':async()=>{clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'controls'});window.TigerTouchLayout?.open({mode:'coop',onClose:()=>{if(active&&state.snapshot?.status==='active')api('resume').catch(error=>setMessage(error.message,true));}});},
       'controls-layout':()=>{window.TigerBattlefieldAwareness?.toggleLayout();window.TigerTouchLayout?.refresh();},
       action:()=>action(actionName),
@@ -2089,9 +2091,11 @@
     ctx.fillStyle="#111827";for(const wheelX of [-40,39]){ctx.beginPath();ctx.arc(wheelX,25,10,0,Math.PI*2);ctx.fill();ctx.fillStyle="#94a3b8";ctx.beginPath();ctx.arc(wheelX,25,4,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";}
     ctx.fillStyle="#facc15";ctx.fillRect(-48,-4,16,7);ctx.fillRect(-23,-4,16,7);ctx.fillRect(2,-4,12,7);
     if(damaged){ctx.strokeStyle="#fb7185";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(-12,-22);ctx.lineTo(14,18);ctx.moveTo(10,-18);ctx.lineTo(-18,18);ctx.stroke();ctx.fillStyle="rgba(71,85,105,.46)";ctx.beginPath();ctx.arc(-18,-48,18,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(-6,-70,25,0,Math.PI*2);ctx.fill();}
+    window.TigerEliteArmory?.extractionDecal(ctx,squadExtractionAppearance());
     ctx.restore();
   }
 
+  function squadExtractionAppearance(){const players=state.snapshot?.players||[];return [...players].sort((a,b)=>(Number(b.userId)===Number(state.snapshot?.hostId))-(Number(a.userId)===Number(state.snapshot?.hostId))||Number(a.userId)-Number(b.userId)).find(p=>p.eliteAppearance?.extraction==='extraction')?.eliteAppearance;}
   function drawRescueBoat(ctx,x,y,size=1,departed=false){
     ctx.save();ctx.translate(x,y);ctx.scale(size,size);
     ctx.strokeStyle="rgba(186,230,253,.72)";ctx.lineWidth=5;
@@ -2100,6 +2104,7 @@
     ctx.fillStyle="#0284c7";roundRect(ctx,-30,-38,67,43,6);ctx.fill();ctx.strokeStyle="#bae6fd";ctx.stroke();ctx.fillStyle="#7dd3fc";ctx.fillRect(-18,-28,18,14);ctx.fillRect(8,-28,18,14);
     ctx.strokeStyle="#334155";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(45,-3);ctx.lineTo(45,-50);ctx.stroke();ctx.fillStyle="#facc15";ctx.beginPath();ctx.moveTo(48,-48);ctx.lineTo(80,-36);ctx.lineTo(48,-24);ctx.closePath();ctx.fill();
     ctx.fillStyle="#0f172a";ctx.beginPath();ctx.arc(-51,16,8,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(56,16,8,0,Math.PI*2);ctx.fill();
+    window.TigerEliteArmory?.extractionDecal(ctx,squadExtractionAppearance());
     ctx.fillStyle="#e0f2fe";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(departed?"RESCUE BOAT DEPARTING":"RESCUE BOAT READY",0,65);ctx.restore();
   }
 
@@ -2111,6 +2116,7 @@
     ctx.fillStyle="#334155";ctx.fillRect(-88,-7,48,14);ctx.beginPath();ctx.moveTo(-86,-7);ctx.lineTo(-105,-31);ctx.lineTo(-76,-7);ctx.closePath();ctx.fill();
     ctx.strokeStyle="#e2e8f0";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(-92,-34);ctx.lineTo(-92,27);ctx.moveTo(-117,-5);ctx.lineTo(-67,-5);ctx.stroke();
     ctx.strokeStyle="#cbd5e1";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(-84,-43);ctx.lineTo(84,-43);ctx.moveTo(0,-47);ctx.lineTo(0,35);ctx.stroke();
+    window.TigerEliteArmory?.extractionDecal(ctx,squadExtractionAppearance());
     ctx.fillStyle="#0f172a";ctx.fillRect(-40,28,82,7);ctx.fillStyle="#e0f2fe";ctx.font="950 11px system-ui";ctx.textAlign="center";ctx.fillText("MOUNTAIN RESCUE",0,57);ctx.restore();
   }
 
@@ -2333,7 +2339,7 @@
   function skipSquadTransportMovie(){cancelAnimationFrame(state.transportFrame);drawSquadTransportMovie(1);setMessage("Wildlife transport movie skipped. Every cage was safely loaded.");}
 
   function drawStorySoldier(ctx,p,source,draw,mine){
-    const cloth=window.TigerMasteryRewards?.uniformPalette(p.masteryIdentity?.uniform?.id);
+    const cloth=window.TigerEliteCatalog?.palettes[p.eliteAppearance?.soldier]||window.TigerMasteryRewards?.uniformPalette(p.masteryIdentity?.uniform?.id);
     const impactPose=combatPresentation?.pose(String(p.userId),Date.now());
     const aimNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
     const recentShot=(p.combatEvents||[]).filter(e=>!e.captured&&aimNow-Number(e.at)>=0&&aimNow-Number(e.at)<8000).at(-1);
@@ -2346,7 +2352,7 @@
       const renderNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
       const shotAge=renderNow-Number(p.lastAttackAt||0);
       const shotKick=impactPose?.kick??(shotAge>=0&&shotAge<140?Math.sin(shotAge/140*Math.PI):0);
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow,reaction:reactionPresentation?.pose('soldier',String(p.userId),Date.now(),window.TigerCombatFeel?.settings())||0});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,eliteAppearance:{...p.eliteAppearance,weapon:p.eliteAppearance?.weapon==='guardian'&&p.ammoMode!=='rubber'?'':p.eliteAppearance?.weapon},x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow,reaction:reactionPresentation?.pose('soldier',String(p.userId),Date.now(),window.TigerCombatFeel?.settings())||0});
       const recovery=respawnSeconds(p),downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=drawn.accent;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,drawn.labelY);
       drawMasteryIdentity(ctx,p,draw.x,drawn.labelY-16);
       ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-28,drawn.barY,56,8,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-27,drawn.barY+1,54*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),6,3);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,drawn.barY+22);
@@ -3131,7 +3137,7 @@
   window.addEventListener('mission-route-open',()=>{clearPresentationInput();if(state.open&&state.code)sync(true).catch(()=>{});});
   window.addEventListener('blur',clearPresentationInput);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPresentationInput();});
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });

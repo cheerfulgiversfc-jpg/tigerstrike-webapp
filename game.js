@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5269";
+const TS_BUILD = "5270";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -7708,7 +7708,7 @@ function seasonSoldierPalette(state=S){
   const skin = SEASON_PASS_SKINS[skinId] || SEASON_PASS_SKINS.SKIN_FIELD_STANDARD;
   const base=skin.palette || SEASON_PASS_SKINS.SKIN_FIELD_STANDARD.palette;
   const wardrobe=window.TigerMasteryRewards;
-  const uniform=wardrobe?.uniformPalette(wardrobe.identity(state?.missionDebriefs,'solo').uniform?.id);
+  const uniform=window.TigerEliteCatalog?.palettes[window.TigerEliteArmory?.appearance().soldier]||wardrobe?.uniformPalette(wardrobe.identity(state?.missionDebriefs,'solo').uniform?.id);
   return uniform?{...base,pants:uniform.body,armorOuter:uniform.body,armorInner:uniform.vest,arm:uniform.body,shoulder:uniform.dark,helmet:uniform.helmet,trim:uniform.trim,masteryUniform:uniform}:base;
 }
 function grantSeasonPassPoints(amount, source=""){
@@ -37478,7 +37478,7 @@ function renderShopList(){
       </div>`
       : "";
 
-    list.innerHTML = offersHtml + pendingHtml;
+    list.innerHTML = `<div class="item"><div><div class="itemName">Elite Armory — permanent equipment</div><div class="itemDesc">Midnight Ranger ⭐250 • Guardian Rubber Carbine ⭐300 • Custom Extraction ⭐350 • Rescue Recruit ⭐75. Free previews and practice.</div></div><button onclick="openEliteArmory()">Open Elite Armory</button></div>` + offersHtml + pendingHtml;
     return;
   }
 
@@ -44122,7 +44122,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
-  if(document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
@@ -44278,7 +44278,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -52125,6 +52125,7 @@ function drawExtractionVehicle(ex, now=Date.now()){
     ctx.lineWidth = 1.4;
     ctx.stroke();
   }
+  window.TigerEliteArmory?.extractionDecal(ctx,window.TigerEliteArmory.appearance());
   ctx.rotate(-angle);
   ctx.globalAlpha = 0.96;
   ctx.fillStyle = "rgba(5,12,20,.88)";
@@ -52837,6 +52838,7 @@ function renderFieldAlert(target=null){
 }
 
 function renderHUD(){
+  if(!window.__TUTORIAL_MODE__)window.TigerEliteArmory?.applyOwnership();
   try{
     if(!window.__TUTORIAL_MODE__){
       const repaired = repairBlankRuntimeState(S, "render-hud");
@@ -59157,7 +59159,7 @@ function drawSoldierModelOnContext(ctx,entity,x,y,opts={}){
   return renderer.drawSoldier(ctx,{...entity,x,y,face:opts.face??entity.face,role:opts.role||entity.role},{
     blend,phase:(Number(entity.step)||0)*3.25+Number(opts.phase||0),
     scale:opts.scale||1,mine:true,showMarker:opts.role==="player",
-    uniformPalette:opts.uniformPalette,shotKick:opts.shotKick,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
+    eliteAppearance:opts.role==='player'?{...window.TigerEliteArmory?.appearance(),weapon:window.TigerEliteArmory?.appearance().weapon==='guardian'&&(S.mode==='Survival'||selectedAmmoModeForWeapon(equippedWeapon())!=='rubber')?'':window.TigerEliteArmory?.appearance().weapon}:undefined,uniformPalette:opts.uniformPalette,shotKick:opts.shotKick,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
     reaction:typeof soloCombatReactions==='function'?soloCombatReactions()?.pose('soldier',opts.role==='player'?'solo':`support:${entity.id}`,Date.now(),combatComfortSettings())||0:0
   });
 }
@@ -66117,3 +66119,5 @@ window.lockNearestTiger = lockNearestTiger;
 window.canAttemptCapture = canAttemptCapture;
 window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;
 window.tutorialAnyCaptureWindowReady = tutorialAnyCaptureWindowReady;
+
+function openEliteArmory(){const paused=S.paused,reason=S.pauseReason;resetTouchStick();setPaused(true,'elite');window.TigerEliteArmory?.open({onClose:()=>setPaused(paused,reason)});}

@@ -1,3 +1,4 @@
+const eliteStore = require('../_lib/elite-store');
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
 const { incrMetric, summarizeMetrics, storageMode } = require("../_lib/metrics-store");
@@ -1492,6 +1493,7 @@ async function handleCommand(botToken, update, source){
     case "reportbug":
     case "report_bug":
     case "feedback":
+    case "paysupport":
     case "support":
     case "contact": {
       await sendMessage(botToken, ctx.chat.id, supportText(), {
@@ -1801,9 +1803,13 @@ async function handlePreCheckout(botToken, update){
   const pre = update?.pre_checkout_query;
   if(!pre) return;
 
+  const elite=String(pre.invoice_payload||'').startsWith('elite:');
+  let accepted=true;
+  if(elite){try{accepted=await eliteStore.validate(Number(pre.from?.id),pre.invoice_payload,pre.total_amount,pre.currency,pre.id);}catch(e){accepted=false;}}
   await telegramBotApi("answerPreCheckoutQuery", {
     pre_checkout_query_id: pre.id,
-    ok: true,
+    ok: accepted,
+    ...(accepted?{}:{error_message:'This purchase is owned, expired or unavailable. Reopen Elite Armory to refresh.'})
   }, botToken);
   await metric("pre_checkout_ok");
 }
@@ -1811,6 +1817,11 @@ async function handlePreCheckout(botToken, update){
 async function handleSuccessfulPayment(botToken, source){
   if(!source?.successful_payment || !source?.chat?.id) return;
 
+  if(String(source.successful_payment.invoice_payload||'').startsWith('elite:')){
+    const uid=Number(source.from?.id);
+    if(!uid||!String(source.successful_payment.invoice_payload).startsWith(`elite:${uid}:`))throw Error('Elite payment owner mismatch.');
+    await eliteStore.grant(uid,source.successful_payment);
+  }
   const amount = Number(source.successful_payment.total_amount || 0);
   const currency = String(source.successful_payment.currency || "");
   const line = currency === "XTR"
@@ -1855,6 +1866,10 @@ module.exports = async function handler(req, res){
     const source = sourceMessageFromUpdate(update);
     const botMeta = await getBotMeta(botToken);
     if(source){
+      if(String(source.refunded_payment?.invoice_payload||'').startsWith('elite:')){
+        const uid=Number(String(source.refunded_payment.invoice_payload).split(':')[1]);
+        if(uid>0)await eliteStore.refund(uid,String(source.refunded_payment.telegram_payment_charge_id||''));
+      }
       await handleSuccessfulPayment(botToken, source);
       const handled = await handleCommand(botToken, update, source);
       if(!handled){

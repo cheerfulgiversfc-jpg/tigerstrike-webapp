@@ -7,11 +7,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V15.0 (Personal Controls &amp; Ammo Clarity)</title>
+  <title>Tiger Strike 🐅 — V15.1 (Elite Armory &amp; Soldier Collection)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5269-touch-controls">
-  <link rel="stylesheet" href="./touch-layout.css?v=5269-touch-controls">
-  <link rel="stylesheet" href="./battlefield-awareness.css?v=5269-touch-controls">
+  <link rel="stylesheet" href="./squad-coop.css?v=5270-elite-armory">
+  <link rel="stylesheet" href="./touch-layout.css?v=5270-elite-armory">
+  <link rel="stylesheet" href="./battlefield-awareness.css?v=5270-elite-armory">
 
   <style>
     :root{
@@ -2572,15 +2572,16 @@
 .missionExperience{display:grid;gap:5px;margin:7px 0}.missionExperience[hidden],.missionExperience [hidden]{display:none!important}.missionExperience button{width:100%;text-align:left;padding:10px 12px;min-height:44px;border:1px solid #4b8f76;border-radius:12px;background:#0b2925;color:#ecfdf5;font-size:12px;line-height:1.4}.missionExperience [role=status]{font-size:12px;padding:7px 10px;border-radius:10px;background:#172033;color:#dbeafe}.missionExperience [data-stage=ready]{background:#14532d;color:#dcfce7}.missionExperience [data-stage=blocked]{background:#541b2c;color:#ffe4e6}
 </style>
 <style>.soloFieldRadio{border:1px solid #467d78;border-radius:12px;padding:8px;font-size:12px;background:#0c2629;color:#e0f2fe}.soloFieldRadio summary{cursor:pointer;min-height:28px;font-weight:850}.radioCommands{display:flex;flex-wrap:wrap;gap:5px}.missionExperience .radioCommands button{width:auto;flex:1 1 110px}.soloFieldRadio [role=status]{margin-top:6px}</style>
+  <link rel="stylesheet" href="./elite-armory.css?v=5270-elite-armory">
 </head>
 
 <body>
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V15.0</span> <span class="tag">Personal Controls &amp; Ammo Clarity</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V15.1</span> <span class="tag">Elite Armory &amp; Soldier Collection</span></div>
       <div class="sub">
-        V15.0 — Personal Controls &amp; Ammo Clarity: Open Arrange Controls in the menu or Co-op gear bar. Drag individual controls in separate Field, Combat and Co-op previews; adjust joystick size, button size, spacing and opacity (20–100%). Larger default joystick and wider spacing adapt to your screen; controls stay inside the playable area with safety gaps. Save on this device or cancel changes. Free placement uses Overlay mode; Docked controls remain below the map. The tutorial includes control-layout practice and button guidance. Touch attacks activate on release with duplicate-click protection, and another finger lifting no longer releases the joystick. Attack shows its ammunition type and available rounds; empty Rubber ammunition gives a Rubber-specific message and cannot automatically switch to a Real-ammunition weapon. Arranging Co-op controls pauses the mission and preserves teammates’ own gear pauses.<br>
+        V15.1 — Elite Armory &amp; Soldier Collection: Open Shop → Premium → Elite Armory, or Elite Armory in the Co-op gear bar. Midnight Ranger costs 250 Stars, Guardian Rubber Carbine 300, Custom Extraction Pack 350, and Rescue Recruit Pack 75. Preview animated artwork and try moving and firing at a practice dummy before buying. Permanent items use verified Telegram-account ownership across modes; ammunition, supplies and progress remain separate. Owned purchases are blocked and Recruit Pack quotes exclude owned components. Guardian unlocks the existing AR Carbine in Solo modes and adds exclusive Rubber artwork; Co-op keeps its own rifle and stats. Survival remains Real-ammo only. Custom Extraction adds a teal-and-gold stripe to supported rescue vehicles using existing extraction behavior; the squad shares one livery, preferring its leader’s selection. Equip purchased artwork for teammates to see. Restore purchases checks server ownership and pending receipts. Controls editing, mission rules, difficulty and music remain as before.<br>
         V13.5 off-screen guidance, live progress and optional Docked Controls remain available.<br>
         V13.4 targeting and attack-warning improvements remain active.<br>
         V13.3 performance and weak-link improvements remain active. Combined physical two-phone weak-connection validation is still outstanding.<br>
@@ -3645,42 +3646,44 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5269-touch-controls"></script>
-  <script src="./engagement-rules.js?v=5269-touch-controls"></script>
-  <script src="./smooth-play.js?v=5269-touch-controls"></script>
-  <script src="./combat-feel.js?v=5269-touch-controls"></script>
-  <script src="./combat-reactions.js?v=5269-touch-controls"></script>
-  <script src="./chapter-maps.js?v=5269-touch-controls"></script>
-  <script src="./mission-routes.js?v=5269-touch-controls"></script>
-  <script src="./field-operations.js?v=5269-touch-controls"></script>
-  <script src="./extraction-geometry.js?v=5269-touch-controls"></script>
-  <script src="./ammo-modes.js?v=5269-touch-controls"></script>
-  <script src="./government-policy.js?v=5269-touch-controls"></script>
-  <script src="./tiger-intelligence.js?v=5269-touch-controls"></script>
-  <script src="./tiger-encounters.js?v=5269-touch-controls"></script>
-  <script src="./tiger-pursuit.js?v=5269-touch-controls"></script>
-  <script src="./living-world.js?v=5269-touch-controls"></script>
-  <script src="./mission-map-truth.js?v=5269-touch-controls"></script>
-  <script src="./post-campaign.js?v=5269-touch-controls"></script>
-  <script src="./sanctuary.js?v=5269-touch-controls"></script>
-  <script src="./player-experience.js?v=5269-touch-controls"></script>
-  <script src="./battlefield-awareness.js?v=5269-touch-controls"></script>
-  <script src="./field-radio.js?v=5269-touch-controls"></script>
-  <script src="./civilian-rescue.js?v=5269-touch-controls"></script>
-  <script src="./rescue-tools.js?v=5269-touch-controls"></script>
-  <script src="./escort-teamwork.js?v=5269-touch-controls"></script>
-  <script src="./chapter-milestones.js?v=5269-touch-controls"></script>
-  <script src="./mission-debrief.js?v=5269-touch-controls"></script>
-  <script src="./mastery-rewards.js?v=5269-touch-controls"></script>
-  <script src="./shared-battlefield-renderer.js?v=5269-touch-controls"></script>
-  <script src="./touch-layout.js?v=5269-touch-controls"></script>
-  <script src="./game.js?v=5269-touch-controls"></script>
-  <script src="./story-cinematics.js?v=5269-touch-controls"></script>
-  <script src="./field-systems.js?v=5269-touch-controls"></script>
-  <script src="./tutorial.js?v=5269-touch-controls"></script>
-  <script src="./squad-motion.js?v=5269-touch-controls"></script>
-  <script src="./squad-coop.js?v=5269-touch-controls"></script>
-  <script src="./extraction-qa.js?v=5269-touch-controls"></script>
+  <script src="./water-terrain.js?v=5270-elite-armory"></script>
+  <script src="./engagement-rules.js?v=5270-elite-armory"></script>
+  <script src="./smooth-play.js?v=5270-elite-armory"></script>
+  <script src="./combat-feel.js?v=5270-elite-armory"></script>
+  <script src="./combat-reactions.js?v=5270-elite-armory"></script>
+  <script src="./chapter-maps.js?v=5270-elite-armory"></script>
+  <script src="./mission-routes.js?v=5270-elite-armory"></script>
+  <script src="./field-operations.js?v=5270-elite-armory"></script>
+  <script src="./extraction-geometry.js?v=5270-elite-armory"></script>
+  <script src="./ammo-modes.js?v=5270-elite-armory"></script>
+  <script src="./government-policy.js?v=5270-elite-armory"></script>
+  <script src="./tiger-intelligence.js?v=5270-elite-armory"></script>
+  <script src="./tiger-encounters.js?v=5270-elite-armory"></script>
+  <script src="./tiger-pursuit.js?v=5270-elite-armory"></script>
+  <script src="./living-world.js?v=5270-elite-armory"></script>
+  <script src="./mission-map-truth.js?v=5270-elite-armory"></script>
+  <script src="./post-campaign.js?v=5270-elite-armory"></script>
+  <script src="./sanctuary.js?v=5270-elite-armory"></script>
+  <script src="./player-experience.js?v=5270-elite-armory"></script>
+  <script src="./battlefield-awareness.js?v=5270-elite-armory"></script>
+  <script src="./field-radio.js?v=5270-elite-armory"></script>
+  <script src="./civilian-rescue.js?v=5270-elite-armory"></script>
+  <script src="./rescue-tools.js?v=5270-elite-armory"></script>
+  <script src="./escort-teamwork.js?v=5270-elite-armory"></script>
+  <script src="./chapter-milestones.js?v=5270-elite-armory"></script>
+  <script src="./mission-debrief.js?v=5270-elite-armory"></script>
+  <script src="./mastery-rewards.js?v=5270-elite-armory"></script>
+  <script src="./shared-battlefield-renderer.js?v=5270-elite-armory"></script>
+  <script src="./touch-layout.js?v=5270-elite-armory"></script>
+  <script src="./elite-catalog.js?v=5270-elite-armory"></script>
+  <script src="./game.js?v=5270-elite-armory"></script>
+  <script src="./story-cinematics.js?v=5270-elite-armory"></script>
+  <script src="./field-systems.js?v=5270-elite-armory"></script>
+  <script src="./tutorial.js?v=5270-elite-armory"></script>
+  <script src="./squad-motion.js?v=5270-elite-armory"></script>
+  <script src="./elite-armory.js?v=5270-elite-armory"></script>
+  <script src="./squad-coop.js?v=5270-elite-armory"></script>
+  <script src="./extraction-qa.js?v=5270-elite-armory"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

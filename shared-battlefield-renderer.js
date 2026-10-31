@@ -107,10 +107,11 @@
     const downed=!!entity.downed,facing=Math.cos(face)<0?-1:1;
     const reaction=downed?0:clamp(options.reaction,0,1);
     const mine=!!options.mine,accent=downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");
-    const role=String(entity.role||"support"),cloth=options.uniformPalette||NPC_UNIFORMS[role]||{};
+    const elite=entity.eliteAppearance||options.eliteAppearance||{};
+    const role=String(entity.role||"support"),cloth=globalThis.TigerEliteCatalog?.palettes[elite.soldier]||options.uniformPalette||NPC_UNIFORMS[role]||{};
     const body=cloth.body||"#456b48",light=cloth.light||"#83a66b",dark=cloth.dark||"#263d32";
     const vest=cloth.vest||"#293e3a",helmet=cloth.helmet||"#567b49",trim=cloth.trim||"#c6d49b";
-    const tailoring=SOLDIER_TAILORING[body]||"ranger";
+    const tailoring=elite.soldier==='midnight'?'night':elite.soldier==='recruit_uniform'?'rescue':SOLDIER_TAILORING[body]||"ranger";
     const stride=Math.sin(phase)*5.4*blend,lift=Math.max(0,Math.cos(phase))*2.5*blend;
     const bob=Math.abs(Math.cos(phase))*1.1*blend,scale=clamp(options.scale??1,.25,4);
     const box=(x,y,w,h,color,r=2)=>{ctx.fillStyle=color;rounded(ctx,x,y,w,h,r);ctx.fill();};
@@ -202,7 +203,12 @@
     box(22,-4,9,3,"#8b999a",1);box(29,-5,3,5,"#1c2a31",1);
     box(5,1,5,7,"#273640",1);box(11,-8,8,3,"#1d2c32",1);box(16,-7,2,1,"#90cbd2",.5);
     box(-9,-4,7,4,dark,1);line(ctx,trim,.7,[[-7,-3],[-3,-3]]);
+    if(elite.weapon==='guardian'||elite.weapon==='recruit_finish'){
+      box(0,-5,21,3,elite.weapon==='guardian'?'#35c4bc':'#e99542',1);line(ctx,'#f1e4b8',1,[[4,-4],[18,-4]]);
+      if(elite.weapon==='guardian'){box(11,-9,10,3,'#8fe5d4',1);box(6,1,4,7,'#2f9f9b',1);}
+    }
     ctx.restore();
+    if(elite.badge==='recruit_badge'){box(-4,-8,8,7,'#f9df86',1);line(ctx,'#296675',1.5,[[-2,-5],[0,-3],[3,-7]]);}
     if(role==="medic"||role==="rescue"){
       box(-5,-11,10,7,"#edf3df",1);box(-1,-10,2,5,"#c9584b",.5);box(-3,-8,6,1.5,"#c9584b",.5);
     }
