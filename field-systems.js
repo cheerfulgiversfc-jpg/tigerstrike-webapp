@@ -112,6 +112,7 @@
     }
     state.secondaryDroneUntil=now+3000;
     state.secondaryDroneTarget={x:pick.target.x,y:pick.target.y,kind:pick.kind,name:pick.kind==='soldier'?'You':(pick.target.name||`Civilian ${pick.target.id}`),healed};
+    root.TigerCharacterVoice?.play('heal',{key:String(state._missionRunId)+now});
     return {ok:true,message:`Med Drone healed ${state.secondaryDroneTarget.name} +${healed} HP.`};
   }
   function useFlare(state,now){
@@ -209,9 +210,8 @@
       root.TigerRescueTools?.drawEffect(context,{kind:'flare',until:state.secondaryFlareUntil,origin:state.me,target:root.fieldNextObjective?.()||state.secondaryFlareTarget,extraction:state.evacZone},now);
     }
     if(now<Number(state.secondaryDroneUntil||0)){
-      const target=state.secondaryDroneTarget||state.me;const x=Number(target.x??state.me.x)+Math.cos(now/180)*28;const y=Number(target.y??state.me.y)-38+Math.sin(now/160)*5;
-      context.font="24px system-ui";context.textAlign="center";context.fillText("🚑",x,y);context.strokeStyle="rgba(74,222,128,.8)";context.beginPath();context.arc(Number(target.x||state.me.x),Number(target.y||state.me.y),24,0,Math.PI*2);context.stroke();
-      context.fillStyle='#bbf7d0';context.font='900 12px system-ui';context.fillText(`${target.name||target.kind} +${target.healed||0} HP`,target.x,target.y-65);
+      const target=state.secondaryDroneTarget||state.me;
+      root.TigerRescueTools?.drawEffect(context,{...target,x:Number(target.x??state.me.x),y:Number(target.y??state.me.y),kind:'med-drone',until:state.secondaryDroneUntil,eliteAppearance:root.TigerEliteArmory?.appearance()},now);
     }
     if(now<Number(state.secondaryShockUntil||0)){
       const target=state.secondaryShockTarget||state.me;const pct=1-((Number(state.secondaryShockUntil||0)-now)/900);context.strokeStyle=`rgba(250,204,21,${1-pct})`;context.lineWidth=4;context.beginPath();context.arc(target.x,target.y,20+pct*62,0,Math.PI*2);context.stroke();

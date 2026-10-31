@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5271";
+const TS_BUILD = "5272";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4764,6 +4764,7 @@ function beginMissionStatRun(reason="deploy"){
   ].join(":");
   S._missionTigerOutcomes = {};
   S._missionStatsReason = reason;
+  window.TigerCharacterVoice?.play('ready',{key:S._missionRunId});
 }
 function ensureMissionTigerOutcomeLedger(){
   if(!S._missionTigerOutcomes || typeof S._missionTigerOutcomes !== "object" || Array.isArray(S._missionTigerOutcomes)){
@@ -8416,6 +8417,7 @@ function renderAchievementPrestigeShowcase(){
   <div class="divider"></div><div class="hudTitle">Featured Elite Titles</div>${titleRows}
   <div class="divider"></div><div class="hudTitle">Captured Tiger Trophy Hall</div>${trophyRows}
   <div class="divider"></div><div class="hudTitle">Nemesis Hall</div>${nemesisRows}`;
+  window.TigerEliteArmory?.renderProfile(root);
 }
 let __inventoryActiveTab = "gear";
 function inventoryTab(tab="gear"){
@@ -20687,6 +20689,7 @@ function toggleSound(){
   const mobileLbl = document.getElementById("soundLblMobile");
   if(mobileLbl) mobileLbl.innerText = S.soundOn ? "On" : "Off";
   if(!S.soundOn){
+    window.TigerCharacterVoice?.stop();
     stopAdaptiveAudioDirector();
     stopGameMusicDirector();
     clearLaunchMusicLoop();
@@ -39249,6 +39252,7 @@ function registerTigerCaptureCage(tiger, captor="player"){
   const cage = captureCageFromTiger(tiger, captor);
   if(globalThis.TigerWaterTerrain){ensureMapObstacleCache();Object.assign(cage,globalThis.TigerWaterTerrain.dryPoint(__mapWaterZones,cage.x,cage.y));}
   S.captureCages.push(cage);
+  window.TigerCharacterVoice?.play('capture',{key:String(S._missionRunId)+':'+tiger.id});
   if(S.captureCages.length > MAX_PERSIST_CAPTURE_CAGES){
     S.captureCages = S.captureCages.slice(-MAX_PERSIST_CAPTURE_CAGES);
   }
@@ -52538,6 +52542,7 @@ function checkMissionComplete(){
         trapsTriggered:missionStats.trapsTriggered || 0,
       };
       S.lastMissionPremiumSummary = premiumSummary;
+      window.TigerCharacterVoice?.play('extract',{key:S._missionRunId});
       renderMissionVictoryHero(premiumSummary);
       renderMissionPremiumSummaryCard(premiumSummary);
       renderMissionRewards2Card(rewards2);

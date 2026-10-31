@@ -170,6 +170,12 @@
       for(const px of [-12,9])box(px,-14,3,5,light,1);
     }
 
+    if(elite.soldier==='storm_medic'){
+      const pack=ctx.createLinearGradient(-22,-14,-10,14);pack.addColorStop(0,'#e3eee5');pack.addColorStop(.55,'#94bbb7');pack.addColorStop(1,'#315a70');
+      box(-23,-13,12,26,pack,4);line(ctx,'#4b7884',1,[[-21,-9],[-21,8],[-14,8]]);box(-23,4,6,8,'#e0eadf',2);line(ctx,'#477f83',1,[[-19,-7],[-19,0]]);line(ctx,'#477f83',1,[[-21,-4],[-17,-4]]);
+      box(-5,-10,10,9,'#e6f0e8',2);box(-1.5,-8.5,3,6,'#438d83',.5);box(-3,-7,6,3,'#438d83',.5);
+      line(ctx,'#cde3d9',1.5,[[-9,-13],[-9,10]]);box(8,-7,5,10,'#83b9b8',1);box(9,-5,3,1,'#d8e9d8',.5);
+    }
     // Face has features, hair/helmet, chin and headset.
     ellipse(ctx,-7.5,-23,2.5,3.5,"#bd825e");ellipse(ctx,7.5,-23,2.5,3.5,"#bd825e");
     ellipse(ctx,0,-23,8,9,"#d8a47d");ellipse(ctx,1,-21,6,6,"#e8b98f");
@@ -191,7 +197,7 @@
 
     // Arms and weapon point toward the aim direction without rotating the body.
     // Mirroring handles left-facing aim; only the two-arm weapon rig pitches.
-    const aim=Math.atan2(Math.sin(face),Math.abs(Math.cos(face)));
+    const aim=options.lowerWeapon?.7:Math.atan2(Math.sin(face),Math.abs(Math.cos(face)));
     const recoil=clamp(options.shotKick,0,1)*2;
     ctx.save();ctx.translate(0,-5);ctx.rotate(aim+reaction*.14);ctx.translate(-recoil,0);
     line(ctx,dark,6,[[-9,-4],[-11,3],[3,3]]);
@@ -695,6 +701,30 @@
     return {family};
   }
 
+  function drawSoldierPortrait(ctx,appearance={},options={}){
+    const w=ctx.canvas.width,h=ctx.canvas.height;ctx.save();ctx.clearRect(0,0,w,h);
+    const bg=ctx.createLinearGradient(0,0,w,h);bg.addColorStop(0,'#355f5a');bg.addColorStop(1,'#102c40');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+    drawMapTree(ctx,w*.2,h*.72,w/180*.85,{heavy:true});drawMapTree(ctx,w*.93,h*.68,w/180*.65,{heavy:true});
+    ctx.beginPath();ctx.rect(0,0,w,h);ctx.clip();drawSoldier(ctx,{x:w*.53,y:h*.74,face:0,eliteAppearance:appearance},{scale:Math.min(4,w/52),showMarker:false,phase:0,uniformPalette:options.uniformPalette});
+    ctx.strokeStyle='#a2cdc0';ctx.lineWidth=Math.max(2,w/100);ctx.strokeRect(3,3,w-6,h-6);ctx.restore();
+  }
+  function drawMedDrone(ctx,entity={},options={}){
+    const x=Number(entity.x)||0,y=Number(entity.y)||0,now=Number(options.now??Date.now()),storm=options.variant==='storm_medic',scale=Math.max(.2,Math.min(3,Number(options.scale)||1));
+    const reduced=globalThis.TigerCombatFeel?.settings()?.reducedFlashes;
+    ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);ellipse(ctx,0,28,22,4,'rgba(5,23,30,.2)');
+    const spin=reduced?.3:now/100;
+    for(const side of[-1,1])for(const row of[-1,1]){
+      const px=side*22,py=row*10;line(ctx,'#294b5b',4,[[side*5,row*3],[px,py]]);
+      ellipse(ctx,px,py,11,4,'rgba(186,220,215,.22)');ellipse(ctx,px,py,7,3,'#4c747e');
+      line(ctx,'#c4ded7',1.6,[[px-Math.cos(spin)*11,py-Math.sin(spin)*3],[px+Math.cos(spin)*11,py+Math.sin(spin)*3]]);
+      ellipse(ctx,px,py,2,2,'#183442');
+    }
+    const shell=ctx.createLinearGradient(-12,-8,12,11);shell.addColorStop(0,storm?'#dceee7':'#e3e8dc');shell.addColorStop(.55,storm?'#548b9c':'#9aafa9');shell.addColorStop(1,'#284b60');
+    ctx.fillStyle=shell;rounded(ctx,-13,-9,26,20,5);ctx.fill();line(ctx,'#c4e6dd',1,[[-10,-7],[9,-7],[11,-3]]);
+    ctx.fillStyle=storm?'#9cebd7':'#e7f0df';rounded(ctx,-6,-4,12,10,2);ctx.fill();line(ctx,'#317c73',2,[[0,-2],[0,4]]);line(ctx,'#317c73',2,[[-3,1],[3,1]]);
+    ellipse(ctx,0,12,4,3,'#172f40');ellipse(ctx,0,12,2,1.5,storm?'#8debd6':'#b7dbdd');line(ctx,'#597e88',1.5,[[-9,10],[-11,17],[10,17],[8,10]]);
+    ctx.restore();
+  }
   function drawVehicle(ctx,entity={},options={}){return vehicleArt.draw(ctx,entity,options);}
   function drawCaptureCage(ctx,x,y,scale=1,options={}){
     ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
@@ -716,5 +746,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });

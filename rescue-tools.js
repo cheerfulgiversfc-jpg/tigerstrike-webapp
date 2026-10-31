@@ -45,8 +45,7 @@
       ctx.fillStyle='#f1f5f9';ctx.fillText(`SMOKE COVER • ${Math.ceil((e.until-now)/1000)}s`,e.x,e.y-72);
     }else if(e.kind==='med-drone'){
       const x=e.x+Math.cos(now*.006)*22,y=e.y-42;
-      ctx.strokeStyle='#94a3b8';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x-20,y);ctx.lineTo(x+20,y);ctx.stroke();
-      ctx.fillStyle='#f8fafc';ctx.fillRect(x-9,y-7,18,14);ctx.fillStyle='#ef4444';ctx.fillRect(x-2,y-5,4,10);ctx.fillRect(x-5,y-2,10,4);
+      globalThis.TigerStrikeBattlefieldRenderer?.drawMedDrone(ctx,{x,y},{now,variant:e.eliteAppearance?.soldier==='storm_medic'?'storm_medic':'base'});
       ctx.fillStyle='#bbf7d0';ctx.fillText(`${e.name||'Rescue target'} +${e.healed} HP`,e.x,e.y-65);
     }else if(e.kind==='flare'){
       const origin=e.origin||e;ctx.setLineDash([10,8]);ctx.lineWidth=3;

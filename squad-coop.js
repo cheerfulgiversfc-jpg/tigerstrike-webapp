@@ -440,6 +440,7 @@
       state.remoteDraw.set(player.userId, squadMotion.accept(snapshot.paused?null:state.remoteDraw.get(player.userId), {...player,moving:!!player.moving&&snapshot.status==='active'&&!snapshot.paused}, receivedAt, snapshot.world));
     }
     state.snapshot = snapshot;
+    window.TigerCharacterVoice?.observe(snapshot,viewerId());
     reactionPresentation?.observe(snapshot,Date.now());
     combatPresentation?.ingest(snapshot,Date.now());
     state.snapshotReceivedAt = receivedAt;
@@ -650,9 +651,10 @@
       const respawn = respawnSeconds(player);
       const status = player.downed ? (respawn > 0 ? `RESPAWNING IN ${respawn}s` : "DOWNED — needs revive") : (player.online ? `HP ${Math.round(player.hp)}/${Math.round(player.maxHp)}` : "Reconnecting…");
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
+        ${player.eliteAppearance?.soldier?`<canvas class="squadElitePortrait" width="256" height="256" data-elite-portrait="${esc(player.eliteAppearance.soldier)}" aria-label="${esc(window.TigerEliteCatalog?.items[player.eliteAppearance.soldier]?.name||'Soldier')} portrait"></canvas>`:''}
         <div class="squadMemberName">${Number(player.userId) === Number(state.snapshot?.hostId) ? "👑 " : ""}${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(window.TigerMasteryRewards?.identityText(player.masteryIdentity)||'No mastery identity equipped')}</div>
-        <div class="squadMemberMeta">Uniform: ${esc(player.masteryIdentity?.uniform?.name||'Default')}</div>
+        <div class="squadMemberMeta">Uniform: ${esc(window.TigerEliteCatalog?.items[player.eliteAppearance?.soldier]?.name||player.masteryIdentity?.uniform?.name||'Default')}</div>
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
         <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Escorting ${(state.snapshot?.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(player.userId)).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
@@ -1126,6 +1128,7 @@
     bindMoveButtons();
     window.TigerTouchLayout?.applyCoop();
     bindLobbyInput();
+    window.TigerEliteArmory?.renderPortraits(document);
     if(state.snapshot?.status === "active") ensureFrame();
     else { drawArena(); if(state.snapshot?.status === "complete") startSquadTransportMovie(); }
     syncSquadMusicContext();
@@ -3033,7 +3036,7 @@
     if(Date.now()<rescueToolPreviewUntil){const mine=localSnapshotPlayer();window.TigerRescueTools?.drawPreview(ctx,window.TigerRescueTools?.preview(mine?.rescueTool,snap.players||[],snap.civilians||[],state.local||mine));}
     for(const player of (snap.players||[])){
       const effect=player.rescueTool?.effect;
-      window.TigerRescueTools?.drawEffect(ctx,effect?.kind==='flare'?{...effect,target:window.TigerFieldRadio?.guide(snap,player.userId)}:effect,now);
+      window.TigerRescueTools?.drawEffect(ctx,effect?.kind==='flare'?{...effect,target:window.TigerFieldRadio?.guide(snap,player.userId)}:effect?{...effect,eliteAppearance:player.eliteAppearance}:effect,now);
     }
     const combatTarget=nearestActiveTiger();
     if(snap.status==='active'&&!snap.paused&&!state.local?.downed&&combatTarget){

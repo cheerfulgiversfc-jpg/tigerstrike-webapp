@@ -25,14 +25,16 @@
     }
     const sx=practice?pos.x:190,sy=(practice?pos.y:185)+35,tx=471,ty=195;
     backdrop(c,{width:w,height:h,now,clear:[{x:sx,y:sy,r:65},{x:tx,y:ty,r:70}]});
+    const medic=current==='storm_medic';
     // The training target and actors are production models, with isolated visual state.
     const a={soldier:C.palettes[current]?current:(options.appearance?.soldier||''),weapon:current==='guardian'?'guardian':current==='recruit_finish'?'recruit_finish':'',badge:current==='recruit_badge'?'recruit_badge':''};
-    const fired=practice?now-Number(options.shot||-99999)<160:elapsed%2<.13;
+    const fired=!medic&&(practice?now-Number(options.shot||-99999)<160:elapsed%2<.13);
     const face=Math.atan2(ty-sy,tx-sx),count=Number(options.hits)||0;
-    R.drawTiger(c,{id:'practice-tiger',name:'Practice target',x:tx,y:ty,face:Math.PI,hp:Math.max(1,100-count*8),hpMax:100,hitFlashUntil:fired?now+60:0},{now,scale:1.28,facing:-1,phase:now/280,walking:false,showState:false});
-    R.drawSoldier(c,{x:sx,y:sy,face,eliteAppearance:a},{now,scale:2,walking:!practice||options.walking,phase:elapsed*5,shotKick:fired?1:0,showMarker:false});
+    if(medic){const hp=practice?Number(options.practiceDrone?.hp||34):82;R.drawCivilian(c,{x:tx,y:ty,hp,hpMax:100,injured:hp<100,look:'field',face:Math.PI},{now,scale:1.6,walking:false});if(!practice||now<Number(options.healUntil||0))R.drawMedDrone(c,{x:tx-12+Math.sin(now/500)*20,y:ty-75},{now,scale:1.2,variant:'storm_medic'});}
+    else R.drawTiger(c,{id:'practice-tiger',name:'Practice target',x:tx,y:ty,face:Math.PI,hp:Math.max(1,100-count*8),hpMax:100,hitFlashUntil:fired?now+60:0},{now,scale:1.28,facing:-1,phase:now/280,walking:false,showState:false});
+    R.drawSoldier(c,{x:sx,y:sy,face,eliteAppearance:a},{now,scale:2,walking:!practice||options.walking,phase:elapsed*5,shotKick:fired?1:0,lowerWeapon:medic,showMarker:false});
     if(fired){const mx=sx+Math.cos(face)*61,my=sy-11+Math.sin(face)*48;c.save();c.strokeStyle='rgba(223,208,128,.7)';c.lineWidth=1.5;c.setLineDash([5,7]);c.beginPath();c.moveTo(mx,my);c.lineTo(tx-25,ty-8);c.stroke();c.restore();}
-    c.save();c.fillStyle='rgba(6,22,30,.89)';c.beginPath();c.roundRect(407,238,172,45,8);c.fill();c.fillStyle='#cde7dc';c.font='bold 11px system-ui';c.textAlign='center';c.fillText('TRAINING SIMULATION',493,255);c.fillStyle='#78d8b8';c.fillRect(420,264,Math.max(8,146-count*11),4);c.restore();
+    c.save();c.fillStyle='rgba(6,22,30,.89)';c.beginPath();c.roundRect(407,238,172,45,8);c.fill();c.fillStyle='#cde7dc';c.font='bold 11px system-ui';c.textAlign='center';c.fillText(medic?'MED DRONE • CIVILIAN '+(practice?options.practiceDrone?.hp||34:82)+'/100 HP':'TRAINING SIMULATION',493,255);c.fillStyle='#78d8b8';c.fillRect(420,264,medic?146*((practice?Number(options.practiceDrone?.hp||34):82)/100):Math.max(8,146-count*11),4);c.restore();
     R.drawMapLighting(c,{x:0,y:0,w,h});c.restore();return {soldier:{x:sx,y:sy},tiger:{x:tx,y:ty}};
   }
   function drawTransfer(c,options={}){
