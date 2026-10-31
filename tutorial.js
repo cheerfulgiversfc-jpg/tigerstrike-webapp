@@ -108,6 +108,7 @@
     const key = String(step?.key || "");
     return new Set([
       "move",
+      "controls_layout",
       "sprint",
       "combat_buttons",
       "weapon_switch",
@@ -487,6 +488,13 @@
         canNext: () => agentMovedForTutorial()
       },
       {
+        key:"controls_layout",
+        title:"Make the controls yours",
+        text:"Tap Open Controls below. Drag the joystick or any button inside the preview. Field and Combat have separate layouts. Make the joystick larger, spread buttons apart, and lower Button opacity to see enemies underneath. Save applies the layout; Cancel keeps your old one. In combat, Attack shows your ammo type and count. Hold Attack to choose a weapon; Prev and Next also switch weapons. Rubber weakens, Capture uses tranquilizers, Med heals, Armor restores protection, and Roll dodges.",
+        hint:"Open Controls, review or adjust the layout, then return and tap Next. Skip Tutorial remains available.",
+        canNext:()=>window.TigerTutorial.controlsPracticed===true
+      },
+      {
         key:"sprint",
         title:"Sprint + Stamina",
         text:"Sprint helps you reach civilians, clues, and extraction routes faster. Sprint uses stamina and then enters cooldown, so save it for danger moments.",
@@ -831,6 +839,7 @@
       "hq_overview",
       "mission_hud",
       "move",
+      "controls_layout",
       "sprint",
       "escort",
       "evac_routes",
@@ -1121,6 +1130,9 @@
     titleEl.innerText = step.title;
     stepEl.innerText = `Step ${T.step + 1} / ${steps.length}`;
     textEl.innerText = text;
+    let arrange=byId('tutorialArrangeControls');
+    if(!arrange){arrange=document.createElement('button');arrange.id='tutorialArrangeControls';arrange.type='button';arrange.textContent='Open Controls';arrange.style.cssText='pointer-events:auto;min-height:44px;margin:8px 0';textEl.after(arrange);bindReliablePress(arrange,()=>window.openHudCustomizer?.());}
+    arrange.hidden=step.key!=='controls_layout';
     hintEl.innerText = hint;
     nextBtn.innerText = step.finish ? "Finish" : "Next";
     setCardPlacement(step);
@@ -1195,6 +1207,7 @@
     T.cosmeticsOpened = false;
     T.worldMapOpened = false;
     T.secondaryUsed = false;
+    T.controlsPracticed = false;
     T.hqSeen = false;
     T.combatButtonsSeen = false;
     T.captureButtonReady = false;
@@ -1259,6 +1272,7 @@
     T.cosmeticsOpened = false;
     T.worldMapOpened = false;
     T.secondaryUsed = false;
+    T.controlsPracticed = false;
     T.hqSeen = false;
     T.combatButtonsSeen = false;
     T.captureButtonReady = false;

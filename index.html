@@ -7,10 +7,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V14.10 (Chapter 10 Routes &amp; Field Actions)</title>
+  <title>Tiger Strike 🐅 — V15.0 (Personal Controls &amp; Ammo Clarity)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5268-chapter10-field">
-  <link rel="stylesheet" href="./battlefield-awareness.css?v=5268-chapter10-field">
+  <link rel="stylesheet" href="./squad-coop.css?v=5269-touch-controls">
+  <link rel="stylesheet" href="./touch-layout.css?v=5269-touch-controls">
+  <link rel="stylesheet" href="./battlefield-awareness.css?v=5269-touch-controls">
 
   <style>
     :root{
@@ -2577,9 +2578,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V14.10</span> <span class="tag">Chapter 10 Routes &amp; Field Actions</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V15.0</span> <span class="tag">Personal Controls &amp; Ammo Clarity</span></div>
       <div class="sub">
-        V14.10 — Chapter 10 Routes &amp; Field Actions: Missions 91–100 now have Direct or Shelter route guidance, Temple Approach and Guardian Trail shelters, an Ancient Watchtower and a Final Expedition Cache at fixed Chapter 10 locations clear of roads, water and required landmarks. These features now cover all 100 Story missions in Solo and Co-op. Routes use real river bridges and explain unavailable dry paths. Shelter interiors halve incoming tiger damage (minimum 1); firing removes cover for 3 seconds. Scan within 110m for a shared 30-second threat feed and route danger counts (45-second cooldown). Each player can collect one mission-only medkit and armor plate per attempt, restoring up to 40 HP and 40 armor through Field Actions. Optional rescue leads in Missions 91, 94 and 96 highlight an existing rescue target from 1:00 to 2:30 without adding a failure or rescue requirement. Solo can perform tasks sequentially; Co-op can split them. Debriefs record actual cover, scans, supplies and delivery. Missions 1–90 retain their features. Open Mission Route or Field Actions in the Solo menu or Co-op gear bar. Original mission requirements, permanent supplies, rewards, capture rules and music stay unchanged. No new forced road closures.<br>
+        V15.0 — Personal Controls &amp; Ammo Clarity: Open Arrange Controls in the menu or Co-op gear bar. Drag individual controls in separate Field, Combat and Co-op previews; adjust joystick size, button size, spacing and opacity (20–100%). Larger default joystick and wider spacing adapt to your screen; controls stay inside the playable area with safety gaps. Save on this device or cancel changes. Free placement uses Overlay mode; Docked controls remain below the map. The tutorial includes control-layout practice and button guidance. Touch attacks activate on release with duplicate-click protection, and another finger lifting no longer releases the joystick. Attack shows its ammunition type and available rounds; empty Rubber ammunition gives a Rubber-specific message and cannot automatically switch to a Real-ammunition weapon. Arranging Co-op controls pauses the mission and preserves teammates’ own gear pauses.<br>
         V13.5 off-screen guidance, live progress and optional Docked Controls remain available.<br>
         V13.4 targeting and attack-warning improvements remain active.<br>
         V13.3 performance and weak-link improvements remain active. Combined physical two-phone weak-connection validation is still outstanding.<br>
@@ -2627,7 +2628,7 @@
       <button class="ghost" onclick="selectNextSupportUnit()">🎯 Select Squad</button>
       <button class="ghost" onclick="openStoryCampaignJournal()">📖 Story</button>
       <button class="good" onclick="openLiveSquadOps()">🐅 Live Squad</button>
-      <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
+      <button class="ghost" onclick="openHudCustomizer()">🎛️ Arrange Controls</button>
       <button class="ghost" data-battlefield-layout onclick="window.TigerBattlefieldAwareness?.toggleLayout()">Controls: Overlay</button>
 
       <!-- IDs added for tutorial highlighting -->
@@ -3633,7 +3634,7 @@
     <button class="ghost" onclick="openTelegramCommunityGroup()">💬 Group</button>
     <button class="ghost" onclick="saveGameNow()">💾 Save</button>
     <button class="ghost" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
-    <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
+    <button class="ghost" onclick="openHudCustomizer()">🎛️ Arrange Controls</button>
     <button class="ghost" data-battlefield-layout onclick="window.TigerBattlefieldAwareness?.toggleLayout()">Controls: Overlay</button>
     <button class="ghost" onclick="startTutorial()">🧭 Tutorial</button>
     <button class="ghost" onclick="resetGame()">🔁 Reset</button>
@@ -3644,41 +3645,42 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5268-chapter10-field"></script>
-  <script src="./engagement-rules.js?v=5268-chapter10-field"></script>
-  <script src="./smooth-play.js?v=5268-chapter10-field"></script>
-  <script src="./combat-feel.js?v=5268-chapter10-field"></script>
-  <script src="./combat-reactions.js?v=5268-chapter10-field"></script>
-  <script src="./chapter-maps.js?v=5268-chapter10-field"></script>
-  <script src="./mission-routes.js?v=5268-chapter10-field"></script>
-  <script src="./field-operations.js?v=5268-chapter10-field"></script>
-  <script src="./extraction-geometry.js?v=5268-chapter10-field"></script>
-  <script src="./ammo-modes.js?v=5268-chapter10-field"></script>
-  <script src="./government-policy.js?v=5268-chapter10-field"></script>
-  <script src="./tiger-intelligence.js?v=5268-chapter10-field"></script>
-  <script src="./tiger-encounters.js?v=5268-chapter10-field"></script>
-  <script src="./tiger-pursuit.js?v=5268-chapter10-field"></script>
-  <script src="./living-world.js?v=5268-chapter10-field"></script>
-  <script src="./mission-map-truth.js?v=5268-chapter10-field"></script>
-  <script src="./post-campaign.js?v=5268-chapter10-field"></script>
-  <script src="./sanctuary.js?v=5268-chapter10-field"></script>
-  <script src="./player-experience.js?v=5268-chapter10-field"></script>
-  <script src="./battlefield-awareness.js?v=5268-chapter10-field"></script>
-  <script src="./field-radio.js?v=5268-chapter10-field"></script>
-  <script src="./civilian-rescue.js?v=5268-chapter10-field"></script>
-  <script src="./rescue-tools.js?v=5268-chapter10-field"></script>
-  <script src="./escort-teamwork.js?v=5268-chapter10-field"></script>
-  <script src="./chapter-milestones.js?v=5268-chapter10-field"></script>
-  <script src="./mission-debrief.js?v=5268-chapter10-field"></script>
-  <script src="./mastery-rewards.js?v=5268-chapter10-field"></script>
-  <script src="./shared-battlefield-renderer.js?v=5268-chapter10-field"></script>
-  <script src="./game.js?v=5268-chapter10-field"></script>
-  <script src="./story-cinematics.js?v=5268-chapter10-field"></script>
-  <script src="./field-systems.js?v=5268-chapter10-field"></script>
-  <script src="./tutorial.js?v=5268-chapter10-field"></script>
-  <script src="./squad-motion.js?v=5268-chapter10-field"></script>
-  <script src="./squad-coop.js?v=5268-chapter10-field"></script>
-  <script src="./extraction-qa.js?v=5268-chapter10-field"></script>
+  <script src="./water-terrain.js?v=5269-touch-controls"></script>
+  <script src="./engagement-rules.js?v=5269-touch-controls"></script>
+  <script src="./smooth-play.js?v=5269-touch-controls"></script>
+  <script src="./combat-feel.js?v=5269-touch-controls"></script>
+  <script src="./combat-reactions.js?v=5269-touch-controls"></script>
+  <script src="./chapter-maps.js?v=5269-touch-controls"></script>
+  <script src="./mission-routes.js?v=5269-touch-controls"></script>
+  <script src="./field-operations.js?v=5269-touch-controls"></script>
+  <script src="./extraction-geometry.js?v=5269-touch-controls"></script>
+  <script src="./ammo-modes.js?v=5269-touch-controls"></script>
+  <script src="./government-policy.js?v=5269-touch-controls"></script>
+  <script src="./tiger-intelligence.js?v=5269-touch-controls"></script>
+  <script src="./tiger-encounters.js?v=5269-touch-controls"></script>
+  <script src="./tiger-pursuit.js?v=5269-touch-controls"></script>
+  <script src="./living-world.js?v=5269-touch-controls"></script>
+  <script src="./mission-map-truth.js?v=5269-touch-controls"></script>
+  <script src="./post-campaign.js?v=5269-touch-controls"></script>
+  <script src="./sanctuary.js?v=5269-touch-controls"></script>
+  <script src="./player-experience.js?v=5269-touch-controls"></script>
+  <script src="./battlefield-awareness.js?v=5269-touch-controls"></script>
+  <script src="./field-radio.js?v=5269-touch-controls"></script>
+  <script src="./civilian-rescue.js?v=5269-touch-controls"></script>
+  <script src="./rescue-tools.js?v=5269-touch-controls"></script>
+  <script src="./escort-teamwork.js?v=5269-touch-controls"></script>
+  <script src="./chapter-milestones.js?v=5269-touch-controls"></script>
+  <script src="./mission-debrief.js?v=5269-touch-controls"></script>
+  <script src="./mastery-rewards.js?v=5269-touch-controls"></script>
+  <script src="./shared-battlefield-renderer.js?v=5269-touch-controls"></script>
+  <script src="./touch-layout.js?v=5269-touch-controls"></script>
+  <script src="./game.js?v=5269-touch-controls"></script>
+  <script src="./story-cinematics.js?v=5269-touch-controls"></script>
+  <script src="./field-systems.js?v=5269-touch-controls"></script>
+  <script src="./tutorial.js?v=5269-touch-controls"></script>
+  <script src="./squad-motion.js?v=5269-touch-controls"></script>
+  <script src="./squad-coop.js?v=5269-touch-controls"></script>
+  <script src="./extraction-qa.js?v=5269-touch-controls"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

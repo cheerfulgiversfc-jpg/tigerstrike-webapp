@@ -2540,7 +2540,7 @@ function normalizeSession(raw){
   const rawPausedBy = raw.pausedBy && typeof raw.pausedBy === "object" ? raw.pausedBy : {};
   for(const memberId of memberIds){
     const reason = cleanText(rawPausedBy[String(memberId)] || rawPausedBy[memberId], 20).toLowerCase();
-    if(reason) pausedBy[String(memberId)] = reason === "inventory" ? "inventory" : "shop";
+    if(reason) pausedBy[String(memberId)] = ["inventory","controls"].includes(reason) ? reason : "shop";
   }
   const activePause = raw.status === "active" && Object.keys(pausedBy).length > 0;
   const requestedStoryMissionLevel = clamp(Math.floor(Number(raw.storyMissionLevel || 0)), 0, 100);
@@ -3705,7 +3705,8 @@ async function applyAction(session, user, action, payload={}){
     if(!session.pausedBy || typeof session.pausedBy !== "object") session.pausedBy = {};
     if(action === "pause"){
       if(!sessionPaused(session)) session.pausedAt = now;
-      session.pausedBy[String(uid)] = cleanText(payload.reason, 20).toLowerCase() === "inventory" ? "inventory" : "shop";
+      const reason=cleanText(payload.reason,20).toLowerCase();
+      session.pausedBy[String(uid)] = ["inventory","controls"].includes(reason)?reason:"shop";
       player.lastSeenAt = now;
       await writePlayer(session.code, player);
       return writeSession(session);

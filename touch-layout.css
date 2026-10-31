@@ -1,0 +1,39 @@
+#touchLayoutDialog{box-sizing:border-box;width:min(650px,100vw - 12px);max-height:96dvh;overflow:auto;padding:14px;background:#102435;color:#f0f8ff;border:2px solid #7fb7c1;border-radius:16px;z-index:20000}#touchLayoutDialog::backdrop{background:#020811e8}#touchLayoutDialog h2{margin:0 0 8px}#touchLayoutDialog p{font-size:12px;line-height:1.4;margin:8px 0}.controlEditorTabs,.controlEditorFooter{display:flex;gap:12px;flex-wrap:wrap}.controlEditorFooter{position:sticky;bottom:-14px;background:#102435;padding:12px 0}.controlEditorTabs button,.controlEditorFooter button{min-height:44px;padding:10px 14px;touch-action:manipulation}.controlEditorSettings{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.controlEditorSettings label{font-size:12px}.controlEditorSettings input{display:block;width:100%;min-height:30px}.controlEditorStage{position:relative;overflow:hidden;border:1px dashed #90c3c8;border-radius:10px;background:linear-gradient(130deg,#234533,#102e3e);touch-action:none}.controlEditorPiece{position:absolute;box-sizing:border-box;min-width:0;min-height:0;padding:3px;touch-action:none;user-select:none;border:2px solid #e2f0f4;border-radius:16px;background:#18374b;color:white;font-size:11px;font-weight:800}.controlEditorPiece.stick{border-radius:50%;background:radial-gradient(circle,#397b8b 0 25%,#18374b 27% 100%)}.controlEditorPiece:focus{outline:3px solid #fde047;outline-offset:1px}
+@media(max-width:900px){
+body.customTouchControls .touchOverlay .touchCluster{position:static!important;transform:none!important;opacity:1!important;pointer-events:none!important}
+body.customTouchControls .touchOverlay .touchBtn{position:absolute!important;box-sizing:border-box!important;min-width:0!important;min-height:44px!important;padding:2px!important;transform:none!important;opacity:var(--control-opacity,.65)!important;touch-action:none;z-index:8;margin:0!important;border-radius:17px!important}
+body.customTouchControls .touchStickShell{box-sizing:border-box;transform:none!important;opacity:var(--control-opacity,.65)!important;z-index:8}
+body.customTouchControls .touchStick{left:50%!important;top:50%!important;width:40%!important;height:40%!important;margin:-20%!important;box-sizing:border-box}
+body.customTouchControls .touchPad{border:3px solid #9ac1ce99!important;background:#0a263344!important}
+body.customTouchControls .touchHint{display:none!important}
+body.customTouchControls .touchOverlay .touchBtnLabel{font-size:10px!important;line-height:1.1!important}
+body.customTouchControls .toast{pointer-events:none;top:12px;bottom:auto;max-width:65vw;font-size:12px;padding:6px 9px}
+body.customTouchControls.soloBattleDocked .touchOverlay{grid-template-columns:140px minmax(0,1fr);gap:var(--control-gap,18px)}
+body.customTouchControls.soloBattleDocked .touchOverlay .touchCluster{position:relative!important;gap:var(--control-gap,18px)!important}
+body.customTouchControls.soloBattleDocked .touchOverlay .touchBtn{position:relative!important;inset:auto!important;width:100%!important;height:auto!important;min-height:52px!important}
+body.customTouchControls.soloBattleDocked .touchStickShell{inset:auto!important;width:140px!important;height:140px!important}
+}
+@media(max-width:640px){
+body.customCoopControls:not(.battleControlsDocked) .squadControls{display:block!important;position:fixed!important;left:8px!important;right:8px!important;bottom:max(8px,env(safe-area-inset-bottom))!important;width:min(620px,calc(100% - 16px))!important;padding:0!important;pointer-events:none;z-index:10070}
+body.customCoopControls:not(.battleControlsDocked) .squadActions{position:static!important;display:contents!important;pointer-events:none}
+body.customCoopControls:not(.battleControlsDocked) .squadActionBtn,body.customCoopControls:not(.battleControlsDocked) .squadJoystick{position:absolute!important;box-sizing:border-box;min-width:0!important;min-height:0!important;padding:2px!important;margin:0!important;pointer-events:auto;opacity:var(--control-opacity,.65)!important;touch-action:none;aspect-ratio:auto!important}
+body.customCoopControls .squadJoystickRing{width:100%!important;height:100%!important;box-sizing:border-box}
+body.customCoopControls .squadJoystick>span{display:none}
+body.customCoopControls.battleControlsDocked .squadActions{gap:var(--control-gap,18px)!important}
+body.customCoopControls.battleControlsDocked .squadJoystick{width:140px!important;opacity:var(--control-opacity,.65)!important}
+body.customCoopControls.battleControlsDocked .squadActionBtn{opacity:var(--control-opacity,.65)!important}
+}
+
+@media(max-width:900px){body.customTouchControls .touchOverlay #mapTouchCluster,body.customTouchControls .touchOverlay #combatTouchCluster{opacity:1!important;transform:none!important}body.customTouchControls .toast{top:calc(80px + env(safe-area-inset-top))}}
+@media(max-width:640px){body.customCoopControls:not(.battleControlsDocked) .squadControls.resultOpen{display:none!important}}
+
+@media(max-width:900px){body.customTouchControls.soloBattleDocked .touchOverlay .touchCluster{grid-template-columns:repeat(2,minmax(44px,1fr))!important}body.customTouchControls .touchOverlay .touchBtn:disabled{opacity:calc(var(--control-opacity,.65) * .55)!important;filter:saturate(.35)}}
+@media(max-width:640px){body.customCoopControls.battleControlsDocked .squadControls{grid-template-columns:140px minmax(0,1fr)!important}body.customCoopControls.battleControlsDocked .squadActions{grid-template-columns:repeat(2,minmax(44px,1fr))!important}}
+
+@media(max-width:640px){body.customCoopControls:not(.battleControlsDocked) .squadJoystick.disabled{pointer-events:none!important;opacity:calc(var(--control-opacity,.65) * .55)!important}}
+
+.controlEditorTabs button[aria-pressed="true"]{background:#286b71;border-color:#a5f3fc;outline:2px solid #83c5d1}
+@media(max-width:900px){
+body.customTouchControls .touchOverlay #combatTouchCluster .touchBtn{opacity:var(--control-opacity,.65)!important}
+body.customTouchControls .touchOverlay #combatTouchCluster .touchBtn:disabled{opacity:calc(var(--control-opacity,.65) * .55)!important}
+}

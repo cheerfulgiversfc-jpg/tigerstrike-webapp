@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5268";
+const TS_BUILD = "5269";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -22141,22 +22141,13 @@ function renderHudCustomizer(){
   }
 }
 function openHudCustomizer(){
-  if(window.TigerTutorial?.isRunning) return toast("Finish the tutorial first.");
   if(S.gameOver) return;
-  if(S.missionEnded){
-    lastOverlay = "complete";
-    const complete = document.getElementById("completeOverlay");
-    if(complete) complete.style.display = "none";
-  }
-  const overlay = document.getElementById("hudOverlay");
-  if(!overlay) return;
-  setPaused(true, S.inBattle ? "hud-battle" : "hud");
-  applyTouchHudSettings();
-  renderHudCustomizer();
-  overlay.style.display = "flex";
-  syncGamepadFocus();
-  sfx("ui");
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey!=='controls_layout') return toast('Use the Arrange Controls tutorial step or finish training first.');
+  const wasPaused=S.paused,reason=S.pauseReason;
+  resetTouchStick();setPaused(true,'hud');
+  window.TigerTouchLayout.open({mode:S.inBattle?'combat':'field',onClose:()=>{setPaused(wasPaused,reason);if(window.TigerTutorial?.isRunning)window.TigerTutorial.controlsPracticed=true;}});
 }
+
 function closeHudCustomizer(){
   const overlay = document.getElementById("hudOverlay");
   if(overlay) overlay.style.display = "none";
@@ -22174,7 +22165,7 @@ function closeHudCustomizer(){
     updateBattleButtons();
     updateAttackButton();
     if(anyLethalWeaponHasAmmo()) setBattleMsg(`Back in combat with Tiger #${S.activeTigerId}.`);
-    else setBattleMsg("No lethal ammo. Open Shop or switch to Capture when the tiger is weak.");
+    else setBattleMsg(emptyAttackAmmoMessage());
     syncGamepadFocus();
     return;
   }
@@ -32512,7 +32503,7 @@ function closeShop(){
     setPaused(false,null);
     updateAttackButton();
     if(anyLethalWeaponHasAmmo()) setBattleMsg(`Back in combat with Tiger #${S.activeTigerId}.`);
-    else setBattleMsg("No lethal ammo yet. Open Shop again or switch to Capture when the tiger is weak.");
+    else setBattleMsg(emptyAttackAmmoMessage());
     return;
   }
   setPaused(false,null);
@@ -43853,6 +43844,7 @@ function updateTouchStick(clientX, clientY){
   const limit = Math.max(22, rect.width * 0.32);
   const len = Math.hypot(rawX, rawY) || 1;
   const clampedLen = Math.min(len, limit);
+  TOUCH_STICK.max = limit;
   TOUCH_STICK.dx = rawX / len * (clampedLen / limit);
   TOUCH_STICK.dy = rawY / len * (clampedLen / limit);
   TOUCH_STICK.lastUpdateAt = Date.now();
@@ -43871,7 +43863,7 @@ function touchMoveListener(e){
 }
 
 function touchEndListener(e){
-  if(TOUCH_STICK.pointerId!=null && TOUCH_STICK.pointerId!==e.pointerId) return;
+  if(!TOUCH_STICK.active || TOUCH_STICK.pointerId==null || TOUCH_STICK.pointerId!==e.pointerId) return;
   stopTouchOverlayEvent(e);
   resetTouchStick();
 }
@@ -43885,6 +43877,7 @@ function findTrackedTouch(touchList){
 }
 
 function touchStartFallback(e){
+  if(window.PointerEvent) return;
   const touch = e.changedTouches?.[0];
   if(!touch) return;
   stopTouchOverlayEvent(e);
@@ -43916,6 +43909,7 @@ function touchEndFallback(e){
 
 function setupTouchControls(){
   document.querySelectorAll(".touchBtn").forEach((el)=>{
+    window.TigerTouchLayout?.bindPress(el);
     el.addEventListener("pointerdown", (e)=>e.stopPropagation());
     el.addEventListener("pointerup", (e)=>e.stopPropagation());
     el.addEventListener("click", (e)=>e.stopPropagation());
@@ -43930,6 +43924,7 @@ function setupTouchControls(){
     if(e.pointerType==="mouse" && e.button!==0) return;
     TOUCH_STICK.active = true;
     TOUCH_STICK.pointerId = e.pointerId;
+    try{ touchStickShellEl.setPointerCapture?.(e.pointerId); }catch(_){}
     S.target = null;
     if(window.TigerTutorial?.isRunning){
       window.TigerTutorial.mapClicked = true;
@@ -44127,7 +44122,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
-  if(document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
@@ -44283,7 +44278,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -49567,7 +49562,10 @@ function updateCaptureReadyCue(t, ready){
   }
 }
 
+let __touchLayoutQueued=false;
+function requestTouchLayoutApply(){if(__touchLayoutQueued)return;__touchLayoutQueued=true;requestAnimationFrame(()=>{__touchLayoutQueued=false;window.TigerTouchLayout?.applySolo();});}
 function renderCombatControls(){
+  requestTouchLayoutApply();
   document.body?.classList.toggle('soloBattleDocked',window.TigerBattlefieldAwareness?.layout()==='docked'&&!baseHqActive()&&!window.TigerTutorial?.isRunning&&!controllerOwnsUi());
   const touchOverlay = document.querySelector(".touchOverlay");
   const touchHint = document.querySelector(".touchHint");
@@ -49681,6 +49679,14 @@ function renderCombatControls(){
   const ammoMode = selectedAmmoModeForWeapon(ammoWeapon);
   const ammoModeEnabled = weaponSupportsAmmoMode(ammoWeapon) && canPressCombatAction;
   const ammoModeLabel = ammoModeDisplay(ammoMode);
+  const attackGun=getWeapon(preferredAttackWeaponId())||ammoWeapon;
+  const attackMode=selectedAmmoModeForWeapon(attackGun),attackModeName=ammoModeDisplay(attackMode);
+  const attackLoaded=S.mag?.weaponId===attackGun.id&&ammoModeForId(S.mag.ammoId)===attackMode?Number(S.mag.loaded||0):0;
+  const attackCount=attackGun.type==="lethal"?attackLoaded+compatibleAmmoReserveForWeapon(attackGun,attackMode):0;
+  const attackLabel=document.querySelector('#touchAttackBtn .touchBtnLabel');
+  if(attackLabel)attackLabel.textContent=attackGun.type!=="lethal"?"Choose gun":attackCount>0?`Attack ${attackModeName} ${attackCount}`:`No ${attackModeName}`;
+  const attackButton=document.getElementById('touchAttackBtn');if(attackButton)attackButton.title=attackCount>0?`${attackModeName}: ${attackCount} rounds. Tap to fire; hold to change weapon.`:emptyAttackAmmoMessage();
+
   const ammoModeReserve = weaponSupportsAmmoMode(ammoWeapon) ? compatibleAmmoReserveForWeapon(ammoWeapon, ammoMode) : 0;
   const ammoDesktop = document.getElementById("combatAmmoModeBtn");
   if(ammoDesktop){
@@ -50204,16 +50210,18 @@ function anyLethalWeaponHasAmmo(){
 }
 function preferredAttackWeaponId(){
   const current = equippedWeapon();
+  const safeMode=current?.type==="lethal"?selectedAmmoModeForWeapon(current):null;
   if(current?.type==="lethal" && hasAmmoForWeaponId(current.id)) return current.id;
   const preferredIds = [S.preferredLethalWeaponId, S.lastCombatLethalWeaponId]
     .map((id)=>String(id || ""))
     .filter(Boolean);
   for(const id of preferredIds){
     const w = getWeapon(id);
-    if(w?.type === "lethal" && S.ownedWeapons?.includes(id) && hasAmmoForWeaponId(id)) return id;
+    if(w?.type === "lethal" && (!safeMode||selectedAmmoModeForWeapon(w)===safeMode) && S.ownedWeapons?.includes(id) && hasAmmoForWeaponId(id)) return id;
   }
   return null;
 }
+function emptyAttackAmmoMessage(){const weapon=equippedWeapon();if(weapon?.type!=="lethal")return "Attack needs a ballistic weapon. Use Prev / Next or hold Attack to choose a gun. Use Capture for tranquilizers after weakening the tiger.";const mode=selectedAmmoModeForWeapon(weapon),name=ammoModeDisplay(mode);return `No ${name} rounds for your attack weapon. Open Shop > Ammo or choose another weapon. ${mode==='rubber'?'Switching to Real will injure the tiger and block capture.':'Tranquilizers are used with Capture after weakening the tiger.'}`;}
 function equippedWeaponHasAmmoNow(){
   const w=equippedWeapon();
   if(S.mag?.weaponId === w.id && S.mag.loaded>0 && ammoModeForId(S.mag.ammoId) === selectedAmmoModeForWeapon(w)) return true;
@@ -50446,7 +50454,7 @@ function playerAction(action){
     updateAttackButton();
     const attackWeaponId = preferredAttackWeaponId();
     if(!attackWeaponId){
-      interactionFeedback("Out of lethal ammo. Buy ammo in Shop or use Capture when the tiger is weak enough.", { battle:true, warn:true });
+      interactionFeedback(emptyAttackAmmoMessage(), { battle:true, warn:true });
       sfx("jam");
       return;
     }

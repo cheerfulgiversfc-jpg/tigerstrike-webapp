@@ -298,6 +298,7 @@
       <button type="button" class="squadBtn" data-squad-command="inventory">🎒 Inventory</button>
       <button type="button" class="squadBtn" data-squad-command="combat-comfort">Combat Comfort</button>
       <button type="button" class="squadBtn" data-squad-command="smooth-play">Graphics</button>
+      <button type="button" class="squadBtn" data-squad-command="arrange-controls">Arrange Controls</button>
       ${state.snapshot?.routeVersion===1&&sharedStoryActive()&&window.TigerMissionRoutes?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="mission-route">Mission Route</button>':''}
       ${active&&state.snapshot?.fieldVersion===1&&sharedStoryActive()&&window.TigerFieldOperations?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="field-actions">Field Actions</button>':''}
       <button type="button" class="squadBtn" data-battlefield-layout data-squad-command="controls-layout">Controls: ${window.TigerBattlefieldAwareness?.layout()==='docked'?'Docked':'Overlay'}</button>
@@ -1101,8 +1102,8 @@
   function pauseSummary(){
     const pausedBy = state.snapshot?.pausedBy || [];
     if(!pausedBy.length) return "Squad mission paused for gear changes.";
-    const labels = pausedBy.map((row)=>`${Number(row.userId) === viewerId() ? "You" : row.name} opened ${row.reason === "inventory" ? "Inventory" : "the Shop"}`);
-    return `⏸️ ${labels.join(" • ")}. The mission resumes after every open gear screen is closed.`;
+    const labels = pausedBy.map((row)=>`${Number(row.userId) === viewerId() ? "You" : row.name} opened ${row.reason === "controls" ? "Arrange Controls" : row.reason === "inventory" ? "Inventory" : "the Shop"}`);
+    return `⏸️ ${labels.join(" • ")}. The mission resumes after every open gear or control screen is closed.`;
   }
 
   function render(){
@@ -1122,6 +1123,7 @@
     const debrief=$('squadDebrief');if(debrief&&state.snapshot?.debrief)debrief.__renderedHtml=window.TigerMissionDebrief?.html(state.snapshot.debrief,state.profile?.missionDebriefs)||'';
     bindCommandButtons();
     bindMoveButtons();
+    window.TigerTouchLayout?.applyCoop();
     bindLobbyInput();
     if(state.snapshot?.status === "active") ensureFrame();
     else { drawArena(); if(state.snapshot?.status === "complete") startSquadTransportMovie(); }
@@ -1254,7 +1256,8 @@
       'escort-recover':()=>escortCommand('escort-recover'),
       'radio-locate':()=>{ radioLocateUntil=Date.now()+7000;updateFieldRadio(); },
       'radio-mute':()=>{ radioMuted=!radioMuted;try{localStorage.setItem('ts_field_radio_muted',radioMuted?'1':'0');}catch(e){}updateFieldRadio(); },
-      'controls-layout':()=>window.TigerBattlefieldAwareness?.toggleLayout(),
+      'arrange-controls':async()=>{clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'controls'});window.TigerTouchLayout?.open({mode:'coop',onClose:()=>{if(active&&state.snapshot?.status==='active')api('resume').catch(error=>setMessage(error.message,true));}});},
+      'controls-layout':()=>{window.TigerBattlefieldAwareness?.toggleLayout();window.TigerTouchLayout?.refresh();},
       action:()=>action(actionName),
       shop:()=>openEquipment("shop"),
       inventory:()=>openEquipment("inventory"),
@@ -3128,7 +3131,7 @@
   window.addEventListener('mission-route-open',()=>{clearPresentationInput();if(state.open&&state.code)sync(true).catch(()=>{});});
   window.addEventListener('blur',clearPresentationInput);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPresentationInput();});
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });

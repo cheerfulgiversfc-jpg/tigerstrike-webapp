@@ -1,6 +1,13 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.0 — Personal Controls & Ammo Clarity
+
+- Adds device-local individual control placement with separate Field, Combat and Co-op layouts. Defaults are a 176px joystick, 58px buttons, 18px spacing and 65% opacity; sizes adapt to the viewport. Sliders allow 120–240px joystick, 44–84px buttons, 10–36px spacing and 20–100% opacity. Overlapping saved positions are repaired with an 8px safety gap. Overlay supports free placement; Docked keeps controls below the map. Cancel discards edits; Save persists on this device.
+- The Solo tutorial adds a real Arrange Controls practice step and explains ammunition, capture, healing, armor and dodging. Co-op has its own Arrange Controls gear button and an owned server pause that resumes without clearing a teammate’s pause.
+- Reliable touch-release activation suppresses duplicate compatibility clicks. Canceled or dragged-away touches do not attack, and unrelated finger releases do not reset the joystick. Attack displays its ammunition type and available rounds. The supplied recording showed a misleading lethal-ammo warning while Rubber was selected: warnings now name the selected type, and weapon fallback cannot switch Rubber to Real rounds.
+- Validation includes responsive layout geometry, pointer ownership and cancellation, actual Attack handlers, tutorial wiring, Co-op pause ownership and the existing regression suite. Local browser previews use isolated test state. Physical two-phone Telegram multitouch testing has not been performed for this release.
+
 ## V14.10 — Chapter 10 Routes & Field Actions, Missions 91–100
 
 - Completes the V14.0/V14.1 rollout across all 100 Solo and Shared Story missions. Temple Approach Shelter, Guardian Trail Shelter, Ancient Watchtower and Final Expedition Cache occupy four fixed Chapter 10 positions shared by its ten maps. Tests check dry footprints and clearance from roads and required landmarks; Solo, Co-op and Map Truth use the same coordinates. Chapters 1–9 retain their positions and behavior.
