@@ -111,7 +111,7 @@
     const role=String(entity.role||"support"),cloth=globalThis.TigerEliteCatalog?.palettes[elite.soldier]||options.uniformPalette||NPC_UNIFORMS[role]||{};
     const body=cloth.body||"#456b48",light=cloth.light||"#83a66b",dark=cloth.dark||"#263d32";
     const vest=cloth.vest||"#293e3a",helmet=cloth.helmet||"#567b49",trim=cloth.trim||"#c6d49b";
-    const tailoring=elite.soldier==='midnight'?'night':elite.soldier==='recruit_uniform'?'rescue':SOLDIER_TAILORING[body]||"ranger";
+    const tailoring=elite.soldier==='crimson_commander'?'commander':elite.soldier==='midnight'?'night':elite.soldier==='recruit_uniform'?'rescue':SOLDIER_TAILORING[body]||"ranger";
     const stride=Math.sin(phase)*5.4*blend,lift=Math.max(0,Math.cos(phase))*2.5*blend;
     const bob=Math.abs(Math.cos(phase))*1.1*blend,scale=clamp(options.scale??1,.25,4);
     const box=(x,y,w,h,color,r=2)=>{ctx.fillStyle=color;rounded(ctx,x,y,w,h,r);ctx.fill();};
@@ -171,6 +171,16 @@
       for(const px of [-12,9])box(px,-14,3,5,light,1);
     }
 
+    if(elite.soldier==='crimson_commander'){
+      // Field command tailoring shares the normal animated body and weapon rig.
+      box(-16,-16,8,5,trim,2);box(8,-16,8,5,trim,2);
+      line(ctx,'#fae2a1',.8,[[-15,-15],[-10,-15],[9,-15],[14,-15]]);
+      for(let rank=0;rank<3;rank++)box(3,-11+rank*2.2,5,1.2,trim,.3);
+      line(ctx,trim,1.2,[[-9,-11],[-10,-3],[-5,3],[1,1]]);
+      box(-20,-12,8,18,'#202d3b',2);box(-20,-10,5,6,'#628f99',1);
+      line(ctx,'#718a8a',1,[[-18,-12],[-18,-31]]);ellipse(ctx,-18,-31,1.2,1.2,trim);
+      box(10,5,6,12,'#754138',1);line(ctx,trim,.8,[[11,8],[15,8],[15,15]]);
+    }
     if(elite.soldier==='storm_medic'){
       const pack=ctx.createLinearGradient(-22,-14,-10,14);pack.addColorStop(0,'#e3eee5');pack.addColorStop(.55,'#94bbb7');pack.addColorStop(1,'#315a70');
       box(-23,-13,12,26,pack,4);line(ctx,'#4b7884',1,[[-21,-9],[-21,8],[-14,8]]);box(-23,4,6,8,'#e0eadf',2);line(ctx,'#477f83',1,[[-19,-7],[-19,0]]);line(ctx,'#477f83',1,[[-21,-4],[-17,-4]]);
@@ -193,19 +203,21 @@
     if(tailoring==="night"){box(-6,-31,5,4,dark,1);box(1,-31,5,4,dark,1);box(-5,-30,3,1,"#a3dfcd",.5);}
     if(tailoring==="scout")line(ctx,dark,2,[[-9,-32],[-11,-26]]);
     if(tailoring==="royal"||tailoring==="ancient")box(-2,-29,4,2,trim,1);
+    if(elite.soldier==='crimson_commander'){ellipse(ctx,-1,-33,11,4,helmet,-.12);box(-10,-30,21,2,'#292b35',1);box(3,-34,4,4,trim,1);line(ctx,'#f4d998',.7,[[4,-33],[5,-31],[6,-33]]);}
     line(ctx,"#1b2a31",2,[[-9,-26],[-10,-20],[-5,-19]]);
     ellipse(ctx,-10,-23,2.2,3,"#263a3e");ellipse(ctx,-5,-19,1,1,"#111c22");
 
     // Arms and weapon point toward the aim direction without rotating the body.
     // Mirroring handles left-facing aim; only the two-arm weapon rig pitches.
-    const aim=options.lowerWeapon?.7:Math.atan2(Math.sin(face),Math.abs(Math.cos(face)));
+    const salute=elite.soldier==='crimson_commander'&&!downed?clamp(options.celebration,0,1):0;
+    const aim=salute>0?.8:options.lowerWeapon?.7:Math.atan2(Math.sin(face),Math.abs(Math.cos(face)));
     const recoil=clamp(options.shotKick,0,1)*2;
     ctx.save();ctx.translate(0,-5);ctx.rotate(aim+reaction*.14);ctx.translate(-recoil,0);
     line(ctx,dark,6,[[-9,-4],[-11,3],[3,3]]);
     line(ctx,body,4,[[-9,-4],[-11,3],[3,3]]);
-    line(ctx,dark,6,[[9,-4],[14,2],[18,-1]]);
-    line(ctx,body,4,[[9,-4],[14,2],[18,-1]]);
-    box(-5,0,8,4,"#26353c");box(15,-3,5,4,"#26353c");
+    if(salute<=0){line(ctx,dark,6,[[9,-4],[14,2],[18,-1]]);
+    line(ctx,body,4,[[9,-4],[14,2],[18,-1]]);}
+    box(-5,0,8,4,"#26353c");if(salute<=0)box(15,-3,5,4,"#26353c");
     if(elite.weapon==='wildlife_tranq')drawWildlifeRifle(ctx,0,0);
     else{
     box(-3,-5,25,6,"#19272f");box(1,-5,17,2,"#63767d",1);
@@ -218,6 +230,7 @@
     }
     }
     ctx.restore();
+    if(salute>0){const hx=18-10*salute,hy=-6-23*salute;line(ctx,dark,6,[[9,-9],[14+6*salute,-3-12*salute],[hx,hy]]);line(ctx,body,4,[[9,-9],[14+6*salute,-3-12*salute],[hx,hy]]);box(hx-2,hy-2,5,4,'#e8b98f',1);}
     if(elite.badge==='recruit_badge'){box(-4,-8,8,7,'#f9df86',1);line(ctx,'#296675',1.5,[[-2,-5],[0,-3],[3,-7]]);}
     if(role==="medic"||role==="rescue"){
       box(-5,-11,10,7,"#edf3df",1);box(-1,-10,2,5,"#c9584b",.5);box(-3,-8,6,1.5,"#c9584b",.5);
@@ -724,6 +737,16 @@
     ctx.beginPath();ctx.rect(0,0,w,h);ctx.clip();drawSoldier(ctx,{x:w*.53,y:h*.74,face:0,eliteAppearance:appearance},{scale:Math.min(4,w/52),showMarker:false,phase:0,uniformPalette:options.uniformPalette});
     ctx.strokeStyle='#a2cdc0';ctx.lineWidth=Math.max(2,w/100);ctx.strokeRect(3,3,w-6,h-6);ctx.restore();
   }
+  function drawCommanderBanner(ctx,appearance={}){
+    if(appearance.soldier!=='crimson_commander')return false;
+    const w=ctx.canvas.width,h=ctx.canvas.height;ctx.save();ctx.clearRect(0,0,w,h);ctx.scale(w/600,h/110);
+    const bg=ctx.createLinearGradient(0,0,600,110);bg.addColorStop(0,'#572b3c');bg.addColorStop(.6,'#222e3e');bg.addColorStop(1,'#132e32');ctx.fillStyle=bg;ctx.fillRect(0,0,600,110);
+    for(let x=95;x<620;x+=45)line(ctx,'rgba(224,191,120,.10)',1,[[x,0],[x-60,110]]);
+    drawSoldier(ctx,{x:50,y:76,face:0,eliteAppearance:appearance},{scale:1.65,showMarker:false,lowerWeapon:true});
+    line(ctx,'#e0bf78',1.3,[[100,20],[580,20]]);line(ctx,'#e0bf78',1.3,[[100,90],[580,90]]);
+    ctx.textAlign='left';ctx.fillStyle='#f6dfac';ctx.font='800 25px system-ui';ctx.fillText('CRIMSON COMMANDER',109,53);
+    ctx.fillStyle='#ccd9db';ctx.font='13px system-ui';ctx.fillText('FIELD COMMAND • RESCUE UNIFORM',110,76);ctx.restore();return true;
+  }
   function drawMedDrone(ctx,entity={},options={}){
     const x=Number(entity.x)||0,y=Number(entity.y)||0,now=Number(options.now??Date.now()),storm=options.variant==='storm_medic',scale=Math.max(.2,Math.min(3,Number(options.scale)||1));
     const reduced=globalThis.TigerCombatFeel?.settings()?.reducedFlashes;
@@ -762,5 +785,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,drawWildlifeRifle,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,drawCommanderBanner,drawWildlifeRifle,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });

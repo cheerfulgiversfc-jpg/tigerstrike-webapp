@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5273";
+const TS_BUILD = "5274";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4977,6 +4977,7 @@ function renderMissionVictoryHero(summary=null){
     const world=mode==='Story'?S.worldMapCampaign?.livingWorld?.headline:'';
     impact.textContent=`${saved} civilians rescued • ${captures} tigers captured alive • ${kills} killed. Sanctuary residents: ${residents}.${world?` District report: ${world}`:''}`;
   }
+  window.TigerCommanderCelebration?.mount(root,{confirmed:S.missionEnded===true,runKey:'solo:'+S._missionRunId,animate:!!summary,players:[{eliteAppearance:window.TigerEliteArmory?.appearance()||{}}]});
 }
 
 function openSanctuaryFromResults(){

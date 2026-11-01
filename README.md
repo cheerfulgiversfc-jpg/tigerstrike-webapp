@@ -1,6 +1,14 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.5 — Crimson Commander
+
+- Adds `elite_crimson_commander`, a permanent 500-Star soldier identity through existing Telegram-authenticated invoice, duplicate-safe grant, equip, restore and refund handling. Ownership includes the crimson uniform, command backpack/radio details, beret, portrait, three synthetic radio lines, equipped profile banner and mission-completion salute. No gameplay stats, command permissions or supplies are sold.
+- Solo, Co-op, portraits, banners, practice and the celebration all use production shared soldier artwork. Existing earned uniforms and purchased weapon/extraction appearances remain independent. The automatic banner appears only with the Commander equipped, including the server-verified Co-op lobby card.
+- Confirmed completion adds an optional inline result card using the same production scenery and equipped soldiers. The 2.6-second salute has Replay/Hide buttons, bounded 30 FPS drawing, deduplication, detached/hidden-document cleanup, and a still pose under Reduced Flashes. Reconnecting to an old complete room does not automatically replay it. Failure and repeated result rendering do not create extra rewards or celebrations. Preview is explicitly labeled and does not mark a mission complete.
+- Three original locally synthesized CMU Flite awb radio clips share the existing one-channel playback, captions, sound/voice mute and event deduplication. Existing music is unchanged. Source/voice provenance remains documented in `assets/audio/elite/README.md` with the existing Flite license.
+- Validation includes purchase/ownership/refund and shared-snapshot tests; finite, balanced shared artwork checks; result lifecycle/replay/hide/reduced-motion checks; and desktop/phone UI plus browser audio playback checks. `qa/commander-identity.html` provides isolated simulated results with no production requests. Actual paid checkout and physical two-phone viewing of this new soldier remain unverified.
+
 ## V15.4 — Wildlife Specialist Tranq Rifle
 
 - Adds `elite_wildlife_tranq`, a permanent 400-Star weapon entitlement, through the existing verified invoice, idempotent grant, equip, restore and refund flow. No ammunition, damage bonus or guaranteed capture is sold.

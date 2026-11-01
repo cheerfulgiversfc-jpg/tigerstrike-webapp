@@ -1,1 +1,3 @@
 Original Tiger Strike synthetic radio lines, generated locally with CMU Flite (festvox/flite commit 6c9f20dc915b17f5619340069889db0aa007fcdc). Midnight Ranger uses rms; Storm Medic uses slt. Original text and radio filtering/chirps by Tiger Strike. No real-person impersonation or Apple system-voice recordings are distributed. Flite license is included in FLITE-LICENSE.txt. Dialogue is listed in elite-catalog.js. WAV clips are mono PCM and only load when a line is requested.
+
+Crimson Commander uses the bundled CMU Flite awb synthetic voice with original Tiger Strike dialogue, a locally applied radio band-pass filter, short fades and two quiet generated radio tones. It shares the same one-channel playback and captions. No new music track is included.

@@ -42,6 +42,18 @@
     }
     R.drawMapLighting(c,{x:0,y:0,w,h});c.restore();return {soldier:{x:sx,y:sy},tiger:{x:tx,y:ty}};
   }
+  function drawVictory(c,options={}){
+    const now=Number(options.now)||0,age=Math.max(0,Number(options.age)||0),w=600,h=300;
+    const actors=(options.players||[{eliteAppearance:{soldier:'crimson_commander'}}]).slice(0,2);
+    const salute=options.staticPose?1:Math.sin(Math.PI/2*Math.min(1,age/550))*(age>1800?Math.max(0,1-(age-1800)/650):1);
+    c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/w,c.canvas.height/h);
+    const positions=actors.map((p,i)=>({x:actors.length===1?300:210+i*180,y:168,r:90}));
+    backdrop(c,{width:w,height:h,now,clear:positions});
+    for(let i=0;i<actors.length;i++){const p=actors[i],a=p.eliteAppearance||{};R.drawSoldier(c,{...p,x:positions[i].x,y:168,face:0,eliteAppearance:a},{now,scale:2.45,walking:false,showMarker:false,lowerWeapon:true,celebration:salute,uniformPalette:p.masteryIdentity?.uniform?.palette});}
+    c.fillStyle='rgba(8,20,30,.91)';c.beginPath();c.roundRect(18,240,564,43,9);c.fill();c.fillStyle='#f4dfac';c.textAlign='center';c.font='bold 16px system-ui';
+    c.fillText(options.preview?'VICTORY SALUTE PREVIEW':'MISSION COMPLETE • COMMANDER SALUTE',300,260);c.fillStyle='#d2ded8';c.font='11px system-ui';c.fillText(options.preview?'Cosmetic animation • no mission progress or rewards':'Review your mission results and continue whenever you are ready',300,276);
+    c.restore();
+  }
   function drawTransfer(c,options={}){
     const w=c.canvas.width,h=c.canvas.height,p=Math.max(0,Math.min(1,Number(options.progress)||0)),count=Math.max(1,Math.min(6,Number(options.count)||1)),now=Number(options.now)||0;
     c.save();c.clearRect(0,0,w,h);c.scale(w/960,h/300);
@@ -54,5 +66,5 @@
     for(let i=0;i<count;i++){const loaded=Math.max(0,Math.min(1,(p-(.24+i*(.4/count)))/.12)),gx=600+i*48,cx=gx+(tx+28+i*43-gx)*loaded,cy=208+(185-208)*loaded;R.drawCaptureCage(c,cx+16,cy,.44,{now});}
     R.drawMapLighting(c,{x:0,y:0,w:960,h:300});c.fillStyle='rgba(8,25,32,.9)';c.beginPath();c.roundRect(12,10,470,49,8);c.fill();c.fillStyle='#e6f0dc';c.font='bold 15px system-ui';c.textAlign='left';c.fillText(p<.24?'Wildlife recovery truck arriving':p<.68?'Loading secured live tiger cages':'Cages secured • wildlife transport departing',24,30);c.fillStyle='#b9dbc0';c.font='12px system-ui';c.fillText(`${Number(options.count)||0} live tigers • no blood scent`,24,48);c.restore();
   }
-  return Object.freeze({draw,backdrop,routeAt,drawTransfer});
+  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory});
 });

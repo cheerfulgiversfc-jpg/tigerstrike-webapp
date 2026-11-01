@@ -440,6 +440,7 @@
       if(Number(player.userId) === viewerId()) continue;
       state.remoteDraw.set(player.userId, squadMotion.accept(snapshot.paused?null:state.remoteDraw.get(player.userId), {...player,moving:!!player.moving&&snapshot.status==='active'&&!snapshot.paused}, receivedAt, snapshot.world));
     }
+    state.commanderVictoryRun=snapshot.status==='complete'?(previousStatus==='active'&&!changedRun?`${snapshot.code}:${snapshot.startedAt}`:state.commanderVictoryRun):'';
     state.snapshot = snapshot;
     window.TigerCharacterVoice?.observe(snapshot,viewerId());
     reactionPresentation?.observe(snapshot,Date.now());
@@ -504,7 +505,7 @@
     const count = $("squadMemberCount");
     if(count) count.textContent = `${snapshot.memberCount}/2 players connected`;
     const roster = $("squadRoster");
-    if(roster) roster.innerHTML = rosterHtml();
+    if(roster){roster.innerHTML = rosterHtml();window.TigerEliteArmory?.renderPortraits(roster);}
     const mine = localSnapshotPlayer();
     document.querySelectorAll("#liveSquadOverlay [data-squad-role]").forEach((button)=>{
       button.classList.toggle("active", button.dataset.squadRole === mine?.role);
@@ -654,6 +655,7 @@
       const status = player.downed ? (respawn > 0 ? `RESPAWNING IN ${respawn}s` : "DOWNED — needs revive") : (player.online ? `HP ${Math.round(player.hp)}/${Math.round(player.maxHp)}` : "Reconnecting…");
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
         ${player.eliteAppearance?.soldier?`<canvas class="squadElitePortrait" width="256" height="256" data-elite-portrait="${esc(player.eliteAppearance.soldier)}" aria-label="${esc(window.TigerEliteCatalog?.items[player.eliteAppearance.soldier]?.name||'Soldier')} portrait"></canvas>`:''}
+        ${player.eliteAppearance?.soldier==='crimson_commander'?'<canvas class="eliteCommanderBanner" width="1200" height="220" data-elite-banner="crimson_commander" aria-label="Equipped Crimson Commander profile banner"></canvas>':''}
         <div class="squadMemberName">${Number(player.userId) === Number(state.snapshot?.hostId) ? "👑 " : ""}${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(window.TigerMasteryRewards?.identityText(player.masteryIdentity)||'No mastery identity equipped')}</div>
         <div class="squadMemberMeta">Uniform: ${esc(window.TigerEliteCatalog?.items[player.eliteAppearance?.soldier]?.name||player.masteryIdentity?.uniform?.name||'Default')}</div>
@@ -1131,6 +1133,7 @@
     window.TigerTouchLayout?.applyCoop();
     bindLobbyInput();
     window.TigerEliteArmory?.renderPortraits(document);
+    window.TigerCommanderCelebration?.mount($('squadResultBanner'),{confirmed:state.snapshot?.status==='complete',runKey:`${state.snapshot?.code}:${state.snapshot?.startedAt}`,animate:state.commanderVictoryRun===`${state.snapshot?.code}:${state.snapshot?.startedAt}`,players:state.snapshot?.players||[]});
     if(state.snapshot?.status === "active") ensureFrame();
     else { drawArena(); if(state.snapshot?.status === "complete") startSquadTransportMovie(); }
     syncSquadMusicContext();
