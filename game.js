@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5272";
+const TS_BUILD = "5273";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -10,6 +10,8 @@ const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 let __livingTigerNoise = null;
 let __encounterGunshot = null;
 let __soloCombatPresentation=null;
+let __wildlifeTranqPresentation=null;
+function wildlifeTranqPresentation(){return __wildlifeTranqPresentation||(__wildlifeTranqPresentation=window.TigerWildlifeTranq?.create());}
 let __soloCombatReceipt=0;
 let __soloReactionPresentation=null;
 let __soloReactionRun=0;
@@ -25,10 +27,11 @@ function observeSoloCombatReactions(){
 }
 function combatComfortSettings(){return window.TigerCombatFeel?.settings()||{vibration:false,reducedFlashes:false,shake:25};}
 function soloCombatPresentation(){
-  if(!__soloCombatPresentation)__soloCombatPresentation=window.TigerCombatFeel?.create(e=>{soloCombatReactions()?.shot(e,Date.now());sfx(`weapon-${e.mode}`);if(!e.captured)hapticImpact('light');queueCameraShake(e.mode==='real'?.22:.12,100);});
+  if(!__soloCombatPresentation)__soloCombatPresentation=window.TigerCombatFeel?.create(e=>{soloCombatReactions()?.shot(e,Date.now());if(e.mode==='tranq'&&window.TigerEliteArmory?.appearance().weapon==='wildlife_tranq'&&S.mode!=='Survival'){const site=e.captured?(S.captureCages||[]).find(c=>String(c.tigerId)===String(e.targetId)):null;wildlifeTranqPresentation()?.emit(e,Date.now(),site);}sfx(`weapon-${e.mode}`);if(!e.captured)hapticImpact('light');queueCameraShake(e.mode==='real'?.22:.12,100);});
   return __soloCombatPresentation;
 }
 function recordWeaponImpact(target,mode,extra={}){
+  S._wildlifeTranqPoseUntil=mode==='tranq'?Date.now()+900:0;
   return soloCombatPresentation()?.emit({id:`solo:${++__soloCombatReceipt}`,at:Date.now(),mode,actorId:'solo',targetId:String(target?.id||''),x1:Number(S.me.x),y1:Number(S.me.y),x2:Number(target?.x),y2:Number(target?.y),...extra});
 }
 function livingTigerBalance(target=null){
@@ -43053,6 +43056,7 @@ let __deployInProgress = false;
 let __queuedDeployOpts = null;
 function deploy(opts={}){
   __soloCombatPresentation?.clear();
+  __wildlifeTranqPresentation?.clear();S._wildlifeTranqPoseUntil=0;
   if(!opts.governmentBypass && !window.__TUTORIAL_MODE__ && guardGovernmentDeployment()) return;
   if(__deployInProgress){
     __queuedDeployOpts = { ...(opts || {}) };
@@ -59032,7 +59036,7 @@ function drawSoldierModelOnContext(ctx,entity,x,y,opts={}){
   return renderer.drawSoldier(ctx,{...entity,x,y,face:opts.face??entity.face,role:opts.role||entity.role},{
     blend,phase:(Number(entity.step)||0)*3.25+Number(opts.phase||0),
     scale:opts.scale||1,mine:true,showMarker:opts.role==="player",
-    eliteAppearance:opts.role==='player'?{...window.TigerEliteArmory?.appearance(),weapon:window.TigerEliteArmory?.appearance().weapon==='guardian'&&(S.mode==='Survival'||selectedAmmoModeForWeapon(equippedWeapon())!=='rubber')?'':window.TigerEliteArmory?.appearance().weapon}:undefined,uniformPalette:opts.uniformPalette,shotKick:opts.shotKick,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
+    eliteAppearance:opts.role==='player'?window.TigerWildlifeTranq.presentation(window.TigerEliteArmory?.appearance()||{},{survival:S.mode==='Survival',tranq:equippedWeapon().type==='tranq'||Date.now()<Number(S._wildlifeTranqPoseUntil||0),ammoMode:selectedAmmoModeForWeapon(equippedWeapon())}):undefined,uniformPalette:opts.uniformPalette,shotKick:opts.shotKick,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
     reaction:typeof soloCombatReactions==='function'?soloCombatReactions()?.pose('soldier',opts.role==='player'?'solo':`support:${entity.id}`,Date.now(),combatComfortSettings())||0:0
   });
 }
@@ -62979,6 +62983,7 @@ function drawEntities(){
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
   drawSafe("drawFieldObjectiveBeacons",drawFieldObjectiveBeacons);
   drawSafe('drawSharedWeaponImpacts',()=>soloCombatPresentation()?.draw(ctx,Date.now(),combatComfortSettings()));
+  drawSafe('drawWildlifeTranqEffects',()=>{if(S.mode!=='Survival'&&window.TigerEliteArmory?.appearance().weapon==='wildlife_tranq'){wildlifeTranqPresentation()?.draw(ctx,Date.now(),combatComfortSettings());const target=S.inBattle?activeTiger():null;if(target?.alive)window.TigerWildlifeTranq.drawFeedback(ctx,target,fieldCaptureStatus(target));}});
   drawSafe('drawTigerStrike',()=>{
     const comfort={...combatComfortSettings(),view:{...cameraOffsetSnapshot(S),w:cv.width,h:cv.height}};
     for(const t of S.tigers||[]){if(!t.alive)continue;window.TigerCombatReactions?.drawStrike(ctx,t._battleAttack||t._lastBattleAttack,Date.now(),comfort);}

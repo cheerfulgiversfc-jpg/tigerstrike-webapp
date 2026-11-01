@@ -1,6 +1,14 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.4 — Wildlife Specialist Tranq Rifle
+
+- Adds `elite_wildlife_tranq`, a permanent 400-Star weapon entitlement, through the existing verified invoice, idempotent grant, equip, restore and refund flow. No ammunition, damage bonus or guaranteed capture is sold.
+- Owners receive normal `W_TRQ_RIFLE` access in Solo/Arcade (government armory restrictions still apply). Existing dart families, range, low-health capture windows, boss weapon/strategy requirements and mode inventories remain authoritative. Co-op still consumes its own Tranq Charges. Survival remains kill-only and hides the edition.
+- Production Solo, Co-op and the shop share one detailed Wildlife rifle model. Ballistic firing shows the current gun with the Wildlife rifle slung; tranquilizer use displays the edition. Gameplay feedback reads existing target eligibility instead of inventing sedation percentages. Confirmed live captures receive a short cage-lock effect at the real dry cage site, with duplicate/stale/reconnect events suppressed and no additional sounds or rewards.
+- Free practice simulates Rubber weakening and a standard Solo 25% capture window, checks range and darts, and secures one cage. The visible practice HP/dart counter and buttons use isolated state. Automated previews use the same production soldier, tiger, scenery and cage art.
+- Verification: full automated suite plus desktop and phone-width preview/practice checks. Real paid Telegram checkout and physical two-phone viewing of the new equipment remain unverified.
+
 ## V15.3 — Storm Medic & Character Identity
 
 - Adds the permanent Storm Medic offer at 350 Telegram Stars using the existing verified ownership, frozen quote, precheckout, replay, restore and refund flow. It equips a detailed blue/white field uniform, medical backpack and matching medical drone appearance. Existing owners of Midnight Ranger gain its portrait and three original synthetic radio lines without another payment. All other prices remain unchanged.

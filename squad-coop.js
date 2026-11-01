@@ -11,6 +11,7 @@
     window.sfx?.(`weapon-${e.mode}`);
     if(e.actorId===String(viewerId())&&window.TigerCombatFeel.settings().vibration){try{tgApp?.HapticFeedback?.impactOccurred?.('light');}catch(_){} }
   });
+  const wildlifePresentation=window.TigerWildlifeTranq?.create();
   const state = {
     open:false,
     code:"",
@@ -443,6 +444,7 @@
     window.TigerCharacterVoice?.observe(snapshot,viewerId());
     reactionPresentation?.observe(snapshot,Date.now());
     combatPresentation?.ingest(snapshot,Date.now());
+    wildlifePresentation?.ingest(snapshot,Date.now());
     state.snapshotReceivedAt = receivedAt;
     state.lastSnapshotWallAt = Date.now();
     state.connectionFailed = false;
@@ -2323,7 +2325,7 @@
       const renderNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
       const shotAge=renderNow-Number(p.lastAttackAt||0);
       const shotKick=impactPose?.kick??(shotAge>=0&&shotAge<140?Math.sin(shotAge/140*Math.PI):0);
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,eliteAppearance:{...p.eliteAppearance,weapon:p.eliteAppearance?.weapon==='guardian'&&p.ammoMode!=='rubber'?'':p.eliteAppearance?.weapon},x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow,reaction:reactionPresentation?.pose('soldier',String(p.userId),Date.now(),window.TigerCombatFeel?.settings())||0});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,eliteAppearance:window.TigerWildlifeTranq?.presentation(p.eliteAppearance||{},{survival:!!state.snapshot?.mission?.survival,tranq:p.lastHitKind==='tranq'&&shotAge>=0&&shotAge<900,ammoMode:p.ammoMode})||p.eliteAppearance,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow,reaction:reactionPresentation?.pose('soldier',String(p.userId),Date.now(),window.TigerCombatFeel?.settings())||0});
       const recovery=respawnSeconds(p),downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=drawn.accent;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,drawn.labelY);
       drawMasteryIdentity(ctx,p,draw.x,drawn.labelY-16);
       ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-28,drawn.barY,56,8,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-27,drawn.barY+1,54*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),6,3);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,drawn.barY+22);
@@ -3038,9 +3040,11 @@
       const effect=player.rescueTool?.effect;
       window.TigerRescueTools?.drawEffect(ctx,effect?.kind==='flare'?{...effect,target:window.TigerFieldRadio?.guide(snap,player.userId)}:effect?{...effect,eliteAppearance:player.eliteAppearance}:effect,now);
     }
+    wildlifePresentation?.draw(ctx,now,window.TigerCombatFeel?.settings()||{});
     const combatTarget=nearestActiveTiger();
     if(snap.status==='active'&&!snap.paused&&!state.local?.downed&&combatTarget){
       const status=window.TigerPlayerExperience?.captureStatus(combatTarget,{survival:!!snap.mission?.survival,threshold:.30,tranqReady:Number(state.profile?.ammo?.tranq||0)>0});
+      if(localSnapshotPlayer()?.eliteAppearance?.weapon==='wildlife_tranq'&&!snap.mission?.survival)window.TigerWildlifeTranq?.drawFeedback(ctx,combatTarget,status);
       window.TigerCombatReactions?.drawTarget(ctx,combatTarget,status,{inRange:distance(state.local,combatTarget)<=(combatTarget.boss?178:164),radius:combatTarget.boss?52:38,view});
     }
     if(snap.status==='active'&&!snap.paused)for(const tiger of (snap.tigers||[]))for(const warning of (tiger.attackWarnings||[])){

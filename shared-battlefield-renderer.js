@@ -129,6 +129,7 @@
       box(foot-4,footY-1,10,4,"#111a20");
       line(ctx,"#67716c",.8,[[foot-2,footY+2],[foot+4,footY+2]]);
     }
+    if(elite.wildlifeCarried)drawWildlifeRifle(ctx,-18,8,{scale:.63,angle:-1.42});
     // Uniform, vest, belt, shoulder plates and backpack.
     box(-15,-12,7,22,dark,3);box(-16,-9,5,9,vest);
     line(ctx,"#15252b",1.3,[[-14,-10],[-16,-27]]);ellipse(ctx,-16,-27,1,1,trim);
@@ -205,6 +206,8 @@
     line(ctx,dark,6,[[9,-4],[14,2],[18,-1]]);
     line(ctx,body,4,[[9,-4],[14,2],[18,-1]]);
     box(-5,0,8,4,"#26353c");box(15,-3,5,4,"#26353c");
+    if(elite.weapon==='wildlife_tranq')drawWildlifeRifle(ctx,0,0);
+    else{
     box(-3,-5,25,6,"#19272f");box(1,-5,17,2,"#63767d",1);
     box(22,-4,9,3,"#8b999a",1);box(29,-5,3,5,"#1c2a31",1);
     box(5,1,5,7,"#273640",1);box(11,-8,8,3,"#1d2c32",1);box(16,-7,2,1,"#90cbd2",.5);
@@ -212,6 +215,7 @@
     if(elite.weapon==='guardian'||elite.weapon==='recruit_finish'){
       box(0,-5,21,3,elite.weapon==='guardian'?'#35c4bc':'#e99542',1);line(ctx,'#f1e4b8',1,[[4,-4],[18,-4]]);
       if(elite.weapon==='guardian'){box(11,-9,10,3,'#8fe5d4',1);box(6,1,4,7,'#2f9f9b',1);}
+    }
     }
     ctx.restore();
     if(elite.badge==='recruit_badge'){box(-4,-8,8,7,'#f9df86',1);line(ctx,'#296675',1.5,[[-2,-5],[0,-3],[3,-7]]);}
@@ -701,6 +705,18 @@
     return {family};
   }
 
+  function drawWildlifeRifle(ctx,x=0,y=0,options={}){
+    ctx.save();ctx.translate(x,y);ctx.rotate(Number(options.angle)||0);ctx.scale(Number(options.scale)||1,Number(options.scale)||1);
+    const metal=ctx.createLinearGradient(0,-7,0,6);metal.addColorStop(0,'#b7c7b4');metal.addColorStop(.3,'#5e7f72');metal.addColorStop(1,'#243f43');
+    ctx.fillStyle='#3e503b';rounded(ctx,-12,-4,18,8,2);ctx.fill();line(ctx,'#aabb91',1,[[-10,-2],[-2,-2]]);
+    ctx.fillStyle=metal;rounded(ctx,-1,-6,26,9,2);ctx.fill();ctx.fillStyle='#75845b';rounded(ctx,20,-5,10,7,1);ctx.fill();
+    ctx.fillStyle='#a5c2b8';rounded(ctx,29,-4,14,3,1);ctx.fill();ctx.fillStyle='#314a48';rounded(ctx,41,-5,4,5,1);ctx.fill();
+    ctx.fillStyle='#b8d5ce';rounded(ctx,5,3,15,5,2);ctx.fill();line(ctx,'#dcead8',1,[[7,4],[17,4]]);line(ctx,'#406f67',1,[[8,7],[17,7]]);
+    ctx.fillStyle='#203b42';rounded(ctx,6,-11,20,4,2);ctx.fill();ctx.fillStyle='#b5dca8';rounded(ctx,24,-11,3,3,1);ctx.fill();
+    line(ctx,'#d5e3cc',1,[[1,-5],[1,1],[7,1]]);line(ctx,'#a8beb0',1.5,[[16,-5],[20,-1],[22,-1]]);
+    ctx.strokeStyle='#789e91';ctx.lineWidth=1;ctx.strokeRect(1,2,6,7);line(ctx,'#d4c494',1,[[-11,4],[-5,5],[12,4]]);
+    ctx.restore();
+  }
   function drawSoldierPortrait(ctx,appearance={},options={}){
     const w=ctx.canvas.width,h=ctx.canvas.height;ctx.save();ctx.clearRect(0,0,w,h);
     const bg=ctx.createLinearGradient(0,0,w,h);bg.addColorStop(0,'#355f5a');bg.addColorStop(1,'#102c40');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
@@ -746,5 +762,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,drawWildlifeRifle,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });
