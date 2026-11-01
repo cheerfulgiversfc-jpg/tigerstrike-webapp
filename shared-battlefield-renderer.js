@@ -748,7 +748,7 @@
     ctx.fillStyle='#ccd9db';ctx.font='13px system-ui';ctx.fillText('FIELD COMMAND • RESCUE UNIFORM',110,76);ctx.restore();return true;
   }
   function drawMedDrone(ctx,entity={},options={}){
-    const x=Number(entity.x)||0,y=Number(entity.y)||0,now=Number(options.now??Date.now()),storm=options.variant==='storm_medic',scale=Math.max(.2,Math.min(3,Number(options.scale)||1));
+    const x=Number(entity.x)||0,y=Number(entity.y)||0,now=Number(options.now??Date.now()),storm=options.variant==='storm_medic',rescue=options.variant==='rescue_equipment',scale=Math.max(.2,Math.min(3,Number(options.scale)||1));
     const reduced=globalThis.TigerCombatFeel?.settings()?.reducedFlashes;
     ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);ellipse(ctx,0,28,22,4,'rgba(5,23,30,.2)');
     const spin=reduced?.3:now/100;
@@ -758,11 +758,39 @@
       line(ctx,'#c4ded7',1.6,[[px-Math.cos(spin)*11,py-Math.sin(spin)*3],[px+Math.cos(spin)*11,py+Math.sin(spin)*3]]);
       ellipse(ctx,px,py,2,2,'#183442');
     }
-    const shell=ctx.createLinearGradient(-12,-8,12,11);shell.addColorStop(0,storm?'#dceee7':'#e3e8dc');shell.addColorStop(.55,storm?'#548b9c':'#9aafa9');shell.addColorStop(1,'#284b60');
+    const shell=ctx.createLinearGradient(-12,-8,12,11);shell.addColorStop(0,rescue?'#99d5c7':storm?'#dceee7':'#e3e8dc');shell.addColorStop(.55,rescue?'#287f80':storm?'#548b9c':'#9aafa9');shell.addColorStop(1,'#284b60');
     ctx.fillStyle=shell;rounded(ctx,-13,-9,26,20,5);ctx.fill();line(ctx,'#c4e6dd',1,[[-10,-7],[9,-7],[11,-3]]);
     ctx.fillStyle=storm?'#9cebd7':'#e7f0df';rounded(ctx,-6,-4,12,10,2);ctx.fill();line(ctx,'#317c73',2,[[0,-2],[0,4]]);line(ctx,'#317c73',2,[[-3,1],[3,1]]);
+    if(rescue){line(ctx,'#e2c68a',1.5,[[-12,-6],[-12,9],[12,9],[12,-6]]);for(const side of[-1,1]){line(ctx,'#d9b96d',1.5,[[side*13,0],[side*22,0],[side*22,8]]);ellipse(ctx,side*22,0,2,2,'#e9cc87');}ctx.fillStyle='#e5d6a2';rounded(ctx,-5,-6,10,2,1);ctx.fill();}
     ellipse(ctx,0,12,4,3,'#172f40');ellipse(ctx,0,12,2,1.5,storm?'#8debd6':'#b7dbdd');line(ctx,'#597e88',1.5,[[-9,10],[-11,17],[10,17],[8,10]]);
     ctx.restore();
+  }
+  function drawRescueDevice(ctx,entity={},options={}){
+    const x=Number(entity.x)||0,y=Number(entity.y)||0,rescue=options.variant==='rescue_equipment',flare=options.kind==='flare',now=Number(options.now)||0,scale=clamp(options.scale??1,.2,4);
+    ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
+    ellipse(ctx,2,11,12,3,'rgba(4,18,24,.3)');
+    const shell=ctx.createLinearGradient(-8,-13,9,10);shell.addColorStop(0,rescue?'#80bcad':'#b3ba9b');shell.addColorStop(.45,rescue?'#27696f':'#67766c');shell.addColorStop(1,'#253e49');
+    ctx.fillStyle=shell;rounded(ctx,-8,-13,16,23,4);ctx.fill();ellipse(ctx,0,8,7.5,2,'#355762');line(ctx,rescue?'#dfbd77':'#d0d7b4',1.5,[[-6,-10],[-6,7],[6,7],[6,-10]]);
+    ctx.fillStyle='#233b45';rounded(ctx,-9,-16,18,5,2);ctx.fill();ellipse(ctx,0,-15,8,2,'#5b827e');
+    line(ctx,'rgba(214,238,222,.6)',.7,[[-4,-9],[-4,4]]);for(const side of[-1,1])for(const row of[-1,1])ellipse(ctx,side*5.5,row*8.5, .65,.65,'#d2cfad');
+    for(let v=0;v<3;v++)line(ctx,'#203b43',.7,[[3,-10+v*1.1],[5,-10+v*1.1]]);
+    if(flare){
+      ctx.fillStyle=rescue?'#e5c98c':'#b7c8be';rounded(ctx,-6,-17,12,3,1);ctx.fill();
+      if(options.active){const reduced=globalThis.TigerCombatFeel?.settings()?.reducedFlashes,phase=reduced?0:Math.sin(now/280);ellipse(ctx,0,-22,4,6+phase*.5,'rgba(245,215,117,.38)');line(ctx,'#f5df91',2,[[0,-18],[0,-26-phase]]);}
+      line(ctx,'#f1dea6',1,[[-3,-4],[0,-8],[3,-4],[0,-1],[-3,-4]]);
+    }else{
+      line(ctx,'#233e48',3,[[2,-16],[7,-19],[10,-13],[9,-5]]);line(ctx,'#becdc3',1.7,[[2,-16],[7,-19],[10,-13],[9,-5]]);ellipse(ctx,-1,-18,3,2,'#c5c4ab');
+      line(ctx,'#e8d39c',1.2,[[-4,-5],[4,-5]]);line(ctx,'#e8d39c',1.2,[[-4,-1],[4,-1]]);
+    }
+    ctx.fillStyle=rescue?'#e7cf93':'#c5d1b9';rounded(ctx,-3.5,3.5,7,2.5,.5);ctx.fill();line(ctx,'#446968',.6,[[-2,4.6],[2,4.6]]);ctx.restore();
+  }
+  function drawCaptureCageFinish(ctx,options={}){
+    if(options.livery!=='rescue_equipment')return false;
+    const x=Number(options.x)||0,y=Number(options.y)||0,w=clamp(options.width??76,20,160),h=clamp(options.height??49,20,100);
+    ctx.save();ctx.translate(x,y);
+    for(const side of[-1,1])for(const row of[-1,1]){const px=side*(w/2-3),py=row*(h/2-3);ctx.fillStyle='#2e7d79';rounded(ctx,px-4,py-4,8,8,1);ctx.fill();line(ctx,'#e2c68a',1.2,[[px-2,py-2],[px+2,py-2],[px+2,py+2]]);ellipse(ctx,px-1,py+1,1,1,'#c6dfd0');}
+    ctx.fillStyle='#285c64';rounded(ctx,-18,h/2-5,36,8,1);ctx.fill();ctx.fillStyle='#f1d999';ctx.textAlign='center';ctx.font='bold 5px system-ui';ctx.fillText('RESCUE • LIVE',0,h/2+1);
+    ctx.fillStyle='#e4c47a';rounded(ctx,w/2-10,-4,7,10,1);ctx.fill();line(ctx,'#3a625e',1,[[w/2-8,-1],[w/2-6,1],[w/2-4,-2]]);ctx.restore();return true;
   }
   function drawVehicle(ctx,entity={},options={}){return vehicleArt.draw(ctx,entity,options);}
   function drawCaptureCage(ctx,x,y,scale=1,options={}){
@@ -775,6 +803,7 @@
     line(ctx,'#d1ddd1',2,[[-38,-8],[38,-8]]);line(ctx,'#728e90',3,[[-38,-28],[38,-28]]);
     ctx.fillStyle='#e3cf92';rounded(ctx,28,-5,7,9,1);ctx.fill();
     ctx.fillStyle='#dfebdb';rounded(ctx,-22,-34,44,9,1);ctx.fill();ctx.fillStyle='#285448';ctx.font='bold 6px system-ui';ctx.textAlign='center';ctx.fillText('LIVE • SECURED',0,-27);
+    drawCaptureCageFinish(ctx,{width:76,height:49,livery:options.livery});
     ctx.restore();
   }
   function drawBattlefieldFinish(ctx,view={},options={}){
@@ -785,5 +814,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,drawCommanderBanner,drawWildlifeRifle,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,drawRescueDevice,drawCaptureCageFinish,drawCommanderBanner,drawWildlifeRifle,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });

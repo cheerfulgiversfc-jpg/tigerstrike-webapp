@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5274";
+const TS_BUILD = "5275";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -28903,7 +28903,7 @@ let __wildlifeTransportFrame = 0;
 let __wildlifeTransportScene = null;
 function drawWildlifeTransportFrame(progress=0){
   const canvas=document.getElementById('wildlifeTransportCanvas');if(!canvas||!__wildlifeTransportScene)return;
-  window.TigerShowcaseScene.drawTransfer(canvas.getContext('2d'),{progress,count:__wildlifeTransportScene.count,now:Date.now()});
+  window.TigerShowcaseScene.drawTransfer(canvas.getContext('2d'),{progress,count:__wildlifeTransportScene.count,cages:__wildlifeTransportScene.cages,now:Date.now()});
 }
 
 function playWildlifeTransportCinematic(){
@@ -39246,6 +39246,7 @@ function captureCageFromTiger(tiger, captor="player"){
     capturedAt:Date.now(),
     captor:String(captor || "player"),
     transportStatus:"WAITING",
+    livery:window.TigerEliteArmory?.appearance().equipment==='rescue_equipment'?'rescue_equipment':'',
   };
 }
 function registerTigerCaptureCage(tiger, captor="player"){
@@ -56645,6 +56646,7 @@ function drawCaptureCage(cage){
   ctx.lineWidth = 2.4;
   for(let bx=-29;bx<=29;bx+=12){ctx.beginPath();ctx.moveTo(bx,-23);ctx.lineTo(bx,25);ctx.stroke();}
   ctx.beginPath();ctx.moveTo(-37,-8);ctx.lineTo(37,-8);ctx.moveTo(-37,11);ctx.lineTo(37,11);ctx.stroke();
+  window.TigerStrikeBattlefieldRenderer?.drawCaptureCageFinish(ctx,{width:78,height:52,livery:cage.livery});
   ctx.fillStyle = "rgba(15,23,42,.92)";roundedRectFill(-75,-58,150,25,9);
   ctx.strokeStyle = `rgba(74,222,128,${0.72 + pulse * 0.26})`;ctx.lineWidth=2;ctx.strokeRect(-73,-56,146,21);
   ctx.fillStyle = "rgba(220,252,231,.98)";ctx.font="900 10px system-ui";ctx.textAlign="center";ctx.fillText("CAGED • TRANSPORT PENDING",0,-41);

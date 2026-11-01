@@ -37,20 +37,22 @@
     if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y))return;
     ctx.save();ctx.strokeStyle='#67e8f9';ctx.lineWidth=2;ctx.setLineDash([9,7]);ctx.beginPath();ctx.arc(p.x,p.y,p.r||28,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore();
   }
-  function drawEffect(ctx,e,now=Date.now()){
+  function drawEffect(ctx,e,now=Date.now(),options={}){
     if(!ctx||!e||now>=e.until)return;
     ctx.save();ctx.textAlign='center';ctx.font='900 12px system-ui';
+    const finish=e.eliteAppearance?.equipment==='rescue_equipment'?'rescue_equipment':'base';
     if(e.kind==='smoke'){
       for(let i=0;i<12;i++){const a=i*.55+now*.0003,r=55+(i%4)*65;ctx.fillStyle='rgba(203,213,225,.12)';ctx.beginPath();ctx.arc(e.x+Math.cos(a)*r,e.y+Math.sin(a)*r,58,0,Math.PI*2);ctx.fill();}
-      ctx.fillStyle='#f1f5f9';ctx.fillText(`SMOKE COVER • ${Math.ceil((e.until-now)/1000)}s`,e.x,e.y-72);
+      globalThis.TigerStrikeBattlefieldRenderer?.drawRescueDevice(ctx,{x:e.x,y:e.y},{kind:'smoke',variant:finish,now});
+      ctx.fillStyle='#f1f5f9';if(options.showOriginLabel!==false)ctx.fillText(`SMOKE COVER • ${Math.ceil((e.until-now)/1000)}s`,e.x,e.y-72);
     }else if(e.kind==='med-drone'){
       const x=e.x+Math.cos(now*.006)*22,y=e.y-42;
-      globalThis.TigerStrikeBattlefieldRenderer?.drawMedDrone(ctx,{x,y},{now,variant:e.eliteAppearance?.soldier==='storm_medic'?'storm_medic':'base'});
+      globalThis.TigerStrikeBattlefieldRenderer?.drawMedDrone(ctx,{x,y},{now,variant:finish==='rescue_equipment'?finish:e.eliteAppearance?.soldier==='storm_medic'?'storm_medic':'base'});
       ctx.fillStyle='#bbf7d0';ctx.fillText(`${e.name||'Rescue target'} +${e.healed} HP`,e.x,e.y-65);
     }else if(e.kind==='flare'){
-      const origin=e.origin||e;ctx.setLineDash([10,8]);ctx.lineWidth=3;
+      const origin=e.origin||e;globalThis.TigerStrikeBattlefieldRenderer?.drawRescueDevice(ctx,origin,{kind:'flare',variant:finish,active:true,now});ctx.setLineDash([10,8]);ctx.lineWidth=3;
       for(const [p,color] of [[e.target,'#facc15'],[e.extraction,'#4ade80']]){if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y))continue;ctx.strokeStyle=color;ctx.beginPath();ctx.moveTo(origin.x,origin.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.fillStyle=color;ctx.fillText(p.action||p.label||'Extraction',p.x,p.y-36);}
-      ctx.setLineDash([]);ctx.fillStyle='#facc15';ctx.fillText('FLARE • OBJECTIVE ROUTE',origin.x,origin.y-52);
+      ctx.setLineDash([]);ctx.fillStyle='#facc15';if(options.showOriginLabel!==false)ctx.fillText('FLARE • OBJECTIVE ROUTE',origin.x,origin.y-52);
     }
     ctx.restore();
   }

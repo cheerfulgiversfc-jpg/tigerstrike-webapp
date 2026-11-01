@@ -2702,6 +2702,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
       x:clamp(site.x, 24, MAX_COOP_WORLD.width - 24),
       y:clamp(site.y, 24, MAX_COOP_WORLD.height - 24),
       capturedAt:Math.max(0, Number(site.capturedAt || 0)),
+      livery:site.livery==='rescue_equipment'?'rescue_equipment':'',
     };
   }
   return {
@@ -2846,6 +2847,7 @@ function tigerSnapshots(session, players, at=nowMs()){
       defeated,
       captured,
       cage:captured,
+      cageLivery:captured&&captureSite?.livery==='rescue_equipment'?'rescue_equipment':'',
       capturedAt:captured ? Math.max(0, Number(captureSite?.capturedAt || 0)) : 0,
       lethalWounded,
       rubberSlowed,
@@ -4023,14 +4025,16 @@ async function applyAction(session, user, action, payload={}){
     if(distance(player, target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name}.`);
     if(target.lethalWounded) throw new Error("Capture blocked: Real ammunition caused a lethal injury. Use Rubber ammunition on a fresh tiger.");
     if(Number(target.hp || 0) > Number(target.hpMax || 1) * 0.30) throw new Error("Weaken the tiger to 30% health before capture.");
-    const profile = await readCoopProfile(user);
+    const [profile,captureAccount]=await Promise.all([readCoopProfile(user),eliteStore.get(uid).catch(()=>null)]);
     if(profile.ammo.tranq < 1) throw new Error("You are out of Tranq Charges. Restock in the co-op Shop.");
+    // Freeze the captor's verified finish, bypassing the short visual cache.
+    const captureAppearance=captureAccount?eliteStore.catalog.appearance(captureAccount.owned,captureAccount.selection):{};
     const captured = await setStateIfAbsent(`live_squad_capture_${session.code}_${session.startedAt}_${target.id}`, { userId:uid, capturedAt:now });
     if(!captured) throw new Error("Your teammate already captured this tiger.");
     if(!Array.isArray(player.capturedIds)) player.capturedIds = [];
     if(!player.capturedIds.includes(target.id)) player.capturedIds.push(target.id);
     if(!player.captureSites || typeof player.captureSites !== "object") player.captureSites = {};
-    player.captureSites[target.id] = { ...waterTerrain.dryPoint(missionSceneWater(missionDefinition(session),session),Number(target.x),Number(target.y)), capturedAt:now };
+    player.captureSites[target.id] = { ...waterTerrain.dryPoint(missionSceneWater(missionDefinition(session),session),Number(target.x),Number(target.y)), capturedAt:now, livery:captureAppearance.equipment==='rescue_equipment'?'rescue_equipment':'' };
     player.lastAttackAt = now;
     player.lastSeenAt = now;
     profile.ammo.tranq -= 1;

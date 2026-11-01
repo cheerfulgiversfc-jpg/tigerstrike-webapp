@@ -199,7 +199,7 @@
     context.save();
     if(now<Number(state.secondaryPreviewUntil||0))root.TigerRescueTools?.drawPreview(context,missionToolPreview(state));
     if(now<Number(state.secondarySmokeUntil||0)){
-      root.TigerRescueTools?.drawEffect(context,{...state.secondarySmokeAt,kind:'smoke',until:state.secondarySmokeUntil},now);
+      root.TigerRescueTools?.drawEffect(context,{...state.secondarySmokeAt,kind:'smoke',until:state.secondarySmokeUntil,eliteAppearance:root.TigerEliteArmory?.appearance()},now);
     }
     if(now<Number(state.secondaryFlareUntil||0)){
       const pulse=18+Math.sin(now/130)*5;context.strokeStyle="rgba(251,191,36,.92)";context.lineWidth=3;context.beginPath();context.arc(state.me.x,state.me.y,pulse,0,Math.PI*2);context.stroke();
@@ -207,7 +207,7 @@
       context.setLineDash([7,7]);context.lineWidth=2;
       for(const point of points.slice(0,18)){context.strokeStyle=point===state.evacZone?"rgba(74,222,128,.75)":((state.tigers||[]).includes(point)?"rgba(251,113,133,.66)":"rgba(56,189,248,.62)");context.beginPath();context.moveTo(state.me.x,state.me.y);context.lineTo(point.x,point.y);context.stroke();}
       context.setLineDash([]);
-      root.TigerRescueTools?.drawEffect(context,{kind:'flare',until:state.secondaryFlareUntil,origin:state.me,target:root.fieldNextObjective?.()||state.secondaryFlareTarget,extraction:state.evacZone},now);
+      root.TigerRescueTools?.drawEffect(context,{kind:'flare',until:state.secondaryFlareUntil,origin:state.me,eliteAppearance:root.TigerEliteArmory?.appearance(),target:root.fieldNextObjective?.()||state.secondaryFlareTarget,extraction:state.evacZone},now);
     }
     if(now<Number(state.secondaryDroneUntil||0)){
       const target=state.secondaryDroneTarget||state.me;

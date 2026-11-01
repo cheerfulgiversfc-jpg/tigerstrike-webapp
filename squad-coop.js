@@ -659,6 +659,7 @@
         <div class="squadMemberName">${Number(player.userId) === Number(state.snapshot?.hostId) ? "👑 " : ""}${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(window.TigerMasteryRewards?.identityText(player.masteryIdentity)||'No mastery identity equipped')}</div>
         <div class="squadMemberMeta">Uniform: ${esc(window.TigerEliteCatalog?.items[player.eliteAppearance?.soldier]?.name||player.masteryIdentity?.uniform?.name||'Default')}</div>
+        ${player.eliteAppearance?.equipment==='rescue_equipment'?'<div class="squadMemberMeta">Rescue Equipment finish equipped</div>':''}
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
         <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Escorting ${(state.snapshot?.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(player.userId)).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
@@ -2299,12 +2300,13 @@
       ctx.strokeStyle="#111827";ctx.lineWidth=3;for(const sx of [-18,-7,5,16]){ctx.beginPath();ctx.moveTo(sx,-8);ctx.lineTo(sx+6,12);ctx.stroke();}
     }
     ctx.strokeStyle="#cbd5e1";ctx.lineWidth=4;ctx.strokeRect(-42,-27,84,57);ctx.lineWidth=2.5;for(let bx=-32;bx<=32;bx+=13){ctx.beginPath();ctx.moveTo(bx,-25);ctx.lineTo(bx,28);ctx.stroke();}
+    window.TigerStrikeBattlefieldRenderer?.drawCaptureCageFinish(ctx,{width:84,height:57,livery:tiger.cageLivery});
     ctx.fillStyle="rgba(15,23,42,.92)";roundRect(ctx,-84,-62,168,27,9);ctx.fill();ctx.strokeStyle=`rgba(74,222,128,${.68+pulse*.3})`;ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 11px system-ui";ctx.textAlign="center";ctx.fillText("CAGED • TRANSPORT PENDING",0,-44);ctx.restore();
   }
 
   function drawSquadTransportMovie(progress=0){
     const canvas=$('squadTransportCanvas');if(!canvas)return;
-    window.TigerShowcaseScene.drawTransfer(canvas.getContext('2d'),{progress,count:(state.snapshot?.capturedIds||[]).length,now:Date.now()});
+    window.TigerShowcaseScene.drawTransfer(canvas.getContext('2d'),{progress,count:(state.snapshot?.capturedIds||[]).length,cages:(state.snapshot?.tigers||[]).filter(t=>t.captured).map(t=>({livery:t.cageLivery})),now:Date.now()});
   }
   function startSquadTransportMovie(){
     if(!(state.snapshot?.capturedIds||[]).length || !$('squadTransportCanvas')) return;
@@ -3041,7 +3043,7 @@
     if(Date.now()<rescueToolPreviewUntil){const mine=localSnapshotPlayer();window.TigerRescueTools?.drawPreview(ctx,window.TigerRescueTools?.preview(mine?.rescueTool,snap.players||[],snap.civilians||[],state.local||mine));}
     for(const player of (snap.players||[])){
       const effect=player.rescueTool?.effect;
-      window.TigerRescueTools?.drawEffect(ctx,effect?.kind==='flare'?{...effect,target:window.TigerFieldRadio?.guide(snap,player.userId)}:effect?{...effect,eliteAppearance:player.eliteAppearance}:effect,now);
+      window.TigerRescueTools?.drawEffect(ctx,effect?.kind==='flare'?{...effect,eliteAppearance:player.eliteAppearance,target:window.TigerFieldRadio?.guide(snap,player.userId)}:effect?{...effect,eliteAppearance:player.eliteAppearance}:effect,now);
     }
     wildlifePresentation?.draw(ctx,now,window.TigerCombatFeel?.settings()||{});
     const combatTarget=nearestActiveTiger();

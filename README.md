@@ -1,6 +1,14 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.6 — Rescue Equipment Collection
+
+- Adds `elite_rescue_equipment`, a permanent 200-Star purchase containing the matching Med Drone, Smoke Grenade, Signal Flare and capture-cage finishes. It uses the existing verified invoice, duplicate-safe permanent grant, equip, restore and refund flow. The independent `equipment` appearance slot is ownership-validated and does not replace soldier, weapon, badge or extraction selections.
+- Production shared artwork is used by Solo, Co-op, free previews and wildlife-transport scenes. Detailed canister/flare housings and drone/cage reinforcement match in all consumers. The collection finish has priority over the Storm Medic drone finish while selected. Smoke clouds retain the same coverage/opacity and flares retain their actual objective/extraction paths and colors. Previews are explicitly appearance-only and cannot heal, spend charges or change progress.
+- New Solo cages freeze their livery when placed. Co-op validates the captor's current purchased equipment directly from permanent ownership, bypassing the short appearance cache, before its existing atomic capture claim. Both viewers receive the same saved `cageLivery`; reconnection and later equipment changes cannot recolor old cages. Legacy cages remain unchanged. Solo and Co-op conservation-truck scenes carry each cage's recorded finish through loading and departure.
+- Existing secondary selection, charges, cooldowns, healing, range, nonlethal/capture rules, Survival restrictions, rewards, difficulty, audio and mode-specific inventories remain authoritative. No new tool or supply entitlement is granted.
+- Validation includes ownership/equip/refund, unchanged smoke geometry, actual Solo/Co-op healing, anti-forgery, capture-charge accounting, stale-cache capture style, reconnect/later-unequip persistence and finite/balanced artwork/transport tests, plus desktop and phone-width preview checks. Paid Telegram checkout and physical two-phone viewing of this collection remain unverified.
+
 ## V15.5 — Crimson Commander
 
 - Adds `elite_crimson_commander`, a permanent 500-Star soldier identity through existing Telegram-authenticated invoice, duplicate-safe grant, equip, restore and refund handling. Ownership includes the crimson uniform, command backpack/radio details, beret, portrait, three synthetic radio lines, equipped profile banner and mission-completion salute. No gameplay stats, command permissions or supplies are sold.

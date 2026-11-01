@@ -1,4 +1,4 @@
-(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./shared-battlefield-renderer'):root.TigerStrikeBattlefieldRenderer,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps,typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./elite-catalog'):root.TigerEliteCatalog,typeof module==='object'&&module.exports?require('./wildlife-tranq'):root.TigerWildlifeTranq);if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.TigerShowcaseScene=api;})(typeof globalThis!=='undefined'?globalThis:this,function(R,maps,water,C,W){
+(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./shared-battlefield-renderer'):root.TigerStrikeBattlefieldRenderer,typeof module==='object'&&module.exports?require('./chapter-maps'):root.TigerChapterMaps,typeof module==='object'&&module.exports?require('./water-terrain'):root.TigerWaterTerrain,typeof module==='object'&&module.exports?require('./elite-catalog'):root.TigerEliteCatalog,typeof module==='object'&&module.exports?require('./wildlife-tranq'):root.TigerWildlifeTranq,typeof module==='object'&&module.exports?require('./rescue-tools'):root.TigerRescueTools);if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.TigerShowcaseScene=api;})(typeof globalThis!=='undefined'?globalThis:this,function(R,maps,water,C,W,T){
   'use strict';
   function backdrop(c,options={}){
     const w=options.width||600,h=options.height||360,boat=options.type==='boat';
@@ -12,6 +12,7 @@
   function routeAt(x){const pts=[[0,1540],[1152,1344],[2256,1512],[3312,1176],[4800,1372]];for(let i=1;i<pts.length;i++)if(x<=pts[i][0]){const a=pts[i-1],b=pts[i],u=(x-a[0])/(b[0]-a[0]);return {y:a[1]+(b[1]-a[1])*u,angle:Math.atan2(b[1]-a[1],b[0]-a[0])};}return {y:1372,angle:0};}
   function draw(c,options={}){
     const w=600,h=360,now=Number(options.now)||0,current=options.current||'midnight',practice=!!options.practice,pos=options.pos||{x:140,y:190};
+    if(current==='rescue_equipment')return drawEquipment(c,options);
     c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/w,c.canvas.height/h);
     const elapsed=(now-Number(options.openedAt||0))/1000;
     if(current==='extraction'){
@@ -42,6 +43,24 @@
     }
     R.drawMapLighting(c,{x:0,y:0,w,h});c.restore();return {soldier:{x:sx,y:sy},tiger:{x:tx,y:ty}};
   }
+  function drawEquipment(c,options={}){
+    const now=Number(options.now)||0,elapsed=Math.max(0,now-Number(options.openedAt||0)),names=['med-drone','smoke','flare','cage'],kind=names.includes(options.equipment)?options.equipment:names[Math.floor(elapsed/5000)%names.length],appearance={...options.appearance,equipment:'rescue_equipment'},labels={'med-drone':'MED DRONE',smoke:'SMOKE GRENADE',flare:'SIGNAL FLARE',cage:'LIVE CAPTURE CAGE'};
+    c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/600,c.canvas.height/360);
+    backdrop(c,{now,clear:[{x:140,y:215,r:80},{x:435,y:190,r:135}]});
+    R.drawSoldier(c,{x:140,y:215,face:0,eliteAppearance:appearance},{now,scale:2,walking:false,showMarker:false,lowerWeapon:true});
+    if(kind==='med-drone'){
+      R.drawCivilian(c,{x:425,y:235,hp:100,hpMax:100,look:'field',face:Math.PI},{now,scale:1.35,walking:false});
+      R.drawMedDrone(c,{x:435+Math.sin(now/600)*8,y:135},{now,scale:2.7,variant:'rescue_equipment'});
+    }else if(kind==='smoke'){
+      c.save();c.translate(435,185);c.scale(.37,.37);T.drawEffect(c,{kind:'smoke',x:0,y:0,until:now+8000-(elapsed%5000),eliteAppearance:appearance},now,{showOriginLabel:false});c.restore();
+      R.drawRescueDevice(c,{x:435,y:190},{kind,variant:'rescue_equipment',now,scale:3.6});
+    }else if(kind==='flare'){
+      T.drawEffect(c,{kind:'flare',origin:{x:410,y:190},target:{x:470,y:85,label:'Practice objective'},extraction:{x:535,y:245,label:'Practice extraction'},until:now+14000-(elapsed%5000),eliteAppearance:appearance},now,{showOriginLabel:false});
+      R.drawRescueDevice(c,{x:410,y:190},{kind,variant:'rescue_equipment',now,scale:3.6,active:true});
+    }else R.drawCaptureCage(c,435,192,1.7,{now,livery:'rescue_equipment'});
+    c.fillStyle='rgba(8,25,32,.94)';c.beginPath();c.roundRect(18,290,564,52,9);c.fill();c.textAlign='center';c.fillStyle='#efd89a';c.font='bold 16px system-ui';c.fillText('RESCUE EQUIPMENT • '+labels[kind],300,312);c.fillStyle='#c6e2d8';c.font='12px system-ui';c.fillText('Appearance preview • no supplies, healing or mission progress changed',300,330);
+    c.restore();return {kind};
+  }
   function drawVictory(c,options={}){
     const now=Number(options.now)||0,age=Math.max(0,Number(options.age)||0),w=600,h=300;
     const actors=(options.players||[{eliteAppearance:{soldier:'crimson_commander'}}]).slice(0,2);
@@ -63,8 +82,8 @@
     c.strokeStyle='#d2bc72';c.lineWidth=4;c.setLineDash([32,26]);c.beginPath();c.moveTo(0,263);c.lineTo(960,263);c.stroke();c.setLineDash([]);
     const arrive=Math.min(1,p/.24),depart=Math.max(0,(p-.68)/.32),tx=p<.68?-330+arrive*510:180+depart*900;
     R.drawVehicle(c,{type:'transport',x:tx+190,y:194},{now,scale:1.5,moving:p<.24||p>.68,color:'#416c58'});
-    for(let i=0;i<count;i++){const loaded=Math.max(0,Math.min(1,(p-(.24+i*(.4/count)))/.12)),gx=600+i*48,cx=gx+(tx+28+i*43-gx)*loaded,cy=208+(185-208)*loaded;R.drawCaptureCage(c,cx+16,cy,.44,{now});}
+    for(let i=0;i<count;i++){const loaded=Math.max(0,Math.min(1,(p-(.24+i*(.4/count)))/.12)),gx=600+i*48,cx=gx+(tx+28+i*43-gx)*loaded,cy=208+(185-208)*loaded;R.drawCaptureCage(c,cx+16,cy,.44,{now,livery:options.cages?.[i]?.livery});}
     R.drawMapLighting(c,{x:0,y:0,w:960,h:300});c.fillStyle='rgba(8,25,32,.9)';c.beginPath();c.roundRect(12,10,470,49,8);c.fill();c.fillStyle='#e6f0dc';c.font='bold 15px system-ui';c.textAlign='left';c.fillText(p<.24?'Wildlife recovery truck arriving':p<.68?'Loading secured live tiger cages':'Cages secured • wildlife transport departing',24,30);c.fillStyle='#b9dbc0';c.font='12px system-ui';c.fillText(`${Number(options.count)||0} live tigers • no blood scent`,24,48);c.restore();
   }
-  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory});
+  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory,drawEquipment});
 });
