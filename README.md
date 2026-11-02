@@ -1,6 +1,13 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.8 — Commander Collection
+
+- Adds `elite_commander_collection`: Crimson Commander, Guardian Rubber Carbine, Rescue Equipment Collection and the existing Custom Extraction Pack for 900 Stars versus 1,350 separately. No new item entitlement or combat advantage is introduced. Existing permanent ownership, equip, restore and refund handling applies to each component.
+- Quotes exclude owned components and retain the bundle ratio: `ceil(missing standalone value × 900 / 1350)`. The UI explains rounding, standalone value, savings, exact remaining components and independent equipment selection. All-owned bundles disable checkout. Server-generated invoices freeze the amount and grant only the missing items; client-supplied prices cannot affect checkout.
+- A complete animated preview uses shared production soldier, Guardian weapon, rescue drone, capture cage and helicopter artwork. Component previews, voices and individual equipment controls remain available. No real supplies or mission progress are changed by previews.
+- Validation covers all 16 ownership subsets, full and partial purchases, duplicate callback replay, frozen invoice validation, refund preservation of prior ownership, authenticated invoice quotes, finite/balanced rendering and desktop/phone-width previews. Actual paid Telegram checkout and physical two-phone collection viewing remain unverified.
+
 ## V15.7 — Armory Organizer
 
 - Adds the permanent `elite_organizer` entitlement for 150 Telegram Stars: six additional named slots for each of Story, Arcade, Survival and Co-op. Existing free Buildcraft presets stay available. Shop, Inventory, the Co-op equipment bar and Elite Armory open the same saved-loadout interface, with production shared artwork, previews, save/replace, rename, apply and delete.

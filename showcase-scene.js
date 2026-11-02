@@ -13,6 +13,7 @@
   function draw(c,options={}){
     const w=600,h=360,now=Number(options.now)||0,current=options.current||'midnight',practice=!!options.practice,pos=options.pos||{x:140,y:190};
     if(current==='rescue_equipment')return drawEquipment(c,options);
+    if(current==='commander_collection')return drawCollection(c,options);
     c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/w,c.canvas.height/h);
     const elapsed=(now-Number(options.openedAt||0))/1000;
     if(current==='extraction'){
@@ -42,6 +43,17 @@
     c.save();c.fillStyle='rgba(6,22,30,.89)';c.beginPath();c.roundRect(407,238,172,45,8);c.fill();c.fillStyle='#cde7dc';c.font='bold 11px system-ui';c.textAlign='center';c.fillText(medic?'MED DRONE • CIVILIAN '+(practice?options.practiceDrone?.hp||34:82)+'/100 HP':'TRAINING SIMULATION',493,255);c.fillStyle='#78d8b8';c.fillRect(420,264,medic?146*((practice?Number(options.practiceDrone?.hp||34):82)/100):Math.max(8,146-count*11),4);c.restore();
     }
     R.drawMapLighting(c,{x:0,y:0,w,h});c.restore();return {soldier:{x:sx,y:sy},tiger:{x:tx,y:ty}};
+  }
+  function drawCollection(c,options={}){
+    const now=Number(options.now)||0,a={soldier:'crimson_commander',weapon:'guardian',equipment:'rescue_equipment',extraction:'extraction'};
+    c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/600,c.canvas.height/360);
+    backdrop(c,{now,clear:[{x:160,y:230,r:80},{x:430,y:210,r:100}]});
+    R.drawVehicle(c,{type:'helicopter',x:425,y:95,angle:0},{now,scale:1.45,moving:true,livery:'extraction'});
+    R.drawCaptureCage(c,440,232,1.1,{now,livery:'rescue_equipment'});
+    R.drawMedDrone(c,{x:290,y:155+Math.sin(now/700)*5},{now,scale:1.7,variant:'rescue_equipment'});
+    R.drawSoldier(c,{x:150,y:240,face:0,eliteAppearance:a},{now,scale:2.4,walking:false,shotKick:Math.sin(now/750)>0.96?0.4:0,showMarker:false});
+    c.fillStyle='rgba(8,25,32,.95)';c.beginPath();c.roundRect(18,286,564,59,9);c.fill();c.textAlign='center';c.fillStyle='#efd89a';c.font='bold 17px system-ui';c.fillText('COMMANDER COLLECTION',300,307);c.fillStyle='#d2e7db';c.font='11px system-ui';c.fillText('Commander • Guardian • Rescue Equipment • Custom Extraction',300,323);c.fillText('Appearance preview only • existing gameplay rules apply',300,338);c.restore();
+    return a;
   }
   function drawLoadout(c,options={}){
     const p=options.preset||{},a=W.presentation(p.appearance||{},{survival:options.mode==='Survival',tranq:p.ammoMode==='tranq',ammoMode:p.ammoMode}),now=0;
@@ -96,5 +108,5 @@
     for(let i=0;i<count;i++){const loaded=Math.max(0,Math.min(1,(p-(.24+i*(.4/count)))/.12)),gx=600+i*48,cx=gx+(tx+28+i*43-gx)*loaded,cy=208+(185-208)*loaded;R.drawCaptureCage(c,cx+16,cy,.44,{now,livery:options.cages?.[i]?.livery});}
     R.drawMapLighting(c,{x:0,y:0,w:960,h:300});c.fillStyle='rgba(8,25,32,.9)';c.beginPath();c.roundRect(12,10,470,49,8);c.fill();c.fillStyle='#e6f0dc';c.font='bold 15px system-ui';c.textAlign='left';c.fillText(p<.24?'Wildlife recovery truck arriving':p<.68?'Loading secured live tiger cages':'Cages secured • wildlife transport departing',24,30);c.fillStyle='#b9dbc0';c.font='12px system-ui';c.fillText(`${Number(options.count)||0} live tigers • no blood scent`,24,48);c.restore();
   }
-  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory,drawEquipment,drawLoadout});
+  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory,drawEquipment,drawLoadout,drawCollection});
 });
