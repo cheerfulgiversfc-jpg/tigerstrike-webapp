@@ -55,6 +55,19 @@
     c.fillStyle='rgba(8,25,32,.95)';c.beginPath();c.roundRect(18,286,564,59,9);c.fill();c.textAlign='center';c.fillStyle='#efd89a';c.font='bold 17px system-ui';c.fillText('COMMANDER COLLECTION',300,307);c.fillStyle='#d2e7db';c.font='11px system-ui';c.fillText('Commander • Guardian • Rescue Equipment • Custom Extraction',300,323);c.fillText('Appearance preview only • existing gameplay rules apply',300,338);c.restore();
     return a;
   }
+  function drawVehicleBay(c,options={}){
+    const type=['helicopter','boat','truck'].includes(options.type)?options.type:'helicopter',now=Number(options.now)||0,livery=options.appearance?.extraction==='extraction'?'extraction':'';
+    c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/600,c.canvas.height/360);
+    const view=backdrop(c,{width:600,height:360,type,now});let x=310,y=170,angle=0;
+    if(type==='boat'){const zone=maps.forMission(1).waterZones[0],wx=view.x+x*2,b=water.banks(zone,wx);y=(b.center-view.y)/2;angle=Math.atan2(water.banks(zone,wx+4).center-b.center,4);}
+    else if(type==='truck'){const path=routeAt(view.x+x*2);y=(path.y-view.y)/2-23*1.65;angle=path.angle;}
+    R.drawVehicle(c,{type,x,y,angle},{now,scale:type==='helicopter'?2.2:1.65,moving:false,livery});
+    c.fillStyle='rgba(8,25,32,.95)';c.beginPath();c.roundRect(18,286,564,59,9);c.fill();c.textAlign='center';c.fillStyle='#efd89a';c.font='bold 17px system-ui';c.fillText({helicopter:'RESCUE HELICOPTER',boat:'RIVER RESCUE BOAT',truck:'EVACUATION TRUCK'}[type],300,309);c.fillStyle='#d2e7db';c.font='12px system-ui';c.fillText(livery?'Your selected Custom Extraction finish':'Standard rescue finish',300,330);c.restore();return {type,livery,x,y,angle,view};
+  }
+  function drawSquadDisplay(c,options={}){
+    const players=(options.players||[]).slice(0,2),now=0;c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/600,c.canvas.height/360);backdrop(c,{now,clear:[{x:170,y:210,r:90},{x:430,y:210,r:90}]});
+    players.forEach((p,i)=>{const x=players.length===1?300:(i?430:170),a=W.presentation(p.eliteAppearance||{},{ammoMode:p.ammoMode,tranq:p.ammoMode==='tranq',survival:options.survival});R.drawSoldier(c,{x,y:215,face:i?Math.PI:0,eliteAppearance:a},{now,scale:2.4,showMarker:false,walking:false,lowerWeapon:true,uniformPalette:p.uniformPalette});if(p.toolId==='med-drone')R.drawMedDrone(c,{x:x+(i?-60:60),y:145},{now,scale:1.1,variant:a.equipment==='rescue_equipment'?'rescue_equipment':a.soldier==='storm_medic'?'storm_medic':'base'});c.textAlign='center';c.font='bold 14px system-ui';c.fillStyle='#081c28';c.fillRect(x-125,274,250,66);c.fillStyle='#efd89a';c.fillText(String(p.name||'Squad soldier').slice(0,24),x,295);c.font='11px system-ui';c.fillStyle='#d2e7db';c.fillText(String(p.weaponName||'Equipped weapon').slice(0,32),x,313);c.fillText(p.self?'You':'Teammate',x,330);});c.restore();return players.length;
+  }
   function drawLoadout(c,options={}){
     const p=options.preset||{},a=W.presentation(p.appearance||{},{survival:options.mode==='Survival',tranq:p.ammoMode==='tranq',ammoMode:p.ammoMode}),now=0;
     c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/600,c.canvas.height/360);
@@ -108,5 +121,5 @@
     for(let i=0;i<count;i++){const loaded=Math.max(0,Math.min(1,(p-(.24+i*(.4/count)))/.12)),gx=600+i*48,cx=gx+(tx+28+i*43-gx)*loaded,cy=208+(185-208)*loaded;R.drawCaptureCage(c,cx+16,cy,.44,{now,livery:options.cages?.[i]?.livery});}
     R.drawMapLighting(c,{x:0,y:0,w:960,h:300});c.fillStyle='rgba(8,25,32,.9)';c.beginPath();c.roundRect(12,10,470,49,8);c.fill();c.fillStyle='#e6f0dc';c.font='bold 15px system-ui';c.textAlign='left';c.fillText(p<.24?'Wildlife recovery truck arriving':p<.68?'Loading secured live tiger cages':'Cages secured • wildlife transport departing',24,30);c.fillStyle='#b9dbc0';c.font='12px system-ui';c.fillText(`${Number(options.count)||0} live tigers • no blood scent`,24,48);c.restore();
   }
-  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory,drawEquipment,drawLoadout,drawCollection});
+  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory,drawEquipment,drawLoadout,drawCollection,drawVehicleBay,drawSquadDisplay});
 });

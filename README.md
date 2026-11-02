@@ -1,6 +1,13 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.10 — Personal Rescue HQ Complete
+
+- Completes the planned vehicle bay and teammate equipment display. Three inspection controls use production shared helicopter, boat and truck models on production terrain. Boat placement derives from the actual river banks; truck placement derives from the preview road. The bay uses only the player's selected extraction finish, with standard artwork when none is selected. Static inspection changes no entitlement, equipment, departure route or capacity.
+- The Co-op tab shows up to two current squad members through shared soldier/weapon/drone artwork, with names, roles, selected tools, ammunition mode and online-at-refresh labels. A new Telegram-authenticated `hq-profile` read validates membership and room lifecycle and retrieves fresh permanent ownership directly, avoiding stale visual caches. It returns only public setup fields for peers, never their inventories, balances or debrief history. It performs no simulation, presence, reward or persistence writes. No-room, expired-room and failure states do not reuse old teammate artwork.
+- Refresh and scope changes retain the existing stale-response/closed-dialog guards. Co-op visits remain restricted to lobby/results, with automatic close on mission start. Vehicle inspection and navigation controls remain reachable at phone widths, and record rendering remains read-only with separate Solo/Co-op history.
+- Validation covers signed identity binding, outsiders, active/closed rooms, empty rosters, fresh equip/refund visibility, peer-data minimization, full persisted-state invariance, finite/balanced shared rendering, river/road placement and standard/premium finishes. Desktop and phone-width scenes use clearly labeled sample records in `qa/personal-rescue-hq.html`. Physical two-phone Telegram viewing remains unverified.
+
 ## V15.9 — Personal Rescue HQ, Part 1
 
 - Adds the free Personal Rescue HQ soldier display and trophy room through the Base HQ quick menu, Shop, Inventory and Co-op preparation bar. It uses the production shared loadout renderer, current weapon/ammunition/tool selections, verified Elite appearance and earned uniform palette. No duplicate simplified character artwork is introduced.

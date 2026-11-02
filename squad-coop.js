@@ -295,11 +295,9 @@
 
   async function rescueHqProfile(){
     if(!hasTelegramAuth())throw Error('Open Tiger Strike through Telegram to load your Co-op records.');
-    const data=await api('profile'),profile=data.profile,p=localSnapshotPlayer();
-    if(!p)await window.TigerEliteArmory?.sync();
-    const appearance=p?.eliteAppearance||window.TigerEliteArmory?.appearance()||{};
-    const weapon=(data.gearCatalog||state.gearCatalog||[]).find(w=>w.id===profile.equippedWeaponId);
-    return {records:profile.missionDebriefs,mode:'Coop',weaponName:weapon?.name||'Equipped Co-op weapon',gear:{name:'My Co-op soldier',weaponId:profile.equippedWeaponId,ammoMode:p?.ammoMode||'rubber',toolId:p?.rescueTool?.id||'',appearance},uniformPalette:window.TigerMasteryRewards?.uniformPalette(window.TigerMasteryRewards?.identity(profile.missionDebriefs,'coop')?.uniform?.id),equipmentLabel:'Current Co-op weapon and appearance'+(p?' • Lobby rescue tool':' • Rescue tool chosen in squad lobby')};
+    const data=await api('hq-profile'),profile=data.profile,p=data.members.find(member=>member.self),appearance=data.appearance;
+    const weapon=data.gearCatalog.find(w=>w.id===profile.equippedWeaponId);
+    return {records:profile.missionDebriefs,mode:'Coop',members:data.members,room:data.room,weaponName:weapon?.name||'Equipped Co-op weapon',gear:{name:'My Co-op soldier',weaponId:profile.equippedWeaponId,ammoMode:p?.ammoMode||'rubber',toolId:p?.toolId||'',appearance},uniformPalette:window.TigerMasteryRewards?.uniformPalette(window.TigerMasteryRewards?.identity(profile.missionDebriefs,'coop')?.uniform?.id),equipmentLabel:'Current Co-op weapon and appearance'+(p?' • Lobby rescue tool':' • Rescue tool chosen in squad lobby')};
   }
   function openPersonalHQ(){
     if(state.snapshot?.status==='active')return setMessage('Visit Personal Rescue HQ in the squad lobby or after the mission.',true);
@@ -446,7 +444,7 @@
     if(!snapshot || typeof snapshot !== "object") return;
     const previousStatus=state.snapshot?.status;
     if(state.snapshot && cleanCode(snapshot.code) === cleanCode(state.snapshot.code) && Number(snapshot.serverNow || 0) < Number(state.snapshot.serverNow || 0)) return;
-    if(state.open&&snapshot.status==='active')document.getElementById('personalRescueHQ')?.close();
+    if(state.open&&snapshot.status==='active')document.getElementById('personalRescueHQ')?.close?.();
     const changedRun=state.snapshot?.startedAt !== snapshot.startedAt || state.snapshot?.code !== snapshot.code;
     if(changedRun){state.remoteDraw.clear();state.walkVisual.clear();state.civilianDraw=new Map();}
     if(changedRun||snapshot.paused)clearPresentationInput();

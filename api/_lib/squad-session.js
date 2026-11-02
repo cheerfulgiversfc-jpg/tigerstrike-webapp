@@ -4407,7 +4407,22 @@ async function closeSession(session, user){
   return writeSession(session);
 }
 
+// Read-only HQ view: no simulation, presence updates, rewards or peer inventories.
+async function readPersonalHq(user,code=''){
+  const uid=userIdOf(user);if(!uid)throw Error('Telegram player identity is missing.');
+  let room=null;const members=[];
+  if(code){room=await readSession(cleanCode(code));ensureLiveSession(room);if(!room.memberIds.includes(uid))throw Error('Join this squad before viewing its soldiers.');if(room.status==='active')throw Error('Visit Personal Rescue HQ in the lobby or after the mission.');}
+  const profile=await readCoopProfile(user),ownLedger=await eliteStore.get(uid),appearance=eliteStore.catalog.appearance(ownLedger.owned,ownLedger.selection);
+  if(room)for(const id of room.memberIds.slice(0,2)){
+    const raw=await getState(playerKey(room.code,id));if(!raw)continue;
+    const player=normalizePlayer(raw,id,room.memberIds.indexOf(id)),peer=id===uid?profile:await readCoopProfile(id),ledger=id===uid?ownLedger:await eliteStore.get(id),eliteAppearance=eliteStore.catalog.appearance(ledger.owned,ledger.selection),weapon=COOP_GEAR_CATALOG.find(w=>w.id===peer.equippedWeaponId&&w.type==='weapon');
+    members.push({userId:id,name:player.name,role:player.role,self:id===uid,online:nowMs()-player.lastSeenAt<=15000,weaponId:peer.equippedWeaponId,weaponName:weapon?.name||'Field Carbine',ammoMode:player.ammoMode,toolId:player.rescueTool?.id||'',eliteAppearance,uniformPalette:masteryRewards.uniformPalette(masteryRewards.identity(peer.missionDebriefs,'coop').uniform?.id)});
+  }
+  return {profile,gearCatalog:COOP_GEAR_CATALOG,appearance,members,room:room?{code:room.code,status:room.status}:null};
+}
+
 module.exports = {
+  readPersonalHq,
   ROLE_DEFS,
   COOP_GEAR_CATALOG,
   TIGER_DEFS,

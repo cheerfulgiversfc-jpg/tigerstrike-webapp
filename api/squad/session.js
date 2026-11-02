@@ -5,6 +5,7 @@ const { getCommunitySnapshot } = require("../_lib/community");
 const { storageMode } = require("../_lib/metrics-store");
 const postCampaign = require("../../post-campaign");
 const {
+  readPersonalHq,
   ROLE_DEFS,
   COOP_GEAR_CATALOG,
   cleanCode,
@@ -165,6 +166,7 @@ module.exports = async function handler(req, res){
     if(!initData) return json(res, 400, { ok:false, error:"Open Live Squad Operations inside Telegram." });
     const { user } = validateTelegramInitData(initData, botToken);
     const action = String(body?.action || "status").trim().toLowerCase();
+    if(action === 'hq-profile')return json(res,200,{ok:true,...await readPersonalHq(user,cleanCode(body?.code))});
     if(action === "profile"){
       return json(res, 200, { ok:true, profile:await readCoopProfile(user), gearCatalog:COOP_GEAR_CATALOG });
     }
