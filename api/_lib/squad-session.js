@@ -1,4 +1,5 @@
 const eliteStore = require('./elite-store');
+const organizer=require('../../armory-organizer');
 const crypto = require("crypto");
 const { getState, setState, setStateIfAbsent } = require("./metrics-store");
 const ammoRules = require("../../ammo-modes");
@@ -1955,8 +1956,9 @@ function refreshCoopAchievements(profile){
 async function readCoopProfile(user){
   const uid = userIdOf(user);
   if(!uid) throw new Error("Telegram player identity is missing.");
-  const [raw,locker]=await Promise.all([getState(coopProfileKey(uid)),getState(`coop_mastery_locker_${uid}`)]);
+  const [raw,locker,weaponSelection]=await Promise.all([getState(coopProfileKey(uid)),getState(`coop_mastery_locker_${uid}`),getState(`coop_weapon_selection_${uid}`)]);
   const profile=normalizeCoopProfile(raw,user);
+  if(profile.ownedWeaponIds.includes(weaponSelection?.weaponId))profile.equippedWeaponId=weaponSelection.weaponId;
   if(locker&&typeof locker==='object'){
     profile.missionDebriefs.locker.coop={title:cleanText(locker.title,150),badge:cleanText(locker.badge,150),uniform:cleanText(locker.uniform,150)};
     profile.missionDebriefs.masteryEarned.coop=[...new Set([...profile.missionDebriefs.masteryEarned.coop,...(Array.isArray(locker.earned)?locker.earned:[])])];
@@ -2003,8 +2005,8 @@ async function applyCoopEquipmentAction(session, user, action, payload={}){
   }
   if(action === "gear-equip"){
     if(!item || item.type !== "weapon" || !profile.ownedWeaponIds.includes(item.id)) throw new Error("Own this co-op weapon before equipping it.");
-    profile.equippedWeaponId = item.id;
-    return writeCoopProfile(profile, user);
+    await setState(`coop_weapon_selection_${uid}`,{weaponId:item.id});
+    return readCoopProfile(user);
   }
   if(action === "gear-use"){
     if(session.status !== "active" || sessionPaused(session)) throw new Error("Return to the active mission before using a field supply.");
@@ -3655,6 +3657,13 @@ async function applyAction(session, user, action, payload={}){
   let player = await readPlayer(session.code, uid, user, slot);
   syncEscortOwnership(session,player);
   const now = nowMs();
+  if(action==='organizer-apply'){
+    session=await readSession(session.code);if(!session||session.status!=='waiting')throw Error('Apply Co-op loadouts in a waiting squad lobby.');
+    const checked=await eliteStore.getPreset(uid,'Coop',payload.slot,payload.expectedRevision),profile=await readCoopProfile(user),preset=checked.preset;
+    organizer.validate(preset,'Coop',{mode:'Coop',allowed:true,survival:session.launchType==='endless-survival',weapons:COOP_GEAR_CATALOG.filter(w=>w.type==='weapon'&&profile.ownedWeaponIds.includes(w.id)),tools:Object.keys(rescueTools.DEFS),roles:Object.keys(ROLE_DEFS),ammoFor:(_id,mode)=>profile.ammo[mode]});
+    await eliteStore.applyCoopPreset(uid,{slot:payload.slot,expectedRevision:payload.expectedRevision,createdAt:session.createdAt,sessionKey:sessionKey(session.code),playerKey:playerKey(session.code,uid),profileKey:coopProfileKey(uid),weaponKey:`coop_weapon_selection_${uid}`,profile});
+    return readSession(session.code);
+  }
   if(action==='field-use'){
     if(session.fieldVersion!==1||session.launchType!=='shared-story'||!fieldOperations.enabled(session.storyMissionLevel)||session.status!=='active'||sessionPaused(session)||player.downed)throw new Error('Field actions require an active, unpaused Story mission 1–100.');
     const mission=missionDefinition(session),elapsed=Math.max(0,sessionClockNow(session,now)-session.startedAt);
@@ -3829,6 +3838,8 @@ async function applyAction(session, user, action, payload={}){
       p.moveY = 0;
       p.motionAt = now;
       p.ammoMode = session.launchType === "endless-survival" ? "real" : "rubber";
+      if(session.launchType!=="endless-survival"&&p.prepAmmoMode==='real')p.ammoMode='real';
+      delete p.prepAmmoMode;
       p.encounterReactions={};
       p.encounterBreaks={};
       p.lastGunshotNoise=null;

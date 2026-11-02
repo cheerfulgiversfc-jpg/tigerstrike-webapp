@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5275";
+const TS_BUILD = "5276";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -12536,6 +12536,8 @@ function setWorldMapPrep(key, value){
   }else if(safeKey === "secondaryId" && WORLD_MAP_PREP_SECONDARIES.some((item)=>item.id === value)){
     prep.secondaryId = String(value);
   }
+  const queued=S.organizerNextPrep?.[S.mode],field={secondaryId:'toolId',soldierId:'roleId',uniformId:'uniformId'}[safeKey];
+  if(queued&&field&&prep[safeKey]===String(value))delete queued[field];
   save();
   renderWorldMapCampaign();
   return false;
@@ -37459,7 +37461,7 @@ function renderShopList(){
       </div>`
       : "";
 
-    list.innerHTML = `<div class="item"><div><div class="itemName">Elite Armory — permanent equipment</div><div class="itemDesc">Midnight Ranger ⭐250 • Guardian Rubber Carbine ⭐300 • Custom Extraction ⭐350 • Rescue Recruit ⭐75. Free previews and practice.</div></div><button onclick="openEliteArmory()">Open Elite Armory</button></div>` + offersHtml + pendingHtml;
+    list.innerHTML = `<div class="item"><div><div class="itemName">Elite Armory — permanent equipment</div><div class="itemDesc">Permanent soldiers, weapon designs, rescue finishes, extraction appearances and saved loadouts. View current Stars prices, free previews and ownership.</div></div><button onclick="openEliteArmory()">Open Elite Armory</button></div>` + offersHtml + pendingHtml;
     return;
   }
 
@@ -43196,6 +43198,12 @@ function deploy(opts={}){
   S.stats.trapsPlaced = 0;
   S.stats.trapsTriggered = 0;
   beginMissionStatRun("deploy");
+  if(window.TigerArmoryOrganizer?.consumePrep(S)){
+    const last=S.worldMapPrepLast;
+    for(const [key,items] of [['soldier',WORLD_MAP_PREP_SOLDIERS],['uniform',WORLD_MAP_PREP_UNIFORMS],['secondary',WORLD_MAP_PREP_SECONDARIES]]){
+      const selected=items.find(item=>item.id===last[key+'Id']);if(selected)last[key+'Name']=selected.name;
+    }
+  }
   window.TigerFieldSystems?.resetMissionSecondaryForMission?.(S);
   S._missionStartAt = Date.now();
   S._missionRoute={choice:'direct',preventedDamage:0};
@@ -66001,4 +66009,22 @@ window.canAttemptCapture = canAttemptCapture;
 window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;
 window.tutorialAnyCaptureWindowReady = tutorialAnyCaptureWindowReady;
 
-function openEliteArmory(){const paused=S.paused,reason=S.pauseReason;resetTouchStick();setPaused(true,'elite');window.TigerEliteArmory?.open({onClose:()=>setPaused(paused,reason)});}
+function openEliteArmory(options={}){if(window.TigerLiveSquad?.equipmentOpen?.()||window.TigerLiveSquad?.isOpen?.())return window.TigerLiveSquad.openArmory(!!options.organizer).catch(error=>toast(error.message));const paused=S.paused,reason=S.pauseReason;resetTouchStick();setPaused(true,'elite');window.TigerEliteArmory?.open({organizer:!!options.organizer,onClose:()=>setPaused(paused,reason)});}
+
+// Organizer applies preparation preferences only; it never calls reload or supply grants.
+function organizerSoloContext(){
+  const w=equippedWeapon(),mode=normalizeModeName(S.mode),prep=ensureWorldMapPrepState(S),appearance=window.TigerEliteArmory?.appearance()||{},palette=seasonSoldierPalette(S);
+  const pending=S.organizerNextPrep?.[mode]||{},atPrep=baseHqActive()||__returnToBaseHqAfterOverlay||S.missionEnded||S.gameOver;
+  let toolId=String((atPrep?pending.toolId:'')||S.worldMapPrepLast?.secondaryId||prep.secondaryId||'');if(mode==='Survival'&&['tranq-kit','shock'].includes(toolId))toolId='';
+  return {mode,survival:mode==='Survival',allowed:!window.TigerTutorial?.isRunning&&(baseHqActive()||__returnToBaseHqAfterOverlay||S.missionEnded||S.gameOver),reason:'Apply a loadout at Base HQ or after the mission. Current field tool uses will not reset.',
+    weapons:worldMapOwnedWeaponOptions(S),tools:WORLD_MAP_PREP_SECONDARIES.map(t=>t.id),roles:WORLD_MAP_PREP_SOLDIERS.map(t=>t.id),uniforms:WORLD_MAP_PREP_UNIFORMS.map(t=>t.id),
+    current:{name:'My '+mode+' loadout',weaponId:w.id,ammoMode:selectedAmmoModeForWeapon(w),toolId,roleId:(atPrep?pending.roleId:'')||prep.soldierId,uniformId:(atPrep?pending.uniformId:'')||prep.uniformId,appearance},
+    currentAmmoMode:selectedAmmoModeForWeapon(w),magAmmoMode:ammoModeForId(S.mag?.ammoId),magCap:id=>weaponBuildStats(id,S).magCap,
+    ammoFor:(id,mode)=>{const weapon=getWeapon(id),ids=compatibleAmmoIdsForWeapon(weapon,mode);return ids.reduce((n,id)=>n+Math.max(0,Number(S.ammoReserve?.[id])||0),0)+(S.mag?.weaponId===id&&ids.includes(S.mag.ammoId)?Number(S.mag.loaded||0):0);},
+    uniformPalette:palette.masteryUniform||{body:palette.armorOuter,light:palette.arm,dark:palette.shoulder,vest:palette.armorInner,helmet:palette.helmet,trim:palette.trim}};
+}
+function applyOrganizerSoloPreset(p){
+  const context=organizerSoloContext();window.TigerArmoryOrganizer.applySolo(S,p,context);
+  const prep=ensureWorldMapPrepState(S);prep.weaponId=p.weaponId;
+  save();renderHUD();renderCombatControls();return true;
+}

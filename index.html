@@ -7,11 +7,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V15.6 (Rescue Equipment Collection)</title>
+  <title>Tiger Strike 🐅 — V15.7 (Armory Organizer)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5275-rescue-equipment">
-  <link rel="stylesheet" href="./touch-layout.css?v=5275-rescue-equipment">
-  <link rel="stylesheet" href="./battlefield-awareness.css?v=5275-rescue-equipment">
+  <link rel="stylesheet" href="./squad-coop.css?v=5276-armory-organizer">
+  <link rel="stylesheet" href="./touch-layout.css?v=5276-armory-organizer">
+  <link rel="stylesheet" href="./battlefield-awareness.css?v=5276-armory-organizer">
 
   <style>
     :root{
@@ -2572,16 +2572,16 @@
 .missionExperience{display:grid;gap:5px;margin:7px 0}.missionExperience[hidden],.missionExperience [hidden]{display:none!important}.missionExperience button{width:100%;text-align:left;padding:10px 12px;min-height:44px;border:1px solid #4b8f76;border-radius:12px;background:#0b2925;color:#ecfdf5;font-size:12px;line-height:1.4}.missionExperience [role=status]{font-size:12px;padding:7px 10px;border-radius:10px;background:#172033;color:#dbeafe}.missionExperience [data-stage=ready]{background:#14532d;color:#dcfce7}.missionExperience [data-stage=blocked]{background:#541b2c;color:#ffe4e6}
 </style>
 <style>.soloFieldRadio{border:1px solid #467d78;border-radius:12px;padding:8px;font-size:12px;background:#0c2629;color:#e0f2fe}.soloFieldRadio summary{cursor:pointer;min-height:28px;font-weight:850}.radioCommands{display:flex;flex-wrap:wrap;gap:5px}.missionExperience .radioCommands button{width:auto;flex:1 1 110px}.soloFieldRadio [role=status]{margin-top:6px}</style>
-  <link rel="stylesheet" href="./elite-armory.css?v=5275-rescue-equipment">
+  <link rel="stylesheet" href="./elite-armory.css?v=5276-armory-organizer">
 </head>
 
 <body>
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V15.6</span> <span class="tag">Rescue Equipment Collection</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V15.7</span> <span class="tag">Armory Organizer</span></div>
       <div class="sub">
-        V15.6 — Rescue Equipment Collection: Elite Armory now offers a permanent 200-Star set of matching teal-and-gold finishes for the Med Drone, Smoke Grenade, Signal Flare and newly placed live-capture cages. Preview all four before buying. Equipment has its own slot, so your soldier, weapon and extraction vehicle stay independently selectable. Select your existing rescue tool before deploying: this purchase adds no tools, charges, healing, range or capture advantages. Solo and Co-op use the same detailed equipment artwork; smoke coverage and objective/extraction guides are unchanged. The selected equipment finish takes priority over Storm Medic drone artwork; remove it to restore the medic finish. New cages record the captor’s verified finish and retain it through reconnects and the conservation-truck loading/departure scene. Existing cages keep their original appearance. Survival still has no live captures. Mission difficulty, separate inventories, rewards, sound and music remain unchanged.<br>
+        V15.7 — Armory Organizer: a permanent 150-Star convenience upgrade adds six named saved loadouts per mode: Story, Arcade, Survival and Co-op. Open Saved Loadouts from Shop, Inventory or the Co-op equipment bar, or find Organizer in Elite Armory. Save, preview, rename, replace, apply or delete a slot. Setups remember your owned weapon, ammunition type, rescue tool, soldier setup and Elite appearances; previews use the same detailed artwork as missions. Apply at HQ/results or in a waiting Co-op squad, never during a live mission. Solo tool and uniform preferences take effect at the next deployment. Supplies, health and progress are not restored; changing Solo weapons returns loaded rounds to reserve and leaves the new magazine empty for normal reload. Each mode has independent slots and the existing free Buildcraft presets remain available. Survival retains Real ammunition only. Ownership and compatible ammunition are checked when applying; stale edits from another device are rejected.<br>
         V13.5 off-screen guidance, live progress and optional Docked Controls remain available.<br>
         V13.4 targeting and attack-warning improvements remain active.<br>
         V13.3 performance and weak-link improvements remain active. Combined physical two-phone weak-connection validation is still outstanding.<br>
@@ -3246,7 +3246,7 @@
       <div class="modalTitle">Shop (Paused) — Money: $<span id="shopMoney"></span></div>
       <button class="ghost" id="shopResumeBtn" onclick="closeShop()">Resume</button>
     </div>
-    <div class="modalBody shopModalBody">
+    <div class="modalBody shopModalBody"><div class="row"><button type="button" onclick="openEliteArmory({organizer:true})">Saved Loadouts</button></div>
       <div class="tabs shopTabs" role="tablist" aria-label="Shop categories">
         <button class="tab active" id="tabWeapons" onclick="shopTab('weapons')">Weapons</button>
         <button class="tab" id="tabAmmo" onclick="shopTab('ammo')">Ammo</button>
@@ -3278,7 +3278,7 @@
 <div class="overlay" id="invOverlay">
   <div class="modal">
     <div class="modalTop"><div class="modalTitle">Inventory (Paused)</div><button class="ghost" id="inventoryResumeBtn" onclick="closeInventory()">Resume</button></div>
-    <div class="modalBody">
+    <div class="modalBody"><div class="row"><button type="button" onclick="openEliteArmory({organizer:true})">Saved Loadouts</button></div>
       <div class="tabs">
         <button class="tab active" id="invTabGear" onclick="inventoryTab('gear')">Gear + Operations</button>
         <button class="tab" id="invTabSettlement" onclick="inventoryTab('settlement')">Settlement</button>
@@ -3646,49 +3646,50 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5275-rescue-equipment"></script>
-  <script src="./engagement-rules.js?v=5275-rescue-equipment"></script>
-  <script src="./smooth-play.js?v=5275-rescue-equipment"></script>
-  <script src="./combat-feel.js?v=5275-rescue-equipment"></script>
-  <script src="./combat-reactions.js?v=5275-rescue-equipment"></script>
-  <script src="./chapter-maps.js?v=5275-rescue-equipment"></script>
-  <script src="./mission-routes.js?v=5275-rescue-equipment"></script>
-  <script src="./field-operations.js?v=5275-rescue-equipment"></script>
-  <script src="./extraction-geometry.js?v=5275-rescue-equipment"></script>
-  <script src="./ammo-modes.js?v=5275-rescue-equipment"></script>
-  <script src="./government-policy.js?v=5275-rescue-equipment"></script>
-  <script src="./tiger-intelligence.js?v=5275-rescue-equipment"></script>
-  <script src="./tiger-encounters.js?v=5275-rescue-equipment"></script>
-  <script src="./tiger-pursuit.js?v=5275-rescue-equipment"></script>
-  <script src="./living-world.js?v=5275-rescue-equipment"></script>
-  <script src="./mission-map-truth.js?v=5275-rescue-equipment"></script>
-  <script src="./post-campaign.js?v=5275-rescue-equipment"></script>
-  <script src="./sanctuary.js?v=5275-rescue-equipment"></script>
-  <script src="./player-experience.js?v=5275-rescue-equipment"></script>
-  <script src="./battlefield-awareness.js?v=5275-rescue-equipment"></script>
-  <script src="./field-radio.js?v=5275-rescue-equipment"></script>
-  <script src="./civilian-rescue.js?v=5275-rescue-equipment"></script>
-  <script src="./rescue-tools.js?v=5275-rescue-equipment"></script>
-  <script src="./escort-teamwork.js?v=5275-rescue-equipment"></script>
-  <script src="./chapter-milestones.js?v=5275-rescue-equipment"></script>
-  <script src="./mission-debrief.js?v=5275-rescue-equipment"></script>
-  <script src="./mastery-rewards.js?v=5275-rescue-equipment"></script>
-  <script src="./vehicle-art.js?v=5275-rescue-equipment"></script>
-  <script src="./shared-battlefield-renderer.js?v=5275-rescue-equipment"></script>
-  <script src="./touch-layout.js?v=5275-rescue-equipment"></script>
-  <script src="./elite-catalog.js?v=5275-rescue-equipment"></script>
-  <script src="./wildlife-tranq.js?v=5275-rescue-equipment"></script>
-  <script src="./showcase-scene.js?v=5275-rescue-equipment"></script>
-  <script src="./commander-celebration.js?v=5275-rescue-equipment"></script>
-  <script src="./game.js?v=5275-rescue-equipment"></script>
-  <script src="./story-cinematics.js?v=5275-rescue-equipment"></script>
-  <script src="./field-systems.js?v=5275-rescue-equipment"></script>
-  <script src="./tutorial.js?v=5275-rescue-equipment"></script>
-  <script src="./squad-motion.js?v=5275-rescue-equipment"></script>
-  <script src="./character-voice.js?v=5275-rescue-equipment"></script>
-  <script src="./elite-armory.js?v=5275-rescue-equipment"></script>
-  <script src="./squad-coop.js?v=5275-rescue-equipment"></script>
-  <script src="./extraction-qa.js?v=5275-rescue-equipment"></script>
+  <script src="./water-terrain.js?v=5276-armory-organizer"></script>
+  <script src="./engagement-rules.js?v=5276-armory-organizer"></script>
+  <script src="./smooth-play.js?v=5276-armory-organizer"></script>
+  <script src="./combat-feel.js?v=5276-armory-organizer"></script>
+  <script src="./combat-reactions.js?v=5276-armory-organizer"></script>
+  <script src="./chapter-maps.js?v=5276-armory-organizer"></script>
+  <script src="./mission-routes.js?v=5276-armory-organizer"></script>
+  <script src="./field-operations.js?v=5276-armory-organizer"></script>
+  <script src="./extraction-geometry.js?v=5276-armory-organizer"></script>
+  <script src="./ammo-modes.js?v=5276-armory-organizer"></script>
+  <script src="./government-policy.js?v=5276-armory-organizer"></script>
+  <script src="./tiger-intelligence.js?v=5276-armory-organizer"></script>
+  <script src="./tiger-encounters.js?v=5276-armory-organizer"></script>
+  <script src="./tiger-pursuit.js?v=5276-armory-organizer"></script>
+  <script src="./living-world.js?v=5276-armory-organizer"></script>
+  <script src="./mission-map-truth.js?v=5276-armory-organizer"></script>
+  <script src="./post-campaign.js?v=5276-armory-organizer"></script>
+  <script src="./sanctuary.js?v=5276-armory-organizer"></script>
+  <script src="./player-experience.js?v=5276-armory-organizer"></script>
+  <script src="./battlefield-awareness.js?v=5276-armory-organizer"></script>
+  <script src="./field-radio.js?v=5276-armory-organizer"></script>
+  <script src="./civilian-rescue.js?v=5276-armory-organizer"></script>
+  <script src="./rescue-tools.js?v=5276-armory-organizer"></script>
+  <script src="./escort-teamwork.js?v=5276-armory-organizer"></script>
+  <script src="./chapter-milestones.js?v=5276-armory-organizer"></script>
+  <script src="./mission-debrief.js?v=5276-armory-organizer"></script>
+  <script src="./mastery-rewards.js?v=5276-armory-organizer"></script>
+  <script src="./vehicle-art.js?v=5276-armory-organizer"></script>
+  <script src="./shared-battlefield-renderer.js?v=5276-armory-organizer"></script>
+  <script src="./touch-layout.js?v=5276-armory-organizer"></script>
+  <script src="./elite-catalog.js?v=5276-armory-organizer"></script>
+  <script src="./wildlife-tranq.js?v=5276-armory-organizer"></script>
+  <script src="./showcase-scene.js?v=5276-armory-organizer"></script>
+  <script src="./commander-celebration.js?v=5276-armory-organizer"></script>
+  <script src="./armory-organizer.js?v=5276-armory-organizer"></script>
+  <script src="./game.js?v=5276-armory-organizer"></script>
+  <script src="./story-cinematics.js?v=5276-armory-organizer"></script>
+  <script src="./field-systems.js?v=5276-armory-organizer"></script>
+  <script src="./tutorial.js?v=5276-armory-organizer"></script>
+  <script src="./squad-motion.js?v=5276-armory-organizer"></script>
+  <script src="./character-voice.js?v=5276-armory-organizer"></script>
+  <script src="./elite-armory.js?v=5276-armory-organizer"></script>
+  <script src="./squad-coop.js?v=5276-armory-organizer"></script>
+  <script src="./extraction-qa.js?v=5276-armory-organizer"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

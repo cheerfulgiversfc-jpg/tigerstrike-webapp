@@ -291,6 +291,8 @@
     return converted?.description || `Story Mission ${level} is available Solo. Its Two Player version has not been converted yet.`;
   };
 
+  async function openSquadArmory(showOrganizer=false){clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'elite'});window.TigerEliteArmory?.open({organizer:showOrganizer,onEquip:async()=>{},organizerContext:()=>{const p=localSnapshotPlayer(),profile=state.profile||{};return {mode:'Coop',allowed:state.snapshot?.status==='waiting',reason:'Create or join a waiting squad to apply a loadout. Active missions keep their current supplies.',survival:!!state.snapshot?.mission?.survival,weapons:(state.gearCatalog||[]).filter(w=>w.type==='weapon'&&profile.ownedWeaponIds?.includes(w.id)),tools:Object.keys(window.TigerRescueTools.DEFS),roles:state.roles.length?state.roles.map(r=>r.key):['tracker','medic','assault','trapper'],current:{name:'My Co-op loadout',weaponId:profile.equippedWeaponId,ammoMode:p?.ammoMode||'rubber',toolId:p?.rescueTool?.id||'smoke',roleId:p?.role||'tracker',appearance:p?.eliteAppearance||{}},ammoFor:(_id,mode)=>profile.ammo?.[mode]||0,uniformPalette:window.TigerMasteryRewards?.uniformPalette(p?.masteryIdentity?.uniform?.id)};},organizerApply:async(slot,expectedRevision)=>{await api('organizer-apply',{slot,expectedRevision});await api('profile');},onClose:()=>{if(active&&!state.equipmentOpen&&state.snapshot?.status==='active')api('resume').catch(e=>setMessage(e.message,true));}});}
+
   function equipmentButtonsHtml(){
     const active = state.snapshot?.status === "active";
     return `<div class="squadPrepBar">
@@ -300,6 +302,7 @@
       <button type="button" class="squadBtn" data-squad-command="combat-comfort">Combat Comfort</button>
       <button type="button" class="squadBtn" data-squad-command="smooth-play">Graphics</button>
       <button type="button" class="squadBtn" data-squad-command="elite-armory">Elite Armory</button>
+      <button type="button" class="squadBtn" data-squad-command="organizer">Saved Loadouts</button>
       <button type="button" class="squadBtn" data-squad-command="arrange-controls">Arrange Controls</button>
       ${state.snapshot?.routeVersion===1&&sharedStoryActive()&&window.TigerMissionRoutes?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="mission-route">Mission Route</button>':''}
       ${active&&state.snapshot?.fieldVersion===1&&sharedStoryActive()&&window.TigerFieldOperations?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="field-actions">Field Actions</button>':''}
@@ -1266,7 +1269,8 @@
       'escort-recover':()=>escortCommand('escort-recover'),
       'radio-locate':()=>{ radioLocateUntil=Date.now()+7000;updateFieldRadio(); },
       'radio-mute':()=>{ radioMuted=!radioMuted;try{localStorage.setItem('ts_field_radio_muted',radioMuted?'1':'0');}catch(e){}updateFieldRadio(); },
-      'elite-armory':async()=>{clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'elite'});window.TigerEliteArmory?.open({onEquip:async()=>{},onClose:()=>{if(active&&state.snapshot?.status==='active')api('resume').catch(e=>setMessage(e.message,true));}});},
+      'elite-armory':()=>openSquadArmory(false),
+      organizer:()=>openSquadArmory(true),
       'arrange-controls':async()=>{clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'controls'});window.TigerTouchLayout?.open({mode:'coop',onClose:()=>{if(active&&state.snapshot?.status==='active')api('resume').catch(error=>setMessage(error.message,true));}});},
       'controls-layout':()=>{window.TigerBattlefieldAwareness?.toggleLayout();window.TigerTouchLayout?.refresh();},
       action:()=>action(actionName),
@@ -3134,6 +3138,7 @@
   window.liveSquadCopyCode=copyCode;
   window.TigerLiveSquad = Object.freeze({
     returnFromEquipment,
+    openArmory:openSquadArmory,
     equipmentOpen:()=>state.equipmentOpen,
     isOpen:()=>state.open,
   });

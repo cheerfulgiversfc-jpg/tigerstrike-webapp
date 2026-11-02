@@ -1,6 +1,13 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.7 — Armory Organizer
+
+- Adds the permanent `elite_organizer` entitlement for 150 Telegram Stars: six additional named slots for each of Story, Arcade, Survival and Co-op. Existing free Buildcraft presets stay available. Shop, Inventory, the Co-op equipment bar and Elite Armory open the same saved-loadout interface, with production shared artwork, previews, save/replace, rename, apply and delete.
+- Authenticated account records save configuration only: owned weapon, ammunition mode, rescue tool, soldier/uniform setup and verified Elite appearance selections. Per-slot revisions and delete tombstones prevent stale-device overwrites. Refunded Organizer or cosmetic ownership blocks application. Survival rejects Rubber, tranquilizer and capture-tool setups.
+- Solo applies only at HQ/results; it conserves loaded ammunition when changing weapons and leaves the replacement magazine empty for normal reload. Tool/role/uniform preferences queue for the next deployment, without resetting field charges or cooldowns. Co-op applies only to the requesting player in a waiting squad: one Redis transaction checks membership, room generation, status, ownership, ammunition and revision before changing configuration. It never overwrites funds, inventory, health, tool uses or mission statistics.
+- Validation includes automated ownership, identity binding, revisions, simultaneous saves, cross-mode isolation, resource conservation, actual Solo gadget runtime, waiting/start races and real loopback Redis/Lua integration tests. Desktop and phone-width interface checks use `qa/armory-organizer.html` with isolated test records. Actual paid Telegram checkout and physical two-phone use of Organizer remain unverified.
+
 ## V15.6 — Rescue Equipment Collection
 
 - Adds `elite_rescue_equipment`, a permanent 200-Star purchase containing the matching Med Drone, Smoke Grenade, Signal Flare and capture-cage finishes. It uses the existing verified invoice, duplicate-safe permanent grant, equip, restore and refund flow. The independent `equipment` appearance slot is ownership-validated and does not replace soldier, weapon, badge or extraction selections.

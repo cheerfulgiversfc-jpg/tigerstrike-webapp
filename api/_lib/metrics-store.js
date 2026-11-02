@@ -236,6 +236,7 @@ async function getState(name){
 }
 
 module.exports = {
+  stateKey,
   dayIdFromMs,
   dayIdOffset,
   recentDayIds,

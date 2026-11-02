@@ -43,6 +43,17 @@
     }
     R.drawMapLighting(c,{x:0,y:0,w,h});c.restore();return {soldier:{x:sx,y:sy},tiger:{x:tx,y:ty}};
   }
+  function drawLoadout(c,options={}){
+    const p=options.preset||{},a=W.presentation(p.appearance||{},{survival:options.mode==='Survival',tranq:p.ammoMode==='tranq',ammoMode:p.ammoMode}),now=0;
+    c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/600,c.canvas.height/360);
+    backdrop(c,{now,clear:[{x:190,y:205,r:80},{x:435,y:180,r:100}]});
+    R.drawSoldier(c,{x:190,y:205,face:0,eliteAppearance:a},{now,scale:2.4,showMarker:false,walking:false,lowerWeapon:true,uniformPalette:options.uniformPalette});
+    const finish=a.equipment==='rescue_equipment'?'rescue_equipment':a.soldier==='storm_medic'?'storm_medic':'base';
+    if(p.toolId==='med-drone')R.drawMedDrone(c,{x:435,y:160},{now,scale:2.3,variant:finish});
+    else if(['smoke','flare'].includes(p.toolId))R.drawRescueDevice(c,{x:435,y:180},{now,scale:3,kind:p.toolId,variant:finish});
+    c.fillStyle='rgba(7,23,32,.94)';c.beginPath();c.roundRect(18,275,564,68,9);c.fill();c.textAlign='left';c.fillStyle='#efdba7';c.font='bold 16px system-ui';c.fillText(String(p.name||'Loadout preview').slice(0,32),30,297);
+    c.fillStyle='#d2e7db';c.font='12px system-ui';c.fillText(String(options.weaponName||p.weaponId||'Weapon').slice(0,48)+' • '+String(p.ammoMode||'').toUpperCase(),30,315);c.fillText(`${options.mode==='Coop'?'Co-op':options.mode||'Story'} • ${{smoke:'Smoke Grenade','med-drone':'Med Drone',flare:'Signal Flare','tranq-kit':'Tranq Kit',shock:'Shock Baton'}[p.toolId]||'Current rescue tool'} • Preview only`,30,332);c.restore();
+  }
   function drawEquipment(c,options={}){
     const now=Number(options.now)||0,elapsed=Math.max(0,now-Number(options.openedAt||0)),names=['med-drone','smoke','flare','cage'],kind=names.includes(options.equipment)?options.equipment:names[Math.floor(elapsed/5000)%names.length],appearance={...options.appearance,equipment:'rescue_equipment'},labels={'med-drone':'MED DRONE',smoke:'SMOKE GRENADE',flare:'SIGNAL FLARE',cage:'LIVE CAPTURE CAGE'};
     c.save();c.clearRect(0,0,c.canvas.width,c.canvas.height);c.scale(c.canvas.width/600,c.canvas.height/360);
@@ -85,5 +96,5 @@
     for(let i=0;i<count;i++){const loaded=Math.max(0,Math.min(1,(p-(.24+i*(.4/count)))/.12)),gx=600+i*48,cx=gx+(tx+28+i*43-gx)*loaded,cy=208+(185-208)*loaded;R.drawCaptureCage(c,cx+16,cy,.44,{now,livery:options.cages?.[i]?.livery});}
     R.drawMapLighting(c,{x:0,y:0,w:960,h:300});c.fillStyle='rgba(8,25,32,.9)';c.beginPath();c.roundRect(12,10,470,49,8);c.fill();c.fillStyle='#e6f0dc';c.font='bold 15px system-ui';c.textAlign='left';c.fillText(p<.24?'Wildlife recovery truck arriving':p<.68?'Loading secured live tiger cages':'Cages secured • wildlife transport departing',24,30);c.fillStyle='#b9dbc0';c.font='12px system-ui';c.fillText(`${Number(options.count)||0} live tigers • no blood scent`,24,48);c.restore();
   }
-  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory,drawEquipment});
+  return Object.freeze({draw,backdrop,routeAt,drawTransfer,drawVictory,drawEquipment,drawLoadout});
 });
