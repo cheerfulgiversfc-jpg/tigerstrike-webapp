@@ -1,0 +1,22 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto');
+const source=fs.readFileSync('game.js','utf8');
+const roomText=source.match(/const BASE_HQ_ROOMS = Object.freeze\(\[[\s\S]*?\n\]\);/)[0],rooms=vm.runInNewContext(roomText+';BASE_HQ_ROOMS');
+function canvasContext(){let depth=0;const calls=[];const c=new Proxy({canvas:{width:1280,height:720},measureText:()=>({width:70})},{get:(o,k)=>k in o?o[k]:/create.*Gradient/.test(k)?()=>({addColorStop(){}}):(...args)=>{if(k==='save')depth++;if(k==='restore')depth--;for(const n of args)if(typeof n==='number')assert(Number.isFinite(n),k);calls.push([k,args]);},set:(o,k,v)=>(o[k]=v,true)});return {c,calls,depth:()=>depth};}
+function load(extra={}){const R={...require('./shared-battlefield-renderer')},calls=[];for(const name of ['drawMapHouse','drawMapTree','drawSoldier','drawCivilian','drawTiger','drawVehicle','drawGroundTexture','drawMapLighting']){const original=R[name];R[name]=(...a)=>{calls.push([name,a]);return original(...a);};}const box={module:{exports:{}},require:()=>R,...extra};vm.runInNewContext(fs.readFileSync('hq-world-art.js','utf8'),box);return {art:box.module.exports,calls};}
+test('HQ layout retains all 21 existing room centers, footprints and NPC positions',()=>{
+ assert.equal(rooms.length,21);assert.equal(rooms.find(r=>r.id==='mission').x,640);assert.equal(rooms.find(r=>r.id==='armory').y,218);assert.equal(rooms.find(r=>r.id==='pens').w,220);
+ const constants=['BASE_HQ_ROOMS','BASE_HQ_NPCS'].map(name=>source.match(new RegExp('const '+name+' = Object.freeze\\(\\[[\\s\\S]*?\\n\\]\\);'))[0]).join('\n');assert.equal(crypto.createHash('sha256').update(constants).digest('hex'),'d5f32aae96675d5e2df5fc49d067dc53a912d35691fa1dc21b7c61998d80dfa8');
+});
+test('HQ foundation uses detailed production scenery; player, staff, sanctuary tiger and vehicle use mission models without mutating entities',()=>{
+ const {art,calls}=load(),{c,depth}=canvasContext(),options={rooms,width:1280,height:720,appearance:{extraction:'extraction'}},p={x:640,y:410,face:Math.PI,step:2},t={x:1020,y:500,type:'Standard'},before=JSON.stringify({options,p,t});
+ art.foundation(c,options);art.person(c,p,{player:true,appearance:{soldier:'crimson_commander',weapon:'guardian'},uniformPalette:{body:'#842b40'},walking:true,now:123});art.person(c,{...p,role:'Medbay'},{now:123});art.tiger(c,t,{now:123});art.highlight(c,rooms[0],{active:true,rank:2});
+ for(const name of ['drawMapHouse','drawMapTree','drawSoldier','drawCivilian','drawTiger','drawVehicle','drawGroundTexture','drawMapLighting'])assert(calls.some(([n])=>n===name),name);assert.equal(calls.find(([n])=>n==='drawVehicle')[1][2].livery,'extraction');assert.equal(JSON.stringify({options,p,t}),before);assert.equal(depth(),0);
+});
+test('Static HQ geometry is rasterized once and reused by the live scene and minimap; quality and livery changes invalidate it',()=>{
+ const raster=canvasContext();let allocations=0;const {art}=load({document:{createElement(tag){assert.equal(tag,'canvas');allocations++;return {getContext:()=>raster.c};}}}),screen=canvasContext(),options={rooms,width:1280,height:720,identity:'official',appearance:{},heavy:false};
+ art.foundation(screen.c,options);const count=raster.calls.length;art.foundation(screen.c,options);art.minimap(screen.c,{...options,bounds:{x:10,y:10,w:96,h:54},view:{x:0,y:0,w:960,h:540},player:{x:640,y:430}});assert.equal(allocations,1);assert.equal(raster.calls.length,count);assert.equal(screen.calls.filter(([n])=>n==='drawImage').length,3);
+ art.foundation(screen.c,{...options,heavy:true});assert.equal(allocations,2);art.foundation(screen.c,{...options,heavy:true,appearance:{extraction:'extraction'}});assert.equal(allocations,3);assert.equal(raster.depth(),0);assert.equal(screen.depth(),0);
+});
+test('Actual HQ adapters preserve actions and resident counts while replacing legacy art and reducing distant text clutter',()=>{
+ const html=fs.readFileSync('index.html','utf8');assert(html.indexOf('hq-world-art.js?')<html.indexOf('game.js?'));for(const name of ['foundation','minimap','highlight','person','tiger'])assert(source.includes('TigerHqWorldArt.'+name));assert(source.includes('const tigerCount = residents.length || clamp'));assert(source.includes('Math.hypot(npc.x-__baseHqPlayer.x,npc.y-__baseHqPlayer.y)<100'));assert(source.includes('function interactBaseHQ()'));assert(!fs.readFileSync('hq-world-art.js','utf8').includes('requestAnimationFrame'));
+});

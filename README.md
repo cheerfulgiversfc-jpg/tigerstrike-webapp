@@ -1,6 +1,13 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.11 — HQ Graphics Upgrade
+
+- Upgrades the main walkable Base HQ, separate from the Personal Rescue HQ display. `hq-world-art.js` calls production shared ground, house, tree, lighting, vehicle, soldier, civilian and tiger renderers. The player keeps the current verified Elite appearance or earned uniform palette, with the same ammunition-dependent weapon presentation as gameplay. NPCs have the shared detailed faces/clothing; sanctuary residents use the shared tiger model.
+- Replaces dark grid/panel scenery with brighter textured grounds, marked concourses and open-front facilities inside existing footprints. All 21 room centers/footprints and NPC positions remain unchanged, as do movement targets, conversation logic, unlocks and menu actions. Distant NPC labels and purpose pills are suppressed while selected/nearby guidance and room labels remain readable. The locator renders the actual HQ layout, player position and camera bounds.
+- Static terrain/facilities are rasterized once into a bounded 1280×720 canvas, reused by both world and minimap. Quality, government identity, layout or extraction livery changes invalidate it; actors, selection highlights, rank/readiness badges and progress remain live. No extra animation loop, supply changes, reward writes, paid grants or music changes are introduced.
+- Validation covers unchanged layout hashes, shared renderer usage, finite/balanced drawing, entity immutability, static cache reuse/invalidation, minimap reuse and actual HQ adapters, plus desktop/phone-width visual and room-navigation checks. Physical Telegram device performance remains unverified.
+
 ## V15.10 — Personal Rescue HQ Complete
 
 - Completes the planned vehicle bay and teammate equipment display. Three inspection controls use production shared helicopter, boat and truck models on production terrain. Boat placement derives from the actual river banks; truck placement derives from the preview road. The bay uses only the player's selected extraction finish, with standard artwork when none is selected. Static inspection changes no entitlement, equipment, departure route or capacity.

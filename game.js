@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5279";
+const TS_BUILD = "5280";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -35163,6 +35163,7 @@ function drawBaseHqLabel(text, x, y, color="rgba(226,232,240,.96)"){
 }
 function drawBaseHqPurposePill(room, now){
   if(!room) return;
+  if(room.id!==__baseHqSelectedRoom&&Math.hypot(room.x-__baseHqPlayer.x,room.y-__baseHqPlayer.y)>110)return;
   const active = room.id === __baseHqSelectedRoom;
   const purpose = baseHqRoomPurposeLine(room.id);
   const short = purpose.length > 46 ? `${purpose.slice(0, 43)}...` : purpose;
@@ -35313,69 +35314,15 @@ function drawBaseHqRoomLiveBadge(room, now){
   ctx.restore();
 }
 function drawBaseHqRoom(room, now){
-  const active = room.id === __baseHqSelectedRoom;
-  const pulse = active ? 0.5 + Math.sin(now / 240) * 0.18 : 0;
-  const moduleRank = baseHqRoomModuleRank(room.id);
-  const rankGlow = Math.min(0.22, moduleRank * 0.045);
-  ctx.save();
-  const roomGrad = ctx.createLinearGradient(room.x - room.w/2, room.y - room.h/2, room.x + room.w/2, room.y + room.h/2);
-  roomGrad.addColorStop(0, active ? "rgba(18,33,58,.98)" : "rgba(10,21,38,.94)");
-  roomGrad.addColorStop(0.55, active ? "rgba(9,18,34,.97)" : "rgba(6,13,25,.92)");
-  roomGrad.addColorStop(1, active ? "rgba(13,30,47,.97)" : "rgba(5,12,22,.92)");
-  ctx.fillStyle = roomGrad;
-  ctx.strokeStyle = active ? "rgba(125,211,252,.98)" : (moduleRank > 0 ? "rgba(187,247,208,.82)" : "rgba(71,85,105,.84)");
-  ctx.lineWidth = active ? 3 : (moduleRank > 0 ? 2 : 1.5);
-  ctx.shadowColor = active ? "rgba(56,189,248,.45)" : (moduleRank > 0 ? `rgba(34,197,94,${0.18 + rankGlow})` : "rgba(0,0,0,.25)");
-  ctx.shadowBlur = active ? 18 : (8 + moduleRank * 3);
-  roundedRectFill(room.x - room.w/2, room.y - room.h/2, room.w, room.h, 18);
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.globalAlpha = active ? 0.18 : 0.10;
-  ctx.strokeStyle = room.color || "#60a5fa";
-  ctx.lineWidth = 1;
-  for(let yy = room.y - room.h/2 + 26; yy < room.y + room.h/2 - 14; yy += 18){
-    ctx.beginPath();
-    ctx.moveTo(room.x - room.w/2 + 18, yy);
-    ctx.lineTo(room.x + room.w/2 - 18, yy);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-  ctx.globalAlpha = 0.18 + pulse;
-  ctx.fillStyle = room.color || "#60a5fa";
-  roundedRectFill(room.x - room.w/2 + 8, room.y - room.h/2 + 8, room.w - 16, 12, 8);
-  ctx.globalAlpha = 1;
-  const progress = baseHqRoomProgress(room.id);
-  if(active){
-    ctx.save();
-    ctx.globalAlpha = 0.28 + Math.sin(now / 260) * 0.08;
-    ctx.strokeStyle = "rgba(187,247,208,.95)";
-    ctx.fillStyle = "rgba(187,247,208,.08)";
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([12, 8]);
-    roundedRectFill(room.x - room.w/2 - 10, room.y - room.h/2 - 10, room.w + 20, room.h + 20, 22);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
-  }
-  ctx.fillStyle = "rgba(2,6,23,.72)";
-  roundedRectFill(room.x - room.w/2 + 16, room.y + room.h/2 - 16, room.w - 32, 6, 4);
-  ctx.fillStyle = progress.unlocked ? "rgba(34,197,94,.86)" : "rgba(250,204,21,.78)";
-  roundedRectFill(room.x - room.w/2 + 16, room.y + room.h/2 - 16, (room.w - 32) * (progress.pct / 100), 6, 4);
-  drawBaseHqRoomProp(room, now);
-  drawBaseHqRoomProgressBadge(room, now);
-  drawBaseHqRoomLiveBadge(room, now);
-  ctx.fillStyle = "#f8fafc";
-  ctx.font = "1000 15px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(room.icon, room.x, room.y - 18);
-  ctx.font = "1000 14px system-ui, sans-serif";
-  ctx.fillText(room.name, room.x, room.y + 4);
-  ctx.font = "850 10px system-ui, sans-serif";
-  ctx.fillStyle = "rgba(203,213,225,.9)";
-  ctx.fillText(room.sub, room.x, room.y + 22);
-  ctx.restore();
-  drawBaseHqPurposePill(room, now);
+  const active=room.id===__baseHqSelectedRoom,rank=baseHqRoomModuleRank(room.id),progress=baseHqRoomProgress(room.id);
+  window.TigerHqWorldArt.highlight(ctx,room,{active,rank});ctx.save();
+  ctx.fillStyle='rgba(7,24,32,.94)';roundedRectFill(room.x-room.w/2+5,room.y+room.h/2-34,room.w-10,30,5);
+  ctx.textAlign='center';ctx.font='900 12px system-ui';ctx.fillStyle='#f0f1d9';ctx.fillText(room.name,room.x,room.y+room.h/2-21);
+  ctx.font='700 9px system-ui';ctx.fillStyle='#c6ded8';ctx.fillText(room.sub,room.x,room.y+room.h/2-9);
+  ctx.fillStyle=progress.unlocked?'#5ad797':'#e3c16a';roundedRectFill(room.x-room.w/2+8,room.y+room.h/2-3,(room.w-16)*progress.pct/100,3,1);
+  ctx.restore();drawBaseHqRoomProgressBadge(room,now);drawBaseHqRoomLiveBadge(room,now);drawBaseHqPurposePill(room,now);
 }
+
 function drawBaseHqOnboardingGuide(now){
   if(!__baseHqOnboardingActive) return;
   const step = currentBaseHqOnboardingStep();
@@ -35415,166 +35362,26 @@ function drawBaseHqOnboardingGuide(now){
   drawBaseHqLabel(`Tour: ${step.title}`, room.x, room.y - room.h/2 - 24, "rgba(220,252,231,.98)");
 }
 function drawBaseHqAmbientActor(actor, now){
-  if(!actor?.from || !actor?.to) return;
-  const speed = Number(actor.speed || 0.00005);
-  const phase = Number(actor.phase || 0);
-  const wave = (Math.sin((now * speed + phase) * Math.PI * 2) + 1) / 2;
-  const x = actor.from[0] + (actor.to[0] - actor.from[0]) * wave;
-  const y = actor.from[1] + (actor.to[1] - actor.from[1]) * wave;
-  const face = actor.to[0] >= actor.from[0] ? 0 : Math.PI;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.fillStyle = "rgba(0,0,0,.26)";
-  ctx.beginPath();
-  ctx.ellipse(0, 14, 12, 4, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = actor.color || "rgba(125,211,252,.8)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, -2, 14 + Math.sin(now / 300 + phase) * 1.4, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.fillStyle = actor.color || "#38bdf8";
-  roundedRectFill(-7, -10, 14, 18, 5);
-  ctx.fillStyle = "#f2c7a5";
-  ctx.beginPath();
-  ctx.arc(0, -15, 6.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#0f172a";
-  ctx.fillRect(-5, -21, 10, 4);
-  ctx.strokeStyle = "rgba(226,232,240,.7)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(face === 0 ? 4 : -4, -2);
-  ctx.lineTo(face === 0 ? 13 : -13, 4);
-  ctx.stroke();
-  ctx.restore();
-  if(wave > 0.22 && wave < 0.78 && Math.sin(now / 1100 + phase * 10) > 0.82){
-    drawBaseHqLabel(actor.role || actor.name || "HQ Crew", x, y - 34, "rgba(219,234,254,.92)");
-  }
+  if(!actor?.from||!actor?.to)return;
+  const phase=now*Number(actor.speed||.00005)+Number(actor.phase||0),wave=(Math.sin(phase*Math.PI*2)+1)/2;
+  const x=actor.from[0]+(actor.to[0]-actor.from[0])*wave,y=actor.from[1]+(actor.to[1]-actor.from[1])*wave;
+  const forward=Math.cos(phase*Math.PI*2)>=0,dx=(actor.to[0]-actor.from[0])*(forward?1:-1),dy=(actor.to[1]-actor.from[1])*(forward?1:-1);
+  window.TigerHqWorldArt.person(ctx,{x,y,face:Math.atan2(dy,dx),role:actor.role,step:now/180},{now,walking:true,color:actor.color,scale:.65});
 }
-function drawBaseHqPersonSprite({ x=0, y=0, step=0, role="", style="", face=0, scale=1, name="" }={}, now=Date.now()){
-  const bob = Math.sin(now / 360 + x) * 1.5;
-  const stride = Math.sin(step || 0) * 2.2;
-  const dir = Math.cos(face || 0) >= 0 ? 1 : -1;
-  const isReception = style === "reception" || role === "Reception";
-  const isMed = role === "Medbay";
-  const isArmory = role === "Armory";
-  const isKeeper = role === "Tiger Pens";
-  const jacket = isReception ? "#0f766e" : (isMed ? "#16a34a" : (isArmory ? "#b45309" : (isKeeper ? "#be123c" : "#1d4ed8")));
-  const vest = isReception ? "#67e8f9" : (isMed ? "#bbf7d0" : (isArmory ? "#fed7aa" : (isKeeper ? "#fecdd3" : "#93c5fd")));
-  const pants = isReception ? "#164e63" : "#111827";
-  const hair = isReception ? "#312e81" : "#1f2937";
-  ctx.save();
-  ctx.translate(x, y + bob);
-  ctx.scale(dir * scale, scale);
-  ctx.fillStyle = "rgba(0,0,0,.32)";
-  ctx.beginPath();
-  ctx.ellipse(0, 24, 18, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = isReception ? "rgba(103,232,249,.95)" : "rgba(226,232,240,.78)";
-  ctx.lineWidth = isReception ? 3 : 2;
-  ctx.beginPath();
-  ctx.arc(0, 1, isReception ? 24 : 20, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.fillStyle = pants;
-  roundedRectFill(-10, 9, 7, 14 + stride * 0.3, 3);
-  roundedRectFill(3, 9, 7, 14 - stride * 0.3, 3);
-  ctx.fillStyle = "#020617";
-  roundedRectFill(-10 + stride * 0.25, 22, 8, 5, 2);
-  roundedRectFill(3 - stride * 0.25, 22, 8, 5, 2);
-  ctx.fillStyle = jacket;
-  roundedRectFill(-12, -13, 24, 27, 8);
-  ctx.fillStyle = vest;
-  roundedRectFill(-8, -8, 16, 17, 6);
-  ctx.fillStyle = isReception ? "#f8fafc" : "rgba(15,23,42,.55)";
-  roundedRectFill(-3, -7, 6, 15, 3);
-  ctx.fillStyle = jacket;
-  roundedRectFill(-16, -10, 5, 16, 3);
-  roundedRectFill(11, -10, 5, 16, 3);
-  ctx.fillStyle = "#f2c7a5";
-  ctx.beginPath();
-  ctx.arc(0, -19, 9.8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = hair;
-  if(isReception){
-    ctx.beginPath();
-    ctx.arc(0, -22, 11, Math.PI, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#22d3ee";
-    roundedRectFill(-10, -30, 20, 4, 2);
-    ctx.fillStyle = "#e0f2fe";
-    ctx.font = "900 7px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText("HQ", 0, -27);
-  }else{
-    ctx.fillRect(-8, -28, 16, 6);
-  }
-  if(isReception){
-    ctx.fillStyle = "rgba(34,211,238,.9)";
-    ctx.beginPath();
-    ctx.arc(8, -17, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
+
+function drawBaseHqPersonSprite({x=0,y=0,step=0,role='',style='',face=0,scale=1,name=''}={},now=Date.now()){
+  window.TigerHqWorldArt.person(ctx,{x,y,step,role,face},{now,scale:scale*.8,walking:Math.abs(step)>.01});
 }
+
 function drawBaseHqNpc(npc, now){
   drawBaseHqPersonSprite({ x:npc.x, y:npc.y, role:npc.role, style:npc.style || "", scale:npc.style === "reception" ? 1.08 : 0.95, name:npc.name }, now);
-  drawBaseHqLabel(`${npc.name} • ${npc.role}`, npc.x, npc.y - 38);
+  if(npc.room===__baseHqSelectedRoom||Math.hypot(npc.x-__baseHqPlayer.x,npc.y-__baseHqPlayer.y)<100)drawBaseHqLabel(`${npc.name} • ${npc.role}`, npc.x, npc.y - 42);
 }
 function drawBaseHqCasualPlayer(now){
-  const p = __baseHqPlayer;
-  const sway = Math.sin(p.step || 0) * 2.5;
-  const dir = Math.cos(p.face || 0) >= 0 ? 1 : -1;
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.scale(dir, 1);
-  ctx.fillStyle = "rgba(0,0,0,.32)";
-  ctx.beginPath();
-  ctx.ellipse(0, 26, 18, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(125,211,252,.75)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, 1, 29 + Math.sin(now / 220) * 2, 0, Math.PI * 2);
-  ctx.stroke();
-  const palette = seasonSoldierPalette();
-  ctx.fillStyle = palette.pants || "#111827";
-  roundedRectFill(-11, 10, 8, 17 + sway * 0.35, 4);
-  roundedRectFill(3, 10, 8, 17 - sway * 0.35, 4);
-  ctx.fillStyle = palette.boots || "#020617";
-  roundedRectFill(-11 + sway * 0.2, 25, 8, 5, 2);
-  roundedRectFill(3 - sway * 0.2, 25, 8, 5, 2);
-  ctx.fillStyle = palette.armorOuter || "#1d4ed8";
-  roundedRectFill(-12, -16, 24, 30, 8);
-  ctx.fillStyle = palette.armorInner || "#60a5fa";
-  roundedRectFill(-8, -10, 16, 19, 6);
-  ctx.fillStyle = palette.arm || "#1e293b";
-  roundedRectFill(-17, -12, 6, 18, 3);
-  roundedRectFill(11, -12, 6, 18, 3);
-  ctx.fillStyle = palette.helmet || "#334155";
-  ctx.beginPath(); ctx.arc(0, -24, 10, Math.PI, Math.PI*2); ctx.fill();
-  ctx.fillStyle = palette.arm || "#f8d4b4";
-  ctx.beginPath();
-  ctx.arc(0, -16, 11, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = palette.visor || "#0f172a";
-  roundedRectFill(-7, -23, 14, 4, 2);
-  ctx.strokeStyle = "rgba(15,23,42,.85)";
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(4, -2);
-  ctx.lineTo(18, 11);
-  ctx.stroke();
-  ctx.fillStyle = "rgba(245,158,11,.95)";
-  ctx.beginPath();
-  ctx.arc(19, 12, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#e5e7eb";
-  ctx.font = "900 10px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("HQ", 0, 12);
-  ctx.restore();
+  const p=__baseHqPlayer,palette=seasonSoldierPalette(),appearance=window.TigerWildlifeTranq.presentation(window.TigerEliteArmory?.appearance()||{},{survival:S.mode==='Survival',tranq:equippedWeapon().type==='tranq',ammoMode:selectedAmmoModeForWeapon(equippedWeapon())});
+  window.TigerHqWorldArt.person(ctx,p,{now,player:true,walking:Math.hypot(p.targetX-p.x,p.targetY-p.y)>3,appearance,uniformPalette:palette.masteryUniform||{body:palette.armorOuter,light:palette.arm,dark:palette.shoulder,vest:palette.armorInner,helmet:palette.helmet,trim:palette.trim}});
 }
+
 function drawBaseHqTigerPen(now){
   const sanctuary = ensureSanctuaryState(S);
   const residents = Array.isArray(sanctuary?.residents) ? sanctuary.residents.filter((resident)=>resident.status === "ACTIVE").slice(0,4) : [];
@@ -35588,50 +35395,8 @@ function drawBaseHqTigerPen(now){
     const x = startX + i * 38;
     const y = baseY + Math.sin(now / 360 + i) * 2;
     const s = 0.58 + (i % 2) * 0.06;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(i % 2 ? -s : s, s);
-    ctx.fillStyle = "rgba(0,0,0,.30)";
-    ctx.beginPath();
-    ctx.ellipse(0, 15, 26, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-    const residentType = String(resident?.type || "").toLowerCase();
-    ctx.fillStyle = residentType.includes("ice") ? "#93c5fd" : (residentType.includes("shadow") ? "#64748b" : (residentType.includes("blood") ? "#ef4444" : (i % 3 === 0 ? "#f59e0b" : (i % 3 === 1 ? "#d97706" : "#eab308"))));
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 29, 14, -0.08, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#111827";
-    ctx.lineWidth = 3;
-    for(let stripe=-19; stripe<=15; stripe+=8){
-      ctx.beginPath();
-      ctx.moveTo(stripe, -12);
-      ctx.lineTo(stripe + 5, 10);
-      ctx.stroke();
-    }
-    ctx.fillStyle = "#fbbf24";
-    ctx.beginPath();
-    ctx.arc(28, -6, 10, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = "#111827";
-    ctx.beginPath();
-    ctx.arc(31, -8, 1.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#f59e0b";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(-27, -2);
-    ctx.quadraticCurveTo(-43, -19, -50, -4);
-    ctx.stroke();
-    if(resident){
-      ctx.scale(i % 2 ? -1/s : 1/s, 1/s);
-      ctx.fillStyle = "rgba(2,6,23,.86)";
-      roundedRectFill(-31, -43, 62, 15, 6);
-      ctx.fillStyle = resident.releaseReady ? "#86efac" : "#e2e8f0";
-      ctx.font = "900 7px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(String(resident.name || resident.type).slice(0,12), 0, -33);
-    }
-    ctx.restore();
+    window.TigerHqWorldArt.tiger(ctx,{x,y,type:resident?.type},{now,scale:s*.46,facing:i%2?-1:1});
+    if(resident)drawBaseHqLabel(String(resident.name||resident.type).slice(0,12),x,y-29,resident.releaseReady?'#86efac':'#e2e8f0');
   }
 }
 function drawBaseHqProgressDecor(now){
@@ -35734,30 +35499,12 @@ function drawBaseHqCameraHint(cam){
   ctx.textBaseline = "middle";
   const snap = baseHqProgressSnapshot();
   ctx.fillText(`${snap.label} • HQ Tier ${snap.tier}/5`, 24, 27);
-  ctx.globalAlpha = 0.52;
-  ctx.fillStyle = "rgba(125,211,252,.92)";
-  const miniW = 96;
-  const miniH = 54;
-  const mx = cv.width - miniW - 12;
-  const my = 12;
-  roundedRectFill(mx, my, miniW, miniH, 8);
-  ctx.clearRect(mx + 3, my + 3, miniW - 6, miniH - 6);
-  ctx.strokeStyle = "rgba(125,211,252,.82)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(mx, my, miniW, miniH);
-  const px = mx + clamp(__baseHqPlayer.x / BASE_HQ_WORLD.w, 0, 1) * miniW;
-  const py = my + clamp(__baseHqPlayer.y / BASE_HQ_WORLD.h, 0, 1) * miniH;
-  ctx.fillStyle = "rgba(34,197,94,.95)";
-  ctx.beginPath();
-  ctx.arc(px, py, 4, 0, Math.PI * 2);
-  ctx.fill();
+  window.TigerHqWorldArt.minimap(ctx,{width:BASE_HQ_WORLD.w,height:BASE_HQ_WORLD.h,rooms:BASE_HQ_ROOMS,identity:sanctuaryGovernmentIdentity(S).id,heavy:performanceMode()==='PERFORMANCE',appearance:window.TigerEliteArmory?.appearance()||{},bounds:{x:cv.width-108,y:12,w:96,h:54},view:{x:cam.x,y:cam.y,w:cv.width,h:cv.height},player:__baseHqPlayer});
   ctx.restore();
 }
 function drawBaseHQScene(now=Date.now()){
   if(!cv || !ctx) return;
   const cam = baseHqCameraOffset();
-  const progressSnap = baseHqProgressSnapshot();
-  const tier = progressSnap.tier;
   const sanctuaryIdentity = sanctuaryGovernmentIdentity(S);
   ctx.setTransform(1,0,0,1,0,0);
   ctx.globalAlpha = 1;
@@ -35767,61 +35514,7 @@ function drawBaseHQScene(now=Date.now()){
   ctx.fillRect(0,0,cv.width,cv.height);
   ctx.save();
   ctx.translate(-cam.x, -cam.y);
-  const grd = ctx.createLinearGradient(0,0,cv.width,cv.height);
-  if(sanctuaryIdentity.id === "rogue"){
-    grd.addColorStop(0,"#351522");grd.addColorStop(0.52,"#172033");grd.addColorStop(1,"#071018");
-  }else if(sanctuaryIdentity.id === "official"){
-    grd.addColorStop(0,tier>=4?"#14514b":"#164e3b");grd.addColorStop(0.52,"#123047");grd.addColorStop(1,"#071b20");
-  }else{
-    grd.addColorStop(0, tier >= 4 ? "#17334a" : (tier >= 2 ? "#132b42" : "#10243a"));
-    grd.addColorStop(0.52, tier >= 3 ? "#102033" : "#0b1728");
-    grd.addColorStop(1, tier >= 5 ? "#0d1f2b" : "#07131d");
-  }
-  ctx.fillStyle = grd;
-  ctx.fillRect(0,0,BASE_HQ_WORLD.w,BASE_HQ_WORLD.h);
-  ctx.save();
-  ctx.strokeStyle = "rgba(148,163,184,.13)";
-  ctx.lineWidth = 2;
-  for(let x=80; x<BASE_HQ_WORLD.w; x+=80){
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, BASE_HQ_WORLD.h);
-    ctx.stroke();
-  }
-  for(let y=60; y<BASE_HQ_WORLD.h; y+=60){
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(BASE_HQ_WORLD.w, y);
-    ctx.stroke();
-  }
-  ctx.restore();
-  ctx.save();
-  ctx.fillStyle = "rgba(30,41,59,.62)";
-  roundedRectFill(518, 58, 244, 610, 42);
-  roundedRectFill(126, 318, 1028, 86, 34);
-  roundedRectFill(560, 270, 160, 286, 34);
-  ctx.strokeStyle = "rgba(125,211,252,.26)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  drawBaseHqProgressDecor(now);
-  ctx.globalAlpha = 0.16;
-  ctx.strokeStyle = "rgba(226,232,240,.82)";
-  ctx.setLineDash([16, 12]);
-  for(let y=340; y<=380; y+=20){
-    ctx.beginPath();
-    ctx.moveTo(150, y);
-    ctx.lineTo(1130, y);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "rgba(14,165,233,.12)";
-  roundedRectFill(466, 202, 348, 72, 28);
-  roundedRectFill(466, 548, 348, 64, 28);
-  ctx.strokeStyle = "rgba(14,165,233,.28)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
+  window.TigerHqWorldArt.foundation(ctx,{width:BASE_HQ_WORLD.w,height:BASE_HQ_WORLD.h,rooms:BASE_HQ_ROOMS,identity:sanctuaryIdentity.id,heavy:performanceMode()==='PERFORMANCE',appearance:window.TigerEliteArmory?.appearance()||{}});
   drawBaseHqOnboardingGuide(now);
   for(const room of BASE_HQ_ROOMS) drawBaseHqRoom(room, now);
   drawBaseHqTigerPen(now);
