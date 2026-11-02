@@ -1,6 +1,13 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V15.9 — Personal Rescue HQ, Part 1
+
+- Adds the free Personal Rescue HQ soldier display and trophy room through the Base HQ quick menu, Shop, Inventory and Co-op preparation bar. It uses the production shared loadout renderer, current weapon/ammunition/tool selections, verified Elite appearance and earned uniform palette. No duplicate simplified character artwork is introduced.
+- Solo records come from the existing local debrief history; Co-op records come from the authenticated profile endpoint. Tabs never substitute Solo data for a failed Co-op request. Scope changes invalidate stale asynchronous responses, Refresh retries failures, and closing cancels presentation updates. Native-dialog input guards stop gameplay shortcuts while viewing; Solo pause state is restored on close. Co-op visits are restricted to lobby/results, avoiding disruption of an active teammate.
+- Chapter trophies derive from ten distinct recorded Story mission clears per chapter. Failed attempts, repeated clears, unlocked levels and unsupported stored trophy flags cannot fabricate progress. The room shows up to 30 stored personal bests, best rescues, recorded medals and the existing first-boss-capture milestone. Older records do not retain named boss capture history; no such history is invented. Viewing does not mutate records, grant rewards, consume supplies or equip items.
+- Tests cover chapter truth, scope isolation, missing history/times, adapters and pause restoration, safe text rendering and input guards. Desktop/phone checks use `qa/personal-rescue-hq.html` with clearly labeled sample records and unavailable-profile fixtures. Actual two-phone Telegram viewing remains unverified. Vehicle bay and teammate showcase remain future work.
+
 ## V15.8 — Commander Collection
 
 - Adds `elite_commander_collection`: Crimson Commander, Guardian Rubber Carbine, Rescue Equipment Collection and the existing Custom Extraction Pack for 900 Stars versus 1,350 separately. No new item entitlement or combat advantage is introduced. Existing permanent ownership, equip, restore and refund handling applies to each component.

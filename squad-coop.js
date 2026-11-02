@@ -293,6 +293,18 @@
 
   async function openSquadArmory(showOrganizer=false){clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'elite'});window.TigerEliteArmory?.open({organizer:showOrganizer,onEquip:async()=>{},organizerContext:()=>{const p=localSnapshotPlayer(),profile=state.profile||{};return {mode:'Coop',allowed:state.snapshot?.status==='waiting',reason:'Create or join a waiting squad to apply a loadout. Active missions keep their current supplies.',survival:!!state.snapshot?.mission?.survival,weapons:(state.gearCatalog||[]).filter(w=>w.type==='weapon'&&profile.ownedWeaponIds?.includes(w.id)),tools:Object.keys(window.TigerRescueTools.DEFS),roles:state.roles.length?state.roles.map(r=>r.key):['tracker','medic','assault','trapper'],current:{name:'My Co-op loadout',weaponId:profile.equippedWeaponId,ammoMode:p?.ammoMode||'rubber',toolId:p?.rescueTool?.id||'smoke',roleId:p?.role||'tracker',appearance:p?.eliteAppearance||{}},ammoFor:(_id,mode)=>profile.ammo?.[mode]||0,uniformPalette:window.TigerMasteryRewards?.uniformPalette(p?.masteryIdentity?.uniform?.id)};},organizerApply:async(slot,expectedRevision)=>{await api('organizer-apply',{slot,expectedRevision});await api('profile');},onClose:()=>{if(active&&!state.equipmentOpen&&state.snapshot?.status==='active')api('resume').catch(e=>setMessage(e.message,true));}});}
 
+  async function rescueHqProfile(){
+    if(!hasTelegramAuth())throw Error('Open Tiger Strike through Telegram to load your Co-op records.');
+    const data=await api('profile'),profile=data.profile,p=localSnapshotPlayer();
+    if(!p)await window.TigerEliteArmory?.sync();
+    const appearance=p?.eliteAppearance||window.TigerEliteArmory?.appearance()||{};
+    const weapon=(data.gearCatalog||state.gearCatalog||[]).find(w=>w.id===profile.equippedWeaponId);
+    return {records:profile.missionDebriefs,mode:'Coop',weaponName:weapon?.name||'Equipped Co-op weapon',gear:{name:'My Co-op soldier',weaponId:profile.equippedWeaponId,ammoMode:p?.ammoMode||'rubber',toolId:p?.rescueTool?.id||'',appearance},uniformPalette:window.TigerMasteryRewards?.uniformPalette(window.TigerMasteryRewards?.identity(profile.missionDebriefs,'coop')?.uniform?.id),equipmentLabel:'Current Co-op weapon and appearance'+(p?' • Lobby rescue tool':' • Rescue tool chosen in squad lobby')};
+  }
+  function openPersonalHQ(){
+    if(state.snapshot?.status==='active')return setMessage('Visit Personal Rescue HQ in the squad lobby or after the mission.',true);
+    clearPresentationInput();return window.TigerPersonalRescueHQ.open({scope:'coop',load:async scope=>{if(scope==='coop')return rescueHqProfile();const ctx=window.organizerSoloContext();return {records:window.S?.missionDebriefs,gear:ctx.current,mode:ctx.mode,weaponName:ctx.weapons.find(w=>w.id===ctx.current.weaponId)?.name,uniformPalette:ctx.uniformPalette,equipmentLabel:'Current '+ctx.mode+' equipment'};}});
+  }
   function equipmentButtonsHtml(){
     const active = state.snapshot?.status === "active";
     return `<div class="squadPrepBar">
@@ -302,7 +314,7 @@
       <button type="button" class="squadBtn" data-squad-command="combat-comfort">Combat Comfort</button>
       <button type="button" class="squadBtn" data-squad-command="smooth-play">Graphics</button>
       <button type="button" class="squadBtn" data-squad-command="elite-armory">Elite Armory</button>
-      <button type="button" class="squadBtn" data-squad-command="organizer">Saved Loadouts</button>
+      <button type="button" class="squadBtn" data-squad-command="organizer">Saved Loadouts</button><button type="button" class="squadBtn" data-squad-command="personal-hq" ${active?'disabled title="Visit HQ after the mission"':''}>Personal Rescue HQ</button>
       <button type="button" class="squadBtn" data-squad-command="arrange-controls">Arrange Controls</button>
       ${state.snapshot?.routeVersion===1&&sharedStoryActive()&&window.TigerMissionRoutes?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="mission-route">Mission Route</button>':''}
       ${active&&state.snapshot?.fieldVersion===1&&sharedStoryActive()&&window.TigerFieldOperations?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="field-actions">Field Actions</button>':''}
@@ -434,6 +446,7 @@
     if(!snapshot || typeof snapshot !== "object") return;
     const previousStatus=state.snapshot?.status;
     if(state.snapshot && cleanCode(snapshot.code) === cleanCode(state.snapshot.code) && Number(snapshot.serverNow || 0) < Number(state.snapshot.serverNow || 0)) return;
+    if(state.open&&snapshot.status==='active')document.getElementById('personalRescueHQ')?.close();
     const changedRun=state.snapshot?.startedAt !== snapshot.startedAt || state.snapshot?.code !== snapshot.code;
     if(changedRun){state.remoteDraw.clear();state.walkVisual.clear();state.civilianDraw=new Map();}
     if(changedRun||snapshot.paused)clearPresentationInput();
@@ -1271,6 +1284,7 @@
       'radio-mute':()=>{ radioMuted=!radioMuted;try{localStorage.setItem('ts_field_radio_muted',radioMuted?'1':'0');}catch(e){}updateFieldRadio(); },
       'elite-armory':()=>openSquadArmory(false),
       organizer:()=>openSquadArmory(true),
+      'personal-hq':()=>openPersonalHQ(),
       'arrange-controls':async()=>{clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'controls'});window.TigerTouchLayout?.open({mode:'coop',onClose:()=>{if(active&&state.snapshot?.status==='active')api('resume').catch(error=>setMessage(error.message,true));}});},
       'controls-layout':()=>{window.TigerBattlefieldAwareness?.toggleLayout();window.TigerTouchLayout?.refresh();},
       action:()=>action(actionName),
@@ -3121,7 +3135,7 @@
   window.addEventListener('mission-route-open',()=>{clearPresentationInput();if(state.open&&state.code)sync(true).catch(()=>{});});
   window.addEventListener('blur',clearPresentationInput);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPresentationInput();});
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });
@@ -3139,6 +3153,7 @@
   window.TigerLiveSquad = Object.freeze({
     returnFromEquipment,
     openArmory:openSquadArmory,
+    openPersonalHQ,rescueHqProfile,
     equipmentOpen:()=>state.equipmentOpen,
     isOpen:()=>state.open,
   });
