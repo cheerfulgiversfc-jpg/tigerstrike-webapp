@@ -63,10 +63,10 @@ test("Escaped Alpha requires one live capture and Government Raid has separate u
 
 test("drop-in, drop-out, reconnect, and once-only reward protections are wired",()=>{
   assert(server.includes("const canDropIn = postCampaignSession(session) && session.status === \"active\""));
-  assert(server.includes("if(session.memberIds.length < 2 && !postCampaignSession(session))"));
+  assert(server.includes("if(session.memberIds.length < 2 && !postCampaignSession(session)&&session.launchType!==\"monsoon-solo\")"));
   assert(server.includes("const crisisDropOut = postCampaignSession(session)"));
   assert(server.includes("post-crisis:${crisisRunId}:${uid}"));
-  assert(server.includes("rewardApplied = firstClaim && !profile.rewardReceipts[receipt]"));
+  assert(server.includes("rewardApplied = (firstClaim||rescueEvent.isEvent(session.launchType)) && !profile.rewardReceipts[receipt]"));
   assert(client.includes("Invite Teammate During Crisis"));
   assert(client.includes("openLiveSquadPostCampaignCrisis"));
   assert(game.includes("function recordPostCampaignCoopClaim("));

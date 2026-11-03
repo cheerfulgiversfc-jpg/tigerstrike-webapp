@@ -51,6 +51,7 @@ async function prepareInvite(botToken, user, session){
   const sharedStory = session.launchType === "shared-story";
   const crisis = postCampaign.crisisByLaunchType(session.launchType);
   const operation = {
+    "monsoon-rescue":{id:"monsoon",name:"Operation: Monsoon Rescue",button:"Join Monsoon Rescue",heading:"MONSOON RESCUE TEAMMATE REQUEST",detail:"Rescue five stranded villagers, capture the marked tiger alive and board the river boat together during the live rescue event."},
     "tiger-den":{
         id:"tiger_den",
         name:"Tiger Den Assault",
@@ -166,15 +167,18 @@ module.exports = async function handler(req, res){
     if(!initData) return json(res, 400, { ok:false, error:"Open Live Squad Operations inside Telegram." });
     const { user } = validateTelegramInitData(initData, botToken);
     const action = String(body?.action || "status").trim().toLowerCase();
+    const requestRoom=action!=='create'&&body.code?await readSession(cleanCode(body.code)):null;
+    const rescueType=action==='create'?String(body.launchType||'').trim().toLowerCase():requestRoom?.launchType;
+    return await require('../_lib/rescue-profile-scope').run(rescueType,async()=>{
     if(action === 'hq-profile')return json(res,200,{ok:true,...await readPersonalHq(user,cleanCode(body?.code))});
     if(action === "profile"){
-      return json(res, 200, { ok:true, profile:await readCoopProfile(user), gearCatalog:COOP_GEAR_CATALOG });
+      return json(res, 200, { ok:true, profile:await readCoopProfile(user), profileScope:require('../_lib/rescue-profile-scope').suffix(), gearCatalog:COOP_GEAR_CATALOG });
     }
     if(action === 'mastery-equip'){
-      return json(res,200,{ok:true,profile:await equipCoopMasteryReward(user,body?.itemId)});
+      return json(res,200,{ok:true,profile:await equipCoopMasteryReward(user,body?.itemId),profileScope:require('../_lib/rescue-profile-scope').suffix()});
     }
     if(action === "gear-buy" || action === "gear-equip"){
-      return json(res, 200, { ok:true, profile:await applyCoopEquipmentAction(null, user, action, body || {}), gearCatalog:COOP_GEAR_CATALOG });
+      return json(res, 200, { ok:true, profile:await applyCoopEquipmentAction(null, user, action, body || {}), profileScope:require('../_lib/rescue-profile-scope').suffix(), gearCatalog:COOP_GEAR_CATALOG });
     }
     let session = null;
 
@@ -185,7 +189,7 @@ module.exports = async function handler(req, res){
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 100
           ? "shared-story"
-          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival", ...postCampaign.CRISIS_TYPES.map((row)=>row.coopLaunchType)].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+          : (["monsoon-solo","monsoon-rescue","tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival", ...postCampaign.CRISIS_TYPES.map((row)=>row.coopLaunchType)].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
         postCampaignOperation:body?.postCampaignOperation,
       });
     }else if(action === "quick-match"){
@@ -200,7 +204,7 @@ module.exports = async function handler(req, res){
     }else if(action === "join"){
       session = await joinSession(cleanCode(body?.code), user);
     }else{
-      session = await readSession(cleanCode(body?.code));
+      session = requestRoom;
       ensureLiveSession(session);
       if(!session.memberIds.includes(userIdOf(user))) throw new Error("Join this squad before using it.");
     }
@@ -229,9 +233,11 @@ module.exports = async function handler(req, res){
       ok:true,
       storage:storageMode(),
       snapshot,
+      ...(['create','join'].includes(action)?{profile:await readCoopProfile(user),gearCatalog:COOP_GEAR_CATALOG,profileScope:require('../_lib/rescue-profile-scope').suffix()}:{}),
       invitation,
       reward,
       roles:Object.values(ROLE_DEFS).map(({ key, label, damage, maxHp, speed })=>({ key, label, damage, maxHp, speed })),
+    });
     });
   }catch(e){
     return json(res, 400, { ok:false, error:e?.message || "Live squad request failed." });

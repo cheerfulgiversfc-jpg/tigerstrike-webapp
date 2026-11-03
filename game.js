@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5280";
+const TS_BUILD = "5281";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -34040,6 +34040,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       title:"Event Countdown",
       desc:`Base Intel: ${factList[factIndex]} Timers show what is urgent now: daily rewards, weekly challenges, live co-op goals, and boss hunt seasons.`,
       actions:[
+        ["Live Rescue Event","openRescueEventBoard()"],
         ["Live Co-op","openLiveCoopWorldEventsFromBaseHQ()"],
         ["Live Ops","openLiveOpsFromBaseHQ()"],
         ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
@@ -34147,6 +34148,7 @@ function baseHqCommandActions(){
     openBaseHqChallengeBoard,
     openBaseHqLeaderboardBoard,
     openBaseHqEventBoard,
+    openRescueEventBoard,
     openStoryFromBaseHQ,
     openModeFromBaseHQ,
     openShopFromBaseHQ,
@@ -34942,6 +34944,7 @@ function renderBaseHqQuickBar(){
     ${button("Challenge", "openBaseHqChallengeBoard()", "utility")}
     ${button("News", "openBaseHqNewsBoard()", "utility")}
     ${button("Events", "openBaseHqEventBoard()", "utility")}
+    ${button("Live Rescue Event", "openRescueEventBoard()", "primary")}
     ${button("Personal HQ", "openPersonalRescueHQ()", "utility")}
     ${button("Profile", "openBaseHqLeaderboardBoard()", "utility")}
     ${button("Social", "openSocialRescueOpsFromBaseHQ()", "utility")}
@@ -43808,7 +43811,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
-  if(document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
@@ -43964,7 +43967,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -65729,6 +65732,12 @@ function openPersonalRescueHQ(){
   const paused=S.paused,reason=S.pauseReason;resetTouchStick();setPaused(true,'personal-hq');
   return window.TigerPersonalRescueHQ.open({load:async scope=>{
     if(scope==='coop')return window.TigerLiveSquad.rescueHqProfile();
-    const ctx=organizerSoloContext();return {records:S.missionDebriefs,gear:ctx.current,mode:S.mode,weaponName:equippedWeapon().name,uniformPalette:ctx.uniformPalette,equipmentLabel:'Current '+S.mode+' equipment'};
+    const eventProgress=await window.TigerRescueEventBoard?.readProgress().catch(()=>null);
+    const ctx=organizerSoloContext();return {eventProgress:eventProgress?.progress,records:S.missionDebriefs,gear:ctx.current,mode:S.mode,weaponName:equippedWeapon().name,uniformPalette:ctx.uniformPalette,equipmentLabel:'Current '+S.mode+' equipment'};
   },onClose:()=>setPaused(paused,reason)});
+}
+
+function openRescueEventBoard(){
+  const paused=S.paused,reason=S.pauseReason;let launching=false;resetTouchStick();setPaused(true,'rescue-event');
+  return window.TigerRescueEventBoard.open({play:async mode=>{launching=true;try{await window.TigerLiveSquad.startRescueEvent(mode);}catch(e){launching=false;throw e;}},onClose:()=>{if(!launching)setPaused(paused,reason);}});
 }

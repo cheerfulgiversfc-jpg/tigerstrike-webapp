@@ -1,3 +1,5 @@
+const rescueEvent=require('../../live-rescue-event');
+const rescueProfileScope=require('./rescue-profile-scope');
 const eliteStore = require('./elite-store');
 const organizer=require('../../armory-organizer');
 const crypto = require("crypto");
@@ -1871,7 +1873,7 @@ const COOP_GEAR_CATALOG = Object.freeze([
   Object.freeze({ id:"armor_plate", type:"armor", name:"Armor Plate", icon:"🛡️", price:850, amount:1, description:"Restores 50 armor during a mission." }),
 ]);
 
-function coopProfileKey(userId){ return `live_squad_profile_v1_${userIdOf(userId)}`; }
+function coopProfileKey(userId){ return `live_squad_profile_v1_${userIdOf(userId)}${rescueProfileScope.suffix()}`; }
 function defaultCoopProfile(user){
   return {
     version:3,
@@ -1956,7 +1958,7 @@ function refreshCoopAchievements(profile){
 async function readCoopProfile(user){
   const uid = userIdOf(user);
   if(!uid) throw new Error("Telegram player identity is missing.");
-  const [raw,locker,weaponSelection]=await Promise.all([getState(coopProfileKey(uid)),getState(`coop_mastery_locker_${uid}`),getState(`coop_weapon_selection_${uid}`)]);
+  const [raw,locker,weaponSelection]=await Promise.all([getState(coopProfileKey(uid)),getState(`coop_mastery_locker_${uid}${rescueProfileScope.suffix()}`),getState(`coop_weapon_selection_${uid}${rescueProfileScope.suffix()}`)]);
   const profile=normalizeCoopProfile(raw,user);
   if(profile.ownedWeaponIds.includes(weaponSelection?.weaponId))profile.equippedWeaponId=weaponSelection.weaponId;
   if(locker&&typeof locker==='object'){
@@ -1980,7 +1982,7 @@ async function equipCoopMasteryReward(user,itemId){
   const profile=await readCoopProfile(user);
   const equipped=masteryRewards.equip(profile.missionDebriefs,'coop',String(itemId||''));
   // Cosmetic writes must never overwrite a concurrent mission reward or supply purchase.
-  await setState(`coop_mastery_locker_${profile.userId}`,{...equipped.locker.coop,earned:equipped.masteryEarned.coop});
+  await setState(`coop_mastery_locker_${profile.userId}${rescueProfileScope.suffix()}`,{...equipped.locker.coop,earned:equipped.masteryEarned.coop});
   return readCoopProfile(user);
 }
 
@@ -2005,7 +2007,7 @@ async function applyCoopEquipmentAction(session, user, action, payload={}){
   }
   if(action === "gear-equip"){
     if(!item || item.type !== "weapon" || !profile.ownedWeaponIds.includes(item.id)) throw new Error("Own this co-op weapon before equipping it.");
-    await setState(`coop_weapon_selection_${uid}`,{weaponId:item.id});
+    await setState(`coop_weapon_selection_${uid}${rescueProfileScope.suffix()}`,{weaponId:item.id});
     return readCoopProfile(user);
   }
   if(action === "gear-use"){
@@ -2208,7 +2210,10 @@ const EXPANDED_ENDLESS_SURVIVAL_MISSION = expandMissionDefinition({
   civilians:Object.freeze([]),
   tigers:ENDLESS_SURVIVAL_TIGERS,
 }, ENDLESS_SURVIVAL_WORLD_SIZE);
+const MONSOON_BASE=EXPANDED_SHARED_STORY_MISSIONS[24];
 const SPECIAL_OPERATION_MISSIONS = Object.freeze({
+  "monsoon-solo":rescueEvent.mission(MONSOON_BASE,true),
+  "monsoon-rescue":rescueEvent.mission(MONSOON_BASE,false),
   "live-squad":EXPANDED_NIGHT_FANG_MISSION,
   "tiger-den":EXPANDED_TIGER_DEN_MISSION,
   "village-siege":EXPANDED_VILLAGE_SIEGE_MISSION,
@@ -2562,6 +2567,7 @@ function normalizeSession(raw){
     status:["waiting","active","complete","failed","closed"].includes(raw.status) ? raw.status : "waiting",
     createdAt:Math.max(0, Number(raw.createdAt || nowMs())),
     updatedAt:Math.max(0, Number(raw.updatedAt || nowMs())),
+    eventStartedAt:rescueEvent.isEvent(launchType)?Math.max(0,Number(raw.eventStartedAt||raw.startedAt||0)):0,
     startedAt:Math.max(0, Number(raw.startedAt || 0)),
     completedAt:Math.max(0, Number(raw.completedAt || 0)),
     pausedAt:activePause ? Math.max(0, Number(raw.pausedAt || nowMs())) : 0,
@@ -2933,6 +2939,7 @@ async function createSession(user, opts={}){
   const launchType = requestedLaunchType === "shared-story" && !EXPANDED_SHARED_STORY_MISSIONS[requestedStoryMissionLevel]
     ? "live-squad"
     : requestedLaunchType;
+  if(rescueEvent.isEvent(launchType)&&rescueEvent.phase()!=="active")throw new Error("Operation: Monsoon Rescue is not open for new runs.");
   const hostProfile = await readCoopProfile(user);
   const storyMissionLevel = launchType === "shared-story" ? requestedStoryMissionLevel : 0;
   const postCampaignOperation = normalizePostCampaignOperation(opts?.postCampaignOperation, launchType);
@@ -2979,6 +2986,7 @@ async function joinSession(codeValue, user){
   const canDropIn = postCampaignSession(session) && session.status === "active" && session.memberIds.length < 2;
   if(session.status !== "waiting" && !session.memberIds.includes(uid) && !returningMember && !canDropIn && !(session.status === "failed" && session.failureReason === "teammate_left")) throw new Error("This mission already started.");
   if(!session.memberIds.includes(uid)){
+    if(session.launchType==="monsoon-solo")throw new Error("This is a Solo event run. Create a Squad event run to invite a teammate.");
     if(session.memberIds.length >= 2) throw new Error("This squad already has two players.");
     session.memberIds.push(uid);
     session.departedIds = session.departedIds.filter((id)=>id !== uid);
@@ -3125,6 +3133,7 @@ function sessionDerived(session, players, at=nowMs()){
 
 function rescueHouseFor(mission){
   const extraction = mission.extraction;
+  if(mission.liveRescueEvent){const bank=waterTerrain.banks(mission.waterZones[0],extraction.x-230);return {x:extraction.x-230,y:bank.top-135,r:105,label:"Riverside Rescue House"};}
   const offset = Math.max(170, Number(extraction.r || 90) + 95);
   return {
     x:clamp(Number(extraction.x || 0) - offset, 120, Number(mission.world.width || 1200) - 120),
@@ -3206,6 +3215,7 @@ async function maybeFinishSession(session, players){
     return writeSession(session);
   }
   const derived = sessionDerived(session, players, now);
+  if(rescueEvent.isEvent(session.launchType)&&(missionDefinition(session).captureTargetIds||[]).some(id=>derived.tigers.some(t=>t.id===id&&t.defeated&&!t.captured))){session.status="failed";session.failureReason="required_capture_lost";session.completedAt=now;return writeSession(session);}
   if(derived.squadWiped){
     session.missionWipes=Number(session.missionWipes||0)+1;
     session.status = "failed";
@@ -3388,6 +3398,7 @@ async function buildSnapshot(session, viewerId){
       livingWorld:livingWorldEffect.enabled ? livingWorldEffect : null,
       postCampaign:!!mission.postCampaign,
       postCampaignTypeId:cleanText(mission.postCampaignTypeId || "", 40),
+      weatherFx:rescueEvent.isEvent(session.launchType)?"rain":"clear",
       difficultyLabel:cleanText(mission.difficultyLabel || "", 30),
       playerCount:Math.max(1, Number(mission.playerCount || session.memberIds.length || 1)),
     },
@@ -3416,7 +3427,7 @@ async function buildSnapshot(session, viewerId){
     capturedIds:derived.capturedIds,
     checkpointCompletedIds:derived.checkpointCompletedIds,
     objectivesReady:derived.objectivesReady,
-    allRewardsClaimed:players.length === session.memberIds.length && players.length === 2 && players.every((player)=>player.rewardClaimed),
+    allRewardsClaimed:players.length === session.memberIds.length && (players.length === 2||session.launchType==="monsoon-solo") && players.every((player)=>player.rewardClaimed),
     nextStoryMissionLevel:session.launchType === "shared-story" && EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0) + 1]
       ? Number(session.storyMissionLevel || 0) + 1
       : 0,
@@ -3598,7 +3609,7 @@ async function updateOwnPresence(session, user, patch={}){
     const bloodScentActive = nearestCarcassDistance <= 360 || persistentBloodScent > 0;
       const bloodRage = !!threat?.bloodRage && Number(threat.hp || 0) <= Number(threat.hpMax || 1) * 0.35;
       const bloodRageDamage = bloodRage ? Math.max(0, 6 - Number(livingWorldEffect.support?.bossRageReduction || 0)) : 0;
-    const livingBalance = tigerIntelligence.balanceFor({ playerCount:postCampaignSession(session) ? Math.max(1, players.length) : 2, mode:session.launchType === "endless-survival" ? "Survival" : "Co-op", level:session.storyMissionLevel || session.postCampaignOperation?.missionLevel || 1 });
+    const livingBalance = tigerIntelligence.balanceFor({ playerCount:postCampaignSession(session)||rescueEvent.isEvent(session.launchType) ? Math.max(1, players.length) : 2, mode:session.launchType === "endless-survival" ? "Survival" : "Co-op", level:session.storyMissionLevel || session.postCampaignOperation?.missionLevel || 1 });
     const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0) - persistentBloodScent * 120) * (threat?.rubberSlowed ? 1.65 : 1) * livingBalance.pounceCooldownMul;
     const huntRange = ((threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0) + persistentBloodScent * 24) * livingBalance.detectMul;
     const attackRun=`${session.code}:${session.startedAt}`;
@@ -3661,7 +3672,7 @@ async function applyAction(session, user, action, payload={}){
     session=await readSession(session.code);if(!session||session.status!=='waiting')throw Error('Apply Co-op loadouts in a waiting squad lobby.');
     const checked=await eliteStore.getPreset(uid,'Coop',payload.slot,payload.expectedRevision),profile=await readCoopProfile(user),preset=checked.preset;
     organizer.validate(preset,'Coop',{mode:'Coop',allowed:true,survival:session.launchType==='endless-survival',weapons:COOP_GEAR_CATALOG.filter(w=>w.type==='weapon'&&profile.ownedWeaponIds.includes(w.id)),tools:Object.keys(rescueTools.DEFS),roles:Object.keys(ROLE_DEFS),ammoFor:(_id,mode)=>profile.ammo[mode]});
-    await eliteStore.applyCoopPreset(uid,{slot:payload.slot,expectedRevision:payload.expectedRevision,createdAt:session.createdAt,sessionKey:sessionKey(session.code),playerKey:playerKey(session.code,uid),profileKey:coopProfileKey(uid),weaponKey:`coop_weapon_selection_${uid}`,profile});
+    await eliteStore.applyCoopPreset(uid,{slot:payload.slot,expectedRevision:payload.expectedRevision,createdAt:session.createdAt,sessionKey:sessionKey(session.code),playerKey:playerKey(session.code,uid),profileKey:coopProfileKey(uid),weaponKey:`coop_weapon_selection_${uid}${rescueProfileScope.suffix()}`,profile});
     return readSession(session.code);
   }
   if(action==='field-use'){
@@ -3743,7 +3754,8 @@ async function applyAction(session, user, action, payload={}){
   }
   if(action === "start" || action === "restart" || action === "continue" || action === "replay"){
     if(session.hostId !== uid) throw new Error("Only the squad leader can start the mission.");
-    if(session.memberIds.length < 2 && !postCampaignSession(session)) throw new Error("Invite one teammate before starting.");
+    if(rescueEvent.isEvent(session.launchType)&&rescueEvent.phase()!=="active")throw new Error("The event has ended. Existing active runs may finish, but new attempts are closed.");
+    if(session.memberIds.length < 2 && !postCampaignSession(session)&&session.launchType!=="monsoon-solo") throw new Error("Invite one teammate before starting.");
     if(action === "start" && session.status !== "waiting") return session;
     if(action === "restart" && session.status !== "failed") throw new Error("Restart is available after the mission ends.");
     if(action==='replay'){
@@ -3791,6 +3803,7 @@ async function applyAction(session, user, action, payload={}){
       session.livingWorldMission = normalizeLivingWorldMission(null);
     }
     session.status = "active";
+    if(rescueEvent.isEvent(session.launchType))session.eventStartedAt=now;
     session.startedAt = now;
     session.encounterVersion=2;
     session.encounterRunAt=now;
@@ -4252,6 +4265,8 @@ async function claimReward(session, user){
     "village-siege":{ cash:9600, perkPoints:2, seasonPoints:20, badge:"Suncrest Village Shield" },
     "convoy-rescue":{ cash:11200, perkPoints:3, seasonPoints:24, badge:"Redwood Convoy Guardian" },
     "alpha-hunt":{ cash:13000, perkPoints:3, seasonPoints:28, badge:"Ghoststripe Apex Hunter" },
+    "monsoon-solo":{cash:1800,perkPoints:1,seasonPoints:6,badge:"Monsoon Solo Rescuer"},
+    "monsoon-rescue":{cash:2500,perkPoints:1,seasonPoints:8,badge:"Monsoon Squad Rescuer"},
     "storm-extraction":{ cash:15000, perkPoints:4, seasonPoints:32, badge:"Tempest Coast Lifeline" },
     "crisis-settlement-siege":{ cash:18000, perkPoints:4, seasonPoints:38, badge:"Living World Settlement Shield" },
     "crisis-escaped-alpha":{ cash:24000, perkPoints:5, seasonPoints:46, badge:"Living World Alpha Recovery" },
@@ -4286,10 +4301,10 @@ async function claimReward(session, user){
   const crisisRunId = postCampaignSession(session) ? cleanText(session.postCampaignOperation?.runId, 100) : "";
   const receipt = crisisRunId
     ? `post-crisis:${crisisRunId}:${uid}`
-    : `${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`;
+    : `${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}${rescueEvent.isEvent(session.launchType)?":"+(session.eventStartedAt||session.startedAt):""}`;
   let livingWorldOutcome = null;
   let sanctuaryCare = null;
-  const rewardApplied = firstClaim && !profile.rewardReceipts[receipt];
+  const rewardApplied = (firstClaim||rescueEvent.isEvent(session.launchType)) && !profile.rewardReceipts[receipt];
   if(rewardApplied){
     profile.rewardReceipts[receipt] = nowMs();
     profile.funds += Math.max(0, Number(awardedReward.cash || 0));
@@ -4331,7 +4346,18 @@ async function claimReward(session, user){
   profile.missionDebriefs=recorded.state;
   profile.missionDebriefs=masteryRewards.remember(profile.missionDebriefs,'coop');
   if(rewardApplied||recorded.applied)profile=await writeCoopProfile(profile,user);
+  let liveRescueProgress=null;
+  if(rescueEvent.isEvent(session.launchType)&&rescueEvent.eligible(session)){
+    try{
+      if(auditDerived.securedCivilianIds.length!==missionDefinition(session).rescueRequired)throw new Error('Rescue event completion is not confirmed.');
+      liveRescueProgress=await require('./rescue-event-store').record(uid,session.code+':'+(session.eventStartedAt||session.startedAt),auditDerived.securedCivilianIds.length);
+      await eliteStore.grantEarned(uid,liveRescueProgress.earned);
+    }catch(e){liveRescueProgress={pending:true,message:'Mission reward saved. Use Retry event credit on this result when the connection returns.'};}
+  }
+
   return {
+    liveRescueProgress,
+    profileScope:rescueProfileScope.suffix(),
     firstClaim:rewardApplied,
     receipt,
     storyProgress:sharedStory ? { completedLevel:sharedLevel, unlockLevel:Math.min(100, sharedLevel + 1) } : null,

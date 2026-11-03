@@ -224,8 +224,8 @@
     box(22,-4,9,3,"#8b999a",1);box(29,-5,3,5,"#1c2a31",1);
     box(5,1,5,7,"#273640",1);box(11,-8,8,3,"#1d2c32",1);box(16,-7,2,1,"#90cbd2",.5);
     box(-9,-4,7,4,dark,1);line(ctx,trim,.7,[[-7,-3],[-3,-3]]);
-    if(elite.weapon==='guardian'||elite.weapon==='recruit_finish'){
-      box(0,-5,21,3,elite.weapon==='guardian'?'#35c4bc':'#e99542',1);line(ctx,'#f1e4b8',1,[[4,-4],[18,-4]]);
+    if(elite.weapon==='guardian'||elite.weapon==='recruit_finish'||elite.weapon==='monsoon_finish'){
+      box(0,-5,21,3,elite.weapon==='guardian'?'#35c4bc':elite.weapon==='monsoon_finish'?'#9de8bd':'#e99542',1);line(ctx,'#f1e4b8',1,[[4,-4],[18,-4]]);
       if(elite.weapon==='guardian'){box(11,-9,10,3,'#8fe5d4',1);box(6,1,4,7,'#2f9f9b',1);}
     }
     }
