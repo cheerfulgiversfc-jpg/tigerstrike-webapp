@@ -1,3 +1,4 @@
+const rescueSchedule=require('./rescue-event-schedule');
 const rescueEvent=require('../../live-rescue-event');
 const rescueProfileScope=require('./rescue-profile-scope');
 const eliteStore = require('./elite-store');
@@ -2567,6 +2568,7 @@ function normalizeSession(raw){
     status:["waiting","active","complete","failed","closed"].includes(raw.status) ? raw.status : "waiting",
     createdAt:Math.max(0, Number(raw.createdAt || nowMs())),
     updatedAt:Math.max(0, Number(raw.updatedAt || nowMs())),
+    eventDeadline:rescueEvent.isEvent(launchType)?Math.max(0,Number(raw.eventDeadline||0)):0,
     eventStartedAt:rescueEvent.isEvent(launchType)?Math.max(0,Number(raw.eventStartedAt||raw.startedAt||0)):0,
     startedAt:Math.max(0, Number(raw.startedAt || 0)),
     completedAt:Math.max(0, Number(raw.completedAt || 0)),
@@ -2939,7 +2941,7 @@ async function createSession(user, opts={}){
   const launchType = requestedLaunchType === "shared-story" && !EXPANDED_SHARED_STORY_MISSIONS[requestedStoryMissionLevel]
     ? "live-squad"
     : requestedLaunchType;
-  if(rescueEvent.isEvent(launchType)&&rescueEvent.phase()!=="active")throw new Error("Operation: Monsoon Rescue is not open for new runs.");
+  if(rescueEvent.isEvent(launchType)&&(await rescueSchedule.read()).phase!=="active")throw new Error("Operation: Monsoon Rescue is not open for new runs.");
   const hostProfile = await readCoopProfile(user);
   const storyMissionLevel = launchType === "shared-story" ? requestedStoryMissionLevel : 0;
   const postCampaignOperation = normalizePostCampaignOperation(opts?.postCampaignOperation, launchType);
@@ -2983,6 +2985,7 @@ async function joinSession(codeValue, user){
   ensureLiveSession(session);
   await writeCoopProfile(await readCoopProfile(user), user);
   const returningMember = session.departedIds.includes(uid);
+  if(rescueEvent.isEvent(session.launchType)&&session.status==="waiting"&&!session.memberIds.includes(uid)&&(await rescueSchedule.read()).phase!=="active")throw Error("The rescue event is paused or closed.");
   const canDropIn = postCampaignSession(session) && session.status === "active" && session.memberIds.length < 2;
   if(session.status !== "waiting" && !session.memberIds.includes(uid) && !returningMember && !canDropIn && !(session.status === "failed" && session.failureReason === "teammate_left")) throw new Error("This mission already started.");
   if(!session.memberIds.includes(uid)){
@@ -3031,6 +3034,7 @@ async function joinSession(codeValue, user){
 async function quickMatch(user, opts={}){
   const uid = userIdOf(user);
   if(!uid) throw new Error("Telegram player identity is missing.");
+  if(rescueEvent.isEvent(opts?.launchType)){if(opts.launchType!=="monsoon-rescue")throw Error("Solo events do not use matchmaking.");if((await rescueSchedule.read()).phase!=="active")throw Error("The rescue event is paused or closed.");}
   const requestedStoryMissionLevel = clamp(Math.floor(Number(opts?.storyMissionLevel || 0)), 0, 100);
   const requestedLaunchType = normalizeLaunchType(opts?.launchType);
   const launchType = requestedLaunchType === "shared-story" && !EXPANDED_SHARED_STORY_MISSIONS[requestedStoryMissionLevel]
@@ -3341,6 +3345,7 @@ async function buildSnapshot(session, viewerId){
     title:session.title,
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
+    ...(rescueEvent.isEvent(session.launchType)?{eventSchedule:await rescueSchedule.read()}:{}),
     postCampaignOperation:session.postCampaignOperation,
     crisisVote:session.crisisVote,
     matchmaking:session.matchmaking,
@@ -3754,7 +3759,8 @@ async function applyAction(session, user, action, payload={}){
   }
   if(action === "start" || action === "restart" || action === "continue" || action === "replay"){
     if(session.hostId !== uid) throw new Error("Only the squad leader can start the mission.");
-    if(rescueEvent.isEvent(session.launchType)&&rescueEvent.phase()!=="active")throw new Error("The event has ended. Existing active runs may finish, but new attempts are closed.");
+    const eventSchedule=rescueEvent.isEvent(session.launchType)?await rescueSchedule.read():null;
+    if(eventSchedule&&eventSchedule.phase!=="active")throw new Error("The event is paused or closed. Existing active runs may finish; new attempts open when the event resumes.");
     if(session.memberIds.length < 2 && !postCampaignSession(session)&&session.launchType!=="monsoon-solo") throw new Error("Invite one teammate before starting.");
     if(action === "start" && session.status !== "waiting") return session;
     if(action === "restart" && session.status !== "failed") throw new Error("Restart is available after the mission ends.");
@@ -3803,7 +3809,7 @@ async function applyAction(session, user, action, payload={}){
       session.livingWorldMission = normalizeLivingWorldMission(null);
     }
     session.status = "active";
-    if(rescueEvent.isEvent(session.launchType))session.eventStartedAt=now;
+    if(eventSchedule){session.eventStartedAt=now;session.eventDeadline=eventSchedule.endsAt;}
     session.startedAt = now;
     session.encounterVersion=2;
     session.encounterRunAt=now;

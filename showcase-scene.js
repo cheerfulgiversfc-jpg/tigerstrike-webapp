@@ -106,7 +106,7 @@
     backdrop(c,{width:w,height:h,now,clear:positions});
     for(let i=0;i<actors.length;i++){const p=actors[i],a=p.eliteAppearance||{};R.drawSoldier(c,{...p,x:positions[i].x,y:168,face:0,eliteAppearance:a},{now,scale:2.45,walking:false,showMarker:false,lowerWeapon:true,celebration:salute,uniformPalette:p.masteryIdentity?.uniform?.palette});}
     c.fillStyle='rgba(8,20,30,.91)';c.beginPath();c.roundRect(18,240,564,43,9);c.fill();c.fillStyle='#f4dfac';c.textAlign='center';c.font='bold 16px system-ui';
-    c.fillText(options.preview?'VICTORY SALUTE PREVIEW':'MISSION COMPLETE • COMMANDER SALUTE',300,260);c.fillStyle='#d2ded8';c.font='11px system-ui';c.fillText(options.preview?'Cosmetic animation • no mission progress or rewards':'Review your mission results and continue whenever you are ready',300,276);
+    c.fillText(options.title||(options.preview?'VICTORY SALUTE PREVIEW':'MISSION COMPLETE • COMMANDER SALUTE'),300,260);c.fillStyle='#d2ded8';c.font='11px system-ui';c.fillText(options.subtitle||(options.preview?'Cosmetic animation • no mission progress or rewards':'Review your mission results and continue whenever you are ready'),300,276);
     c.restore();
   }
   function drawTransfer(c,options={}){

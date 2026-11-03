@@ -168,7 +168,7 @@ module.exports = async function handler(req, res){
     const { user } = validateTelegramInitData(initData, botToken);
     const action = String(body?.action || "status").trim().toLowerCase();
     const requestRoom=action!=='create'&&body.code?await readSession(cleanCode(body.code)):null;
-    const rescueType=action==='create'?String(body.launchType||'').trim().toLowerCase():requestRoom?.launchType;
+    const rescueType=['create','quick-match'].includes(action)?String(body.launchType||'').trim().toLowerCase():requestRoom?.launchType;
     return await require('../_lib/rescue-profile-scope').run(rescueType,async()=>{
     if(action === 'hq-profile')return json(res,200,{ok:true,...await readPersonalHq(user,cleanCode(body?.code))});
     if(action === "profile"){
@@ -199,7 +199,7 @@ module.exports = async function handler(req, res){
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 100
           ? "shared-story"
-          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+          : (["monsoon-rescue","tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
       });
     }else if(action === "join"){
       session = await joinSession(cleanCode(body?.code), user);
@@ -233,7 +233,7 @@ module.exports = async function handler(req, res){
       ok:true,
       storage:storageMode(),
       snapshot,
-      ...(['create','join'].includes(action)?{profile:await readCoopProfile(user),gearCatalog:COOP_GEAR_CATALOG,profileScope:require('../_lib/rescue-profile-scope').suffix()}:{}),
+      ...(['create','join','quick-match'].includes(action)?{profile:await readCoopProfile(user),gearCatalog:COOP_GEAR_CATALOG,profileScope:require('../_lib/rescue-profile-scope').suffix()}:{}),
       invitation,
       reward,
       roles:Object.values(ROLE_DEFS).map(({ key, label, damage, maxHp, speed })=>({ key, label, damage, maxHp, speed })),

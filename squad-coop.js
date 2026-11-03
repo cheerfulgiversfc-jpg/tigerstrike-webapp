@@ -951,7 +951,7 @@
   function completionActionsHtml(){
     const snap = state.snapshot;
     if(!snap) return "";
-    const eventClosed=rescueEventActive()&&(window.TigerRescueEventConfig?.phase?.()||'active')!=='active';
+    const eventClosed=rescueEventActive()&&snap.eventSchedule?.phase!=='active';
     if(snap.status === "failed") return `${snap.failureReason === "teammate_left" && snap.memberCount < 2 ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Replacement</button><button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>` : ""}${snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart" ${eventClosed||snap.memberCount < 2&&!soloRescueEvent() ? "disabled" : ""}>${eventClosed?"Event closed":snap.memberCount < 2&&!soloRescueEvent() ? "Need Teammate" : "Restart Mission"}</button>` : `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>`}${snap.isHost && snap.memberCount === 2 ? `<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>` : ""}<button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>`;
     if(snap.status !== "complete") return "";
     const mine = localSnapshotPlayer();
@@ -963,8 +963,8 @@
       if(snap.isHost) parts.push(`<button type="button" class="squadBtn primary" data-squad-command="continue" ${snap.allRewardsClaimed ? "" : "disabled"}>${snap.allRewardsClaimed ? `Continue to Mission ${nextLevel}` : "Waiting for Both Rewards"}</button>`);
       else parts.push(`<button type="button" class="squadBtn primary" disabled>${snap.allRewardsClaimed ? `Waiting for Leader • Mission ${nextLevel}` : "Waiting for Both Rewards"}</button>`);
     }else if(sharedStoryActive()) parts.push(`<button type="button" class="squadBtn good" disabled>✅ Shared Story Campaign Complete</button>`);
-    if(snap.isHost&&!eventClosed)parts.push(`<button type="button" class="squadBtn" data-squad-command="replay" ${snap.allRewardsClaimed||snap.memberCount===1&&mine?.rewardClaimed?'':'disabled'}>Replay • Personal Best Attempt</button>`);
-    if(eventClosed)parts.push('<div class="squadSmall">Event closed. Earned rewards remain yours; new attempts are unavailable.</div>');
+    if(snap.isHost&&!eventClosed)parts.push(`<button type="button" class="squadBtn" data-squad-command="replay" ${snap.allRewardsClaimed||snap.memberCount===1&&mine?.rewardClaimed?'':'disabled'}>${rescueEventActive()?"Play Again • Keep This Squad":"Replay • Personal Best Attempt"}</button>`);
+    if(eventClosed)parts.push('<div class="squadSmall">Event paused or closed. Earned rewards remain yours; new attempts open when the organizer resumes the event.</div>');
     parts.push(`<div class="squadSmall">${rescueEventActive()?"Each new successful event attempt earns new rescue credit and an event payout once. Reopening or claiming the same attempt twice does not.":"Replaying keeps this squad and mission. Previously claimed mission payouts are not granted again."}</div>`);
     if(snap.isHost && snap.memberCount === 2) parts.push(`<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>`);
     parts.push(`<button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>`);
@@ -3167,7 +3167,7 @@
     async startRescueEvent(mode){
       if(state.snapshot)throw Error('Finish or leave your current squad before starting the rescue event.');
       const type=mode==='solo'?'monsoon-solo':'monsoon-rescue';open({launchType:type});
-      const result=await api('create',{launchType:type});state.code=result.snapshot.code;startPolling();setMessage(mode==='solo'?'Solo event ready. Choose a role and Start Solo Now.':'Event squad ready. Invite one teammate, choose roles and start.');return true;
+      const result=await api(mode==='match'?'quick-match':'create',{launchType:type});state.code=result.snapshot.code;startPolling();setMessage(mode==='solo'?'Solo event ready. Choose a role and Start Solo Now.':mode==='match'?(result.snapshot.memberCount===2?'Event teammate found. Choose roles and start.':'Searching for a real event teammate. Choose a role while you wait, or Leave Squad to cancel.'):'Event squad ready. Invite one teammate, choose roles and start.');return true;
     },
     returnFromEquipment,
     openArmory:openSquadArmory,
