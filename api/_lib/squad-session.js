@@ -4352,6 +4352,7 @@ async function claimReward(session, user){
   profile.missionDebriefs=recorded.state;
   profile.missionDebriefs=masteryRewards.remember(profile.missionDebriefs,'coop');
   if(rewardApplied||recorded.applied)profile=await writeCoopProfile(profile,user);
+  try{await require('./player-launch-store').track(uid,'coop-clear');}catch(e){ /* Saved mission rewards do not depend on launch reporting. */ }
   let liveRescueProgress=null;
   if(rescueEvent.isEvent(session.launchType)&&rescueEvent.eligible(session)){
     try{

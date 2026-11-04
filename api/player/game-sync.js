@@ -41,6 +41,7 @@ module.exports = async function handler(req, res){
     if(!profile){
       return json(res, 400, { ok:false, error:"Could not update gameplay stats." });
     }
+    try{await require('../_lib/player-launch-store').track(user.id,Number(profile?.ops?.missionsCleared||0)>0?'solo-clear':'open');}catch(e){ /* Reporting never blocks gameplay sync. */ }
     const clan = await getClanCloudSnapshot(user);
     const community = await getCommunitySnapshot({ botToken, userId:Number(user?.id || 0) });
     const referredBy = Number(profile.referredBy || 0);

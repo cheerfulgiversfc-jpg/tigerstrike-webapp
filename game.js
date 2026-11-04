@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5283";
+const TS_BUILD = "5284";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4921,6 +4921,8 @@ function renderCompleteRecapCard(payload=null){
   renderGovernmentProgramCard();
   renderMissionDebrief();
   renderRecruitVictoryCard();
+  const report=S.missionDebriefs?.last;
+  window.TigerPlayerHub?.mountFirstFeedback(document.getElementById('launchFeedbackPrompt'),{eligible:!window.__TUTORIAL_MODE__&&S.missionEnded&&report?.completed&&report.mode==='Story'&&report.campaignLevel===1&&window.TigerMasteryRewards?.progress(S.missionDebriefs,'solo').clears===1,open:onSaved=>openPlayerReport('feedback',{onSaved})});
 }
 function renderMissionDebrief(){
   const node=document.getElementById('missionDebriefCard'),api=window.TigerMissionDebrief;
@@ -34173,6 +34175,7 @@ function baseHqCommandActions(){
     openBaseHqLeaderboardBoard,
     openBaseHqEventBoard,
     openRescueEventBoard,
+    openPlayerReport,
     openRecruitWelcome,
     openRecruitPracticeMenu,
     openStoryFromBaseHQ,
@@ -34962,6 +34965,7 @@ function renderBaseHqQuickBar(){
     ${button("Story", "openBaseHqModePreview('Story')", "primary")}
     ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
+    ${button("Player Feedback & Reports", "openPlayerReport()", "utility")}
     ${button("New Recruit Guide", "openRecruitWelcome()", "primary")}
     ${button("Free Practice", "openRecruitPracticeMenu()", "primary")}
     ${button("Tutorial", "startTutorialFromBaseHQ()", "primary")}
@@ -35706,6 +35710,13 @@ function closeBaseHQ(){
 }
 function startModeFromBaseHQ(mode="Story"){
   openBaseHqModePreview(mode);
+}
+function openPlayerReport(kind='hub',options={}){
+  if(window.__TUTORIAL_MODE__)return toast('Finish or end practice before sending a report.');
+  const paused=S.paused,reason=S.pauseReason;resetTouchStick();setPaused(true,'player-hub');
+  const onClose=()=>setPaused(paused,reason);
+  if(kind==='hub')return window.TigerPlayerHub?.hub({onClose,reopen:next=>openPlayerReport(next)});
+  return window.TigerPlayerHub?.report(kind,{...options,onClose});
 }
 function openRecruitWelcome(){return window.showFirstLaunchTutorialChoice?.(true);}
 function openRecruitPracticeMenu(){return window.showRecruitPracticeMenu?.();}
@@ -43843,7 +43854,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
-  if(document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
@@ -43999,7 +44010,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -65241,6 +65252,7 @@ function bootstrap(){
   try{
     init();
     window.__TS_BOOT_OK__ = true;
+    window.TigerPlayerHub?.activity("open");
   }catch(err){
     try{ console.error("Startup recovered from init error:", err); }catch(e){}
     try{

@@ -1245,6 +1245,7 @@
       T.lastShieldUntil = Number(S.shieldUntil || 0);
     }
 
+    if(!T.practiceKind)window.TigerPlayerHub?.activity("tutorial-start");
     open();
     render();
   }
@@ -1252,6 +1253,7 @@
   function endTutorial(openModePicker=false, completed=true){
     const T = window.TigerTutorial;
     const practice=!!T.practiceKind;T.practiceKind="";
+    if(completed&&!practice)window.TigerPlayerHub?.activity("tutorial-complete");
     clearInterval(window.__tutTimer);
     T.isRunning = false;
     T.step = 0;
@@ -1358,6 +1360,8 @@
       if(!force)setTimeout(showFirstLaunchTutorialChoice,500);
       return false;
     }
+    const inviteParam=window.Telegram?.WebApp?.initDataUnsafe?.start_param||new URLSearchParams(window.location?.search||'').get('tgWebAppStartParam')||new URLSearchParams(window.location?.search||'').get('startapp')||'';
+    if(!force&&(/^squad_[a-z0-9]{6}$/i.test(inviteParam)||document.getElementById('playerLaunchHub')?.open))return false;
     if(welcomeOverlay.style.display==='flex')return true;
     welcomeReturn={paused:S.paused,reason:S.pauseReason};window.setPaused?.(true,'recruit-welcome');
     const portrait=byId('recruitWelcomePortrait');if(portrait)window.TigerStrikeBattlefieldRenderer?.drawSoldierPortrait(portrait.getContext('2d'),window.TigerEliteArmory?.appearance()||{});

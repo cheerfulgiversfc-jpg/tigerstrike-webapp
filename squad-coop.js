@@ -926,7 +926,7 @@
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : (snap.failureReason === "teammate_left" ? "🔄 Teammate Left" : "⏱️ Operation Failed"))}</div>
         <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `${snap.memberCount > 1 ? "Both players cleared" : "You cleared"} ${esc(selectedOperation().title)}. Every participating player can claim one personal reward.`}` : (snap.failureReason === "squad_wipe" ? `${snap.memberCount > 1 ? "Both soldiers used their field life" : "Your soldier used the field life"} and went down. The squad leader can restart this mission.` : (snap.failureReason === "teammate_left" ? "Your teammate left during the mission. The squad code is still yours. Invite them back or add another player, then restart together." : (snap.failureReason==="required_capture_lost"?"The marked tiger was killed. Restart and use Rubber rounds, then Capture.":`Time expired. The squad leader can restart ${esc(missionName())}.`)))}</div>
         ${snap.status === "complete" && (snap.capturedIds || []).length ? `<div class="squadTransportMovie"><div class="squadSmall">🚛 Wildlife Recovery • ${(snap.capturedIds || []).length} cage${(snap.capturedIds || []).length===1?"":"s"}</div><canvas id="squadTransportCanvas" width="520" height="210" aria-label="Co-op wildlife transport movie"></canvas><button type="button" class="squadBtn" data-squad-command="transport-skip">Skip Movie</button></div>` : ""}
-        <div class="squadResultActions" id="squadResultActions">${completionActionsHtml()}</div>
+        <section id="squadLaunchFeedback" hidden></section><div class="squadResultActions" id="squadResultActions">${completionActionsHtml()}</div>
       </div>
       <div class="squadControls ${["complete","failed"].includes(snap.status) ? "resultOpen" : ""}">
         <div class="squadJoystick ${controlsDisabled ? "disabled" : ""}" id="squadJoystick" aria-label="Movement joystick">
@@ -1157,6 +1157,7 @@
     bindLobbyInput();
     window.TigerEliteArmory?.renderPortraits(document);
     window.TigerCommanderCelebration?.mount($('squadResultBanner'),{confirmed:state.snapshot?.status==='complete',runKey:`${state.snapshot?.code}:${state.snapshot?.startedAt}`,animate:state.commanderVictoryRun===`${state.snapshot?.code}:${state.snapshot?.startedAt}`,players:state.snapshot?.players||[]});
+    window.TigerPlayerHub?.mountFirstFeedback($('squadLaunchFeedback'),{eligible:sharedStoryActive()&&Number(state.snapshot?.storyMissionLevel)===1&&state.snapshot?.status==='complete'&&localSnapshotPlayer()?.rewardClaimed&&window.TigerMasteryRewards?.progress(state.profile?.missionDebriefs,'coop').clears===1,open:onSaved=>window.openPlayerReport?.('feedback',{onSaved})});
     if(state.snapshot?.status === "active") ensureFrame();
     else { drawArena(); if(state.snapshot?.status === "complete") startSquadTransportMovie(); }
     syncSquadMusicContext();
@@ -3134,7 +3135,7 @@
     if(!hasTelegramAuth()) return;
     const match=startParam().match(/^squad_([A-Z0-9]{6})$/i);
     if(match){
-      window.setTimeout(()=>{ open(); join(match[1]); },1400);
+      window.setTimeout(()=>{const proceed=()=>{open();join(match[1]);};if(window.TigerPlayerHub?.showInvite){window.prepareLiveSquadHub?.();window.TigerPlayerHub.showInvite(match[1].toUpperCase(),proceed);}else proceed();},1400);
       return;
     }
     const savedRoom = readActiveRoom();
@@ -3148,7 +3149,7 @@
   window.addEventListener('mission-route-open',()=>{clearPresentationInput();if(state.open&&state.code)sync(true).catch(()=>{});});
   window.addEventListener('blur',clearPresentationInput);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPresentationInput();});
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('playerLaunchHub')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });
@@ -3169,6 +3170,7 @@
       const type=mode==='solo'?'monsoon-solo':'monsoon-rescue';open({launchType:type});
       const result=await api(mode==='match'?'quick-match':'create',{launchType:type});state.code=result.snapshot.code;startPolling();setMessage(mode==='solo'?'Solo event ready. Choose a role and Start Solo Now.':mode==='match'?(result.snapshot.memberCount===2?'Event teammate found. Choose roles and start.':'Searching for a real event teammate. Choose a role while you wait, or Leave Squad to cancel.'):'Event squad ready. Invite one teammate, choose roles and start.');return true;
     },
+    reportContext:()=>({mode:"Co-op",mission:Number(state.snapshot?.storyMissionLevel||0),scene:state.equipmentOpen||((state.snapshot?.status==="complete"||state.snapshot?.status==="failed")?"results":state.snapshot?.status==="active"?"mission":"hq")}),
     returnFromEquipment,
     openArmory:openSquadArmory,
     openPersonalHQ,rescueHqProfile,
