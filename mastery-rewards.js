@@ -20,6 +20,7 @@
     {id:'wildlife-warden',slot:'title',name:'Wildlife Warden',icon:'🌿',metric:'captures',target:5,requirement:'Earn Wildlife Guardian on 5 distinct Story missions.'},
     {id:'chapter-veteran',slot:'title',name:'Chapter Veteran',icon:'🏆',metric:'chapters',target:1,requirement:'Record clears on all 10 missions in any Story chapter.'},
     {id:'none-badge',slot:'badge',name:'No mastery badge',icon:'○',metric:'clears',target:0,requirement:'Remove the mastery badge.'},
+    {id:'rescue-recruit',slot:'badge',name:'Rescue Recruit',icon:'🛟',metric:'recruits',target:1,requirement:'Complete a recorded Story mission with at least one civilian rescued.'},
     {id:'lifeline',slot:'badge',name:'Lifeline',icon:'💚',metric:'rescues',target:1,requirement:'Earn Everyone Home on 1 Story mission.'},
     {id:'living-paw',slot:'badge',name:'Living Paw',icon:'🐾',metric:'captures',target:1,requirement:'Earn Wildlife Guardian on 1 Story mission.'},
     {id:'chapter-crest',slot:'badge',name:'Chapter Crest',icon:'🏅',metric:'chapters',target:1,requirement:'Record clears on all 10 missions in any Story chapter.'},
@@ -59,7 +60,7 @@
     const counts=progress(state,scope);
     const chapters=chapterProgress(state,scope);
     const earned=Array.isArray(state?.masteryEarned?.[scopeKey(scope)])?state.masteryEarned[scopeKey(scope)]:[];
-    return CATALOG.map(r=>{const count=r.metric==='chapter'?chapters[r.chapter-1]:counts[r.metric];return {...r,chapterClears:r.chapter?chapters[r.chapter-1]:null,progress:Math.min(r.target,count),unlocked:count>=r.target||(r.chapter&&chapters[r.chapter-1]===10)||earned.includes(r.id)};});
+    return CATALOG.map(r=>{const count=r.metric==='recruits'?Object.entries(state?.records||{}).filter(([key,r])=>key.startsWith(scopeKey(scope)+':')&&r.campaignLevel>=1&&r.campaignLevel<=100&&r.clears>0&&r.bestRescued>0).length:r.metric==='chapter'?chapters[r.chapter-1]:counts[r.metric];return {...r,chapterClears:r.chapter?chapters[r.chapter-1]:null,progress:Math.min(r.target,count),unlocked:count>=r.target||(r.chapter&&chapters[r.chapter-1]===10)||earned.includes(r.id)};});
   }
   function remember(state={},scope='solo'){
     scope=scopeKey(scope);

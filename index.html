@@ -7,11 +7,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V16.1 (Rescue Together)</title>
+  <title>Tiger Strike 🐅 — V16.2 (New Recruit Experience)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5282-rescue-together">
-  <link rel="stylesheet" href="./touch-layout.css?v=5282-rescue-together">
-  <link rel="stylesheet" href="./battlefield-awareness.css?v=5282-rescue-together">
+  <link rel="stylesheet" href="./squad-coop.css?v=5283-new-recruit">
+  <link rel="stylesheet" href="./touch-layout.css?v=5283-new-recruit">
+  <link rel="stylesheet" href="./battlefield-awareness.css?v=5283-new-recruit">
 
   <style>
     :root{
@@ -2345,6 +2345,10 @@
   #tutorialWelcomeActions{grid-template-columns:1fr}
 }
 
+#recruitWelcomePortrait{width:88px;height:88px;border-radius:18px;background:#102b34}
+#recruitPracticeDialog{color:#e5f5ff;background:#0b1525;border:2px solid #5b9eaa;border-radius:18px;width:min(600px,92vw);max-height:88dvh;box-sizing:border-box;padding:20px}
+#recruitPracticeDialog::backdrop{background:#020715df}#recruitPracticeDialog button{display:block;width:100%;min-height:52px;margin:10px 0;padding:12px;border-radius:12px;background:#234c55;color:#fff;border:1px solid #7cacac;font:600 16px system-ui}
+#recruitPracticeDialog p{line-height:1.5}#recruitVictoryCard canvas{width:100%;height:auto;aspect-ratio:2/1}#recruitVictoryCard[hidden]{display:none}
 /* Tutorial overlay (CLICK-THROUGH) */
 #tutorialOverlay{
   position:fixed;
@@ -2572,16 +2576,16 @@
 .missionExperience{display:grid;gap:5px;margin:7px 0}.missionExperience[hidden],.missionExperience [hidden]{display:none!important}.missionExperience button{width:100%;text-align:left;padding:10px 12px;min-height:44px;border:1px solid #4b8f76;border-radius:12px;background:#0b2925;color:#ecfdf5;font-size:12px;line-height:1.4}.missionExperience [role=status]{font-size:12px;padding:7px 10px;border-radius:10px;background:#172033;color:#dbeafe}.missionExperience [data-stage=ready]{background:#14532d;color:#dcfce7}.missionExperience [data-stage=blocked]{background:#541b2c;color:#ffe4e6}
 </style>
 <style>.soloFieldRadio{border:1px solid #467d78;border-radius:12px;padding:8px;font-size:12px;background:#0c2629;color:#e0f2fe}.soloFieldRadio summary{cursor:pointer;min-height:28px;font-weight:850}.radioCommands{display:flex;flex-wrap:wrap;gap:5px}.missionExperience .radioCommands button{width:auto;flex:1 1 110px}.soloFieldRadio [role=status]{margin-top:6px}</style>
-  <link rel="stylesheet" href="./elite-armory.css?v=5282-rescue-together">
+  <link rel="stylesheet" href="./elite-armory.css?v=5283-new-recruit">
 </head>
 
 <body>
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V16.1</span> <span class="tag">Rescue Together</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V16.2</span> <span class="tag">New Recruit Experience</span></div>
       <div class="sub">
-        V16.1 — Rescue Together: Monsoon Rescue is paused until a configured Tiger Strike administrator resumes it. A full 14-day event window is preserved; November 16 is no longer the deadline. Later pauses freeze the remaining time and resuming sets a new closing date. Open HQ → Live Rescue Event for organizer controls, detailed reward previews and the exact number of rescues until your next unlock. Once resumed, Play Solo, Find event teammate or Create private event Squad. Public matching pairs real Telegram accounts in the same event, with no pretend teammates. Both players can claim their own results and Play Again with the same squad. Community milestones at 250, 500, 750 and 1,000 rescues unlock optional, skippable celebrations using production soldier and terrain artwork. The finale requires 1,000 verified community rescues. Achievement cards use recorded rescue totals and earned rewards; you choose the Telegram chat and confirm sending. Pausing blocks new entries and attempts; active missions may finish and claim within their saved deadline. Supplies remain isolated and duplicate credit is prevented.<br>
+        V16.2 — New Recruit Experience: new players receive a clear welcome with Play Solo, Play Tutorial, Play with a Friend and Free Practice; returning players can reopen it at HQ → New Recruit Guide. The welcome waits for startup/reward screens and pauses gameplay. Free Practice offers short Movement &amp; Controls, Rubber/Tranquilize/Capture and Civilian Rescue sessions using the current production tutorial battlefield, plus the full tutorial. Training uses a temporary loadout and restores the original game on exit; training saves and mission-record awards are blocked. First-mission guidance clarifies Rubber and live capture without covering the battlefield. A recorded Story completion with at least one civilian rescued earns the permanent Rescue Recruit cosmetic badge, separately in Solo and Co-op. The Solo finish screen offers Equip Badge, next-mission guidance and the next mastery reward requirement. Existing Invite a Friend sharing remains optional and player-confirmed. Monsoon Rescue remains paused with its preserved countdown and organizer controls.<br>
         V13.5 off-screen guidance, live progress and optional Docked Controls remain available.<br>
         V13.4 targeting and attack-warning improvements remain active.<br>
         V13.3 performance and weak-link improvements remain active. Combined physical two-phone weak-connection validation is still outstanding.<br>
@@ -3448,6 +3452,7 @@
         <div class="rewardBreakdownList" id="completeSocialRows"></div>
         <div class="premiumSummaryTags" id="completeSocialTags"></div>
       </div>
+      <section id="recruitVictoryCard" class="premiumSummaryCard" hidden></section>
       <div class="hudLine" id="completeText"></div>
       <div class="divider"></div>
       <div class="row">
@@ -3456,7 +3461,7 @@
         <button class="ghost" onclick="shareMissionRecap()">Share Recap</button>
         <button class="ghost" onclick="shareRescueChallenge()">Challenge Friend</button>
         <button class="good" onclick="openLiveSquadOps()">Live Squad</button>
-        <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Squad</button>
+        <button class="ghost" onclick="shareReferralLinkFromGame()">Invite a Friend</button>
         <button class="ghost" onclick="openTelegramCommunityGroup()">Join Group</button>
         <button class="ghost" onclick="openShop()">Shop First</button>
         <button class="ghost" onclick="openInventory()">Inventory</button>
@@ -3547,11 +3552,14 @@
 <!-- First-launch tutorial choice -->
 <div id="tutorialWelcomeOverlay" role="dialog" aria-modal="true" aria-labelledby="tutorialWelcomeTitle" aria-hidden="true">
   <div id="tutorialWelcomeCard">
-    <div style="font-size:52px" aria-hidden="true">🐅</div>
+    <canvas id="recruitWelcomePortrait" width="256" height="256" aria-label="Your detailed soldier portrait"></canvas>
     <h2 id="tutorialWelcomeTitle">Welcome to Tiger Strike</h2>
-    <p>Would you like a guided Solo training mission before you begin?</p>
-    <p>It teaches movement, rescues, tiger capture, ammunition, field gear, combat, extraction, Shop, Inventory, and the World Map. You can replay it later from Base HQ Training.</p>
+    <p>Rescue civilians, protect wildlife, and bring your soldier home.</p>
+    <p>Choose your first step. Practice uses a separate training loadout and returns your real supplies intact. Full training is always available at HQ.</p>
     <div id="tutorialWelcomeActions">
+      <button id="recruitPlaySolo" class="good" type="button">Play Solo</button>
+      <button id="recruitPlayFriend" class="good" type="button">Play with a Friend</button>
+      <button id="recruitPractice" class="ghost" type="button">Free Practice</button>
       <button id="tutorialWelcomePlay" class="good" type="button">Play Tutorial</button>
       <button id="tutorialWelcomeSkip" class="ghost" type="button">Skip Tutorial</button>
     </div>
@@ -3646,54 +3654,54 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5282-rescue-together"></script>
-  <script src="./engagement-rules.js?v=5282-rescue-together"></script>
-  <script src="./smooth-play.js?v=5282-rescue-together"></script>
-  <script src="./combat-feel.js?v=5282-rescue-together"></script>
-  <script src="./combat-reactions.js?v=5282-rescue-together"></script>
-  <script src="./chapter-maps.js?v=5282-rescue-together"></script>
-  <script src="./mission-routes.js?v=5282-rescue-together"></script>
-  <script src="./field-operations.js?v=5282-rescue-together"></script>
-  <script src="./extraction-geometry.js?v=5282-rescue-together"></script>
-  <script src="./ammo-modes.js?v=5282-rescue-together"></script>
-  <script src="./government-policy.js?v=5282-rescue-together"></script>
-  <script src="./tiger-intelligence.js?v=5282-rescue-together"></script>
-  <script src="./tiger-encounters.js?v=5282-rescue-together"></script>
-  <script src="./tiger-pursuit.js?v=5282-rescue-together"></script>
-  <script src="./living-world.js?v=5282-rescue-together"></script>
-  <script src="./mission-map-truth.js?v=5282-rescue-together"></script>
-  <script src="./post-campaign.js?v=5282-rescue-together"></script>
-  <script src="./sanctuary.js?v=5282-rescue-together"></script>
-  <script src="./player-experience.js?v=5282-rescue-together"></script>
-  <script src="./battlefield-awareness.js?v=5282-rescue-together"></script>
-  <script src="./field-radio.js?v=5282-rescue-together"></script>
-  <script src="./civilian-rescue.js?v=5282-rescue-together"></script>
-  <script src="./rescue-tools.js?v=5282-rescue-together"></script>
-  <script src="./escort-teamwork.js?v=5282-rescue-together"></script>
-  <script src="./chapter-milestones.js?v=5282-rescue-together"></script>
-  <script src="./mission-debrief.js?v=5282-rescue-together"></script>
-  <script src="./mastery-rewards.js?v=5282-rescue-together"></script>
-  <script src="./vehicle-art.js?v=5282-rescue-together"></script>
-  <script src="./shared-battlefield-renderer.js?v=5282-rescue-together"></script>
-  <script src="./touch-layout.js?v=5282-rescue-together"></script>
-  <script src="./elite-catalog.js?v=5282-rescue-together"></script>
-  <script src="./wildlife-tranq.js?v=5282-rescue-together"></script>
-  <script src="./showcase-scene.js?v=5282-rescue-together"></script>
-  <script src="./commander-celebration.js?v=5282-rescue-together"></script>
-  <script src="./armory-organizer.js?v=5282-rescue-together"></script>
-  <script src="./personal-rescue-hq.js?v=5282-rescue-together"></script>
-  <script src="./hq-world-art.js?v=5282-rescue-together"></script>
-  <script src="./live-rescue-event.js?v=5282-rescue-together"></script>
-  <script src="./rescue-event-board.js?v=5282-rescue-together"></script>
-  <script src="./game.js?v=5282-rescue-together"></script>
-  <script src="./story-cinematics.js?v=5282-rescue-together"></script>
-  <script src="./field-systems.js?v=5282-rescue-together"></script>
-  <script src="./tutorial.js?v=5282-rescue-together"></script>
-  <script src="./squad-motion.js?v=5282-rescue-together"></script>
-  <script src="./character-voice.js?v=5282-rescue-together"></script>
-  <script src="./elite-armory.js?v=5282-rescue-together"></script>
-  <script src="./squad-coop.js?v=5282-rescue-together"></script>
-  <script src="./extraction-qa.js?v=5282-rescue-together"></script>
+  <script src="./water-terrain.js?v=5283-new-recruit"></script>
+  <script src="./engagement-rules.js?v=5283-new-recruit"></script>
+  <script src="./smooth-play.js?v=5283-new-recruit"></script>
+  <script src="./combat-feel.js?v=5283-new-recruit"></script>
+  <script src="./combat-reactions.js?v=5283-new-recruit"></script>
+  <script src="./chapter-maps.js?v=5283-new-recruit"></script>
+  <script src="./mission-routes.js?v=5283-new-recruit"></script>
+  <script src="./field-operations.js?v=5283-new-recruit"></script>
+  <script src="./extraction-geometry.js?v=5283-new-recruit"></script>
+  <script src="./ammo-modes.js?v=5283-new-recruit"></script>
+  <script src="./government-policy.js?v=5283-new-recruit"></script>
+  <script src="./tiger-intelligence.js?v=5283-new-recruit"></script>
+  <script src="./tiger-encounters.js?v=5283-new-recruit"></script>
+  <script src="./tiger-pursuit.js?v=5283-new-recruit"></script>
+  <script src="./living-world.js?v=5283-new-recruit"></script>
+  <script src="./mission-map-truth.js?v=5283-new-recruit"></script>
+  <script src="./post-campaign.js?v=5283-new-recruit"></script>
+  <script src="./sanctuary.js?v=5283-new-recruit"></script>
+  <script src="./player-experience.js?v=5283-new-recruit"></script>
+  <script src="./battlefield-awareness.js?v=5283-new-recruit"></script>
+  <script src="./field-radio.js?v=5283-new-recruit"></script>
+  <script src="./civilian-rescue.js?v=5283-new-recruit"></script>
+  <script src="./rescue-tools.js?v=5283-new-recruit"></script>
+  <script src="./escort-teamwork.js?v=5283-new-recruit"></script>
+  <script src="./chapter-milestones.js?v=5283-new-recruit"></script>
+  <script src="./mission-debrief.js?v=5283-new-recruit"></script>
+  <script src="./mastery-rewards.js?v=5283-new-recruit"></script>
+  <script src="./vehicle-art.js?v=5283-new-recruit"></script>
+  <script src="./shared-battlefield-renderer.js?v=5283-new-recruit"></script>
+  <script src="./touch-layout.js?v=5283-new-recruit"></script>
+  <script src="./elite-catalog.js?v=5283-new-recruit"></script>
+  <script src="./wildlife-tranq.js?v=5283-new-recruit"></script>
+  <script src="./showcase-scene.js?v=5283-new-recruit"></script>
+  <script src="./commander-celebration.js?v=5283-new-recruit"></script>
+  <script src="./armory-organizer.js?v=5283-new-recruit"></script>
+  <script src="./personal-rescue-hq.js?v=5283-new-recruit"></script>
+  <script src="./hq-world-art.js?v=5283-new-recruit"></script>
+  <script src="./live-rescue-event.js?v=5283-new-recruit"></script>
+  <script src="./rescue-event-board.js?v=5283-new-recruit"></script>
+  <script src="./game.js?v=5283-new-recruit"></script>
+  <script src="./story-cinematics.js?v=5283-new-recruit"></script>
+  <script src="./field-systems.js?v=5283-new-recruit"></script>
+  <script src="./tutorial.js?v=5283-new-recruit"></script>
+  <script src="./squad-motion.js?v=5283-new-recruit"></script>
+  <script src="./character-voice.js?v=5283-new-recruit"></script>
+  <script src="./elite-armory.js?v=5283-new-recruit"></script>
+  <script src="./squad-coop.js?v=5283-new-recruit"></script>
+  <script src="./extraction-qa.js?v=5283-new-recruit"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

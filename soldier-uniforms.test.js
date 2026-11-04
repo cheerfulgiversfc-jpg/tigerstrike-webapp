@@ -25,14 +25,14 @@ test('uniform save, reload, legacy migration, archiving and removal preserve tit
   state=wardrobe.equip(state,'solo','midnight-tracker');state=debrief.normalize(JSON.parse(JSON.stringify(state)));
   assert.equal(wardrobe.identity(state,'solo').uniform.id,'midnight-tracker');assert.equal(wardrobe.identity(state,'coop').uniform,null);
   state=debrief.normalize({...state,records:{}});assert.equal(wardrobe.identity(state,'solo').uniform.id,'midnight-tracker');
-  assert.equal(wardrobe.rewards(state,'solo').filter(r=>r.target>0&&r.unlocked).length,8);
+  assert.equal(wardrobe.rewards(state,'solo').filter(r=>r.target>0&&r.unlocked).length,9);
   state=wardrobe.equip(state,'solo','none-uniform');
   assert.equal(wardrobe.identity(state,'solo').uniform,null);assert.equal(wardrobe.identity(state,'solo').title.id,'first-responder');assert.equal(wardrobe.identity(state,'solo').badge.id,'lifeline');
   const old=debrief.normalize({locker:{solo:{title:'first-responder'}},records:clears().records});assert.equal(wardrobe.identity(old,'solo').uniform,null);assert.equal(wardrobe.identity(old,'solo').title.id,'first-responder');
 });
-test('all ten cosmetic unlocks survive normalization rather than truncating the new uniforms',()=>{
+test('all earned cosmetic unlocks survive normalization rather than truncating the new uniforms',()=>{
   const state=debrief.normalize(wardrobe.remember(clears('solo',10),'solo'));
-  assert.equal(state.masteryEarned.solo.length,10);
+  assert.equal(state.masteryEarned.solo.length,11);
   assert(wardrobe.rewards({...state,records:{}},'solo').find(r=>r.id==='midnight-tracker').unlocked);
 });
 test('ten uniforms have distinct tailoring but identical leg motion, anchors and player markers',()=>{

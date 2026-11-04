@@ -15,6 +15,7 @@
   const welcomeSkipBtn = document.getElementById("tutorialWelcomeSkip");
   const FIRST_LAUNCH_TUTORIAL_KEY = "ts_tutorial_onboarding_v1";
   let highlightedEl = null;
+  let welcomeReturn = null;
 
   function byId(id){ return document.getElementById(id); }
   function visibleEl(id){
@@ -391,7 +392,7 @@
 
     cardEl.style.left = "50%";
     cardEl.style.transform = "translateX(-50%)";
-    cardEl.style.maxHeight = maxH;
+    cardEl.style.maxHeight = mobile&&window.TigerTutorial?.practiceKind?"min(26vh, 210px)":maxH;
     cardEl.style.bottom = "auto";
     cardEl.style.top = `${baseTop}px`;
 
@@ -454,7 +455,7 @@
     const squadUnlockLevel = Math.max(1, Number(cfg.squadUnlockLevel || 15));
     const squadUnitPrice = Math.max(1, Number(cfg.squadUnitPrice || 100000));
     const squadBundlePrice = Math.max(1, Number(cfg.squadBundlePrice || 175000));
-    return [
+    const steps = [
       {
         key:"intro",
         title:"Tiger Strike Training",
@@ -540,8 +541,8 @@
       {
         key:"lock_target",
         title:"Lock A Tiger",
-        text:"Tap a tiger on the map to lock it. Blue ring means locked. If you accidentally tap away, tap the tiger again.",
-        hint:"Tap the highlighted tiger until the blue lock ring appears.",
+        text:"Tap a tiger on the map to lock it. The target label confirms your selection. If you accidentally tap away, tap the tiger again.",
+        hint:"Tap the highlighted tiger and check the target label.",
         arrow:"tiger",
         canNext: () => {
           const S = getS();
@@ -787,6 +788,10 @@
         canNext: () => true
       }
     ];
+    const kind=window.TigerTutorial?.practiceKind;
+    const keys={movement:['intro','move','controls_layout','sprint','done'],rescue:['intro','move','escort','evac_routes','done'],combat:['intro','scan_line','lock_target','engage_tiger','combat_buttons','rubber_ammo','attack_tiger','weaken_tiger','capture_window','weapon_switch','ammo_warnings','resolve_tiger','done'],capture:['intro','scan_line','lock_target','engage_tiger','combat_buttons','rubber_ammo','attack_tiger','weaken_tiger','capture_window','weapon_switch','ammo_warnings','resolve_tiger','done']}[kind];
+    if(!keys)return steps;
+    return steps.filter(step=>keys.includes(step.key)).map(step=>step.key==='controls_layout'?{...step,text:'Open Controls to resize the joystick, spread buttons apart, lower opacity and drag controls into a comfortable position. Field and Combat layouts are separate. Save applies changes; Cancel keeps your layout.'}:step.key==='intro'?{...step,title:kind==='movement'?'Movement & controls practice':kind==='rescue'?'Rescue practice':'Rubber & capture practice',text:'This is a separate training loadout. Practice uses no real supplies, awards no mission rewards and restores your original game when you leave.',hint:'Tap Next to begin. End Practice returns to HQ at any time.'}:step.key==='done'?{...step,title:'Practice complete',text:'You practiced with the real game controls. Your original supplies and progress will be restored.',hint:'Tap Finish to return to HQ.'}:step);
   }
 
   window.TigerTutorial = {
@@ -1107,6 +1112,7 @@
     const step = steps[T.step];
     const S = getS();
     if(T.renderedKey !== step.key){
+      window.applyMobileMenuState?.(!["shop","squad_shop","inventory","cosmetics","world_map","mode_separation"].includes(step.key));
       markStepStart(step);
     }
     updateProgressFlags();
@@ -1128,7 +1134,8 @@
 
     T.currentKey = step.key;
     titleEl.innerText = step.title;
-    stepEl.innerText = `Step ${T.step + 1} / ${steps.length}`;
+    stepEl.innerText = `${T.practiceKind?"Practice":"Step"} ${T.step + 1} / ${steps.length}`;
+    skipBtn.innerText=T.practiceKind?"End Practice":"Skip Tutorial";
     textEl.innerText = text;
     let arrange=byId('tutorialArrangeControls');
     if(!arrange){arrange=document.createElement('button');arrange.id='tutorialArrangeControls';arrange.type='button';arrange.textContent='Open Controls';arrange.style.cssText='pointer-events:auto;min-height:44px;margin:8px 0';textEl.after(arrange);bindReliablePress(arrange,()=>window.openHudCustomizer?.());}
@@ -1166,9 +1173,10 @@
     // training always counts as Play and closes that prompt before the field opens.
     if(Number(getS()?.tutorialOnboardingVersion || 0) < 1) saveFirstLaunchChoice("play");
     hideWelcome();
+    T.practiceKind=typeof opts==='object'?String(opts.practiceKind||''):'';
     const steps = getStepList();
     const startKey = typeof opts === "string" ? opts : String(opts?.startKey || "");
-    const startIndex = startKey ? steps.findIndex((step)=>step.key === startKey) : -1;
+    const startIndex = startKey && !T.practiceKind ? steps.findIndex((step)=>step.key === startKey) : -1;
 
     T.isRunning = true;
     T.step = startIndex >= 0 ? startIndex : 0;
@@ -1243,6 +1251,8 @@
 
   function endTutorial(openModePicker=false, completed=true){
     const T = window.TigerTutorial;
+    const practice=!!T.practiceKind;T.practiceKind="";
+    clearInterval(window.__tutTimer);
     T.isRunning = false;
     T.step = 0;
     T.currentKey = null;
@@ -1300,7 +1310,7 @@
     }
 
     close();
-    try{ window.toast?.(completed ? "Tutorial complete ✅" : "Tutorial ended. You can replay it from Base HQ Training."); }catch(e){}
+    try{ window.toast?.(practice ? "Practice ended. Your real supplies and progress are restored." : completed ? "Tutorial complete ✅" : "Tutorial ended. You can replay it from Base HQ Training."); }catch(e){}
   }
 
   function bindReliablePress(button, handler){
@@ -1337,12 +1347,20 @@
       welcomeOverlay.style.display = "none";
       welcomeOverlay.setAttribute("aria-hidden", "true");
     }
+    if(welcomeReturn){window.setPaused?.(welcomeReturn.paused,welcomeReturn.reason);welcomeReturn=null;}
   }
-  function showFirstLaunchTutorialChoice(){
+  function showFirstLaunchTutorialChoice(force=false){
     const S = getS();
     let locallySeen = false;
     try{ locallySeen = !!localStorage.getItem(FIRST_LAUNCH_TUTORIAL_KEY); }catch(e){}
-    if(!welcomeOverlay || !S || locallySeen || Number(S.tutorialOnboardingVersion || 0) >= 1 || window.TigerTutorial?.isRunning) return false;
+    if(!welcomeOverlay || !S || (!force && (locallySeen || Number(S.tutorialOnboardingVersion || 0) >= 1)) || window.TigerTutorial?.isRunning || window.TigerLiveSquad?.isOpen?.()) return false;
+    if(['dailyRewardOverlay','launchIntroOverlay','storyIntroOverlay','missionCinemaOverlay'].some(overlayVisible)){
+      if(!force)setTimeout(showFirstLaunchTutorialChoice,500);
+      return false;
+    }
+    if(welcomeOverlay.style.display==='flex')return true;
+    welcomeReturn={paused:S.paused,reason:S.pauseReason};window.setPaused?.(true,'recruit-welcome');
+    const portrait=byId('recruitWelcomePortrait');if(portrait)window.TigerStrikeBattlefieldRenderer?.drawSoldierPortrait(portrait.getContext('2d'),window.TigerEliteArmory?.appearance()||{});
     welcomeOverlay.style.display = "flex";
     welcomeOverlay.setAttribute("aria-hidden", "false");
     setTimeout(()=>welcomePlayBtn?.focus?.({preventScroll:true}), 50);
@@ -1359,6 +1377,36 @@
     hideWelcome();
     try{ window.toast?.("Tutorial skipped. You can play it anytime from Base HQ Training."); }catch(e){}
   }
+
+  function chooseRecruitPath(path){
+    saveFirstLaunchChoice(path);hideWelcome();
+    if(path==='solo')window.openBaseHqModePreview?.('Story');
+    else if(path==='friend')window.openLiveSquadOps?.({section:'story',launchType:'shared-story',storyMissionLevel:1});
+    else if(path==='practice')showRecruitPracticeMenu();
+  }
+  function showRecruitPracticeMenu(){
+    if(document.getElementById('recruitPracticeDialog')||window.TigerTutorial?.isRunning||window.TigerLiveSquad?.isOpen?.())return;
+    window.openBaseHQ?.({home:true});
+    const dialog=document.createElement('dialog');dialog.id='recruitPracticeDialog';
+    const heading=document.createElement('h2');heading.textContent='Free practice';const text=document.createElement('p');text.textContent='Use the real joystick and mission controls with a temporary training loadout. Original supplies and progress are restored when you leave. No mission rewards are earned.';dialog.append(heading,text);
+    for(const [kind,name] of [['movement','Movement & Controls'],['capture','Rubber, Tranquilize & Capture'],['rescue','Civilian Rescue'],['full','Full Tutorial']]){
+      const button=document.createElement('button');button.textContent=name;button.type='button';bindReliablePress(button,()=>{dialog.close();window.startTutorialPracticeFromBaseHQ?.(kind);});dialog.append(button);
+    }
+    const close=document.createElement('button');close.textContent='Return to HQ';close.type='button';bindReliablePress(close,()=>dialog.close());dialog.append(close);
+    dialog.addEventListener('keydown',e=>e.stopPropagation());dialog.addEventListener('close',()=>dialog.remove(),{once:true});document.body.append(dialog);dialog.showModal();
+  }
+  welcomeOverlay?.addEventListener('keydown',event=>{
+    if(welcomeOverlay.style.display!=='flex')return;event.stopPropagation();
+    if(event.key==='Escape'){event.preventDefault();skipFirstLaunchTutorial();}
+    if(event.key==='Tab'){
+      const buttons=[...welcomeOverlay.querySelectorAll('button')].filter(b=>!b.disabled),first=buttons[0],last=buttons[buttons.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+    }
+  });
+  bindReliablePress(byId('recruitPlaySolo'),()=>chooseRecruitPath('solo'));
+  bindReliablePress(byId('recruitPlayFriend'),()=>chooseRecruitPath('friend'));
+  bindReliablePress(byId('recruitPractice'),()=>chooseRecruitPath('practice'));
+  window.showRecruitPracticeMenu=showRecruitPracticeMenu;
 
   bindReliablePress(nextBtn, () => {
     const T = window.TigerTutorial;

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5282";
+const TS_BUILD = "5283";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4920,6 +4920,7 @@ function renderCompleteRecapCard(payload=null){
   renderSocialRescueCard();
   renderGovernmentProgramCard();
   renderMissionDebrief();
+  renderRecruitVictoryCard();
 }
 function renderMissionDebrief(){
   const node=document.getElementById('missionDebriefCard'),api=window.TigerMissionDebrief;
@@ -4928,6 +4929,8 @@ function renderMissionDebrief(){
   node.innerHTML=state.last?api.html(state.last,state):'';
 }
 function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
+  if(window.__TUTORIAL_MODE__)return;
+  const wasRecruit=!!window.TigerMasteryRewards?.rewards(S.missionDebriefs,'solo').find(r=>r.id==='rescue-recruit'&&r.unlocked);
   const api=window.TigerMissionDebrief;if(!api)return;
   const duration=S._debriefClock?api.clock(S._debriefClock,Date.now(),false).elapsedMs:null;
   const report={id:S._missionRunId||`legacy:${S.mode}:${meta.number}:${Date.now()}`,scope:'solo',missionKey:`${S.mode}:${meta.storyVariant||''}:${meta.number}:${meta.runIndex||0}:${S.mode==='Arcade'&&S.arcadeWeeklySeedEnabled?S.arcadeWeeklySeedKey||'':''}`,title:currentMissionLabel(),mode:S.mode,completed:true,durationMs:duration,civilianTotal:civTotal,civilianLost:civDead,rescued:stats.evac,captures:stats.captures,kills:stats.kills,reward:{cash:stats.cashEarned},rewardState:'awarded'};
@@ -4937,6 +4940,22 @@ function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
   report.bossCaptures=(S.captureCages||[]).filter(cage=>(S.tigers||[]).some(tiger=>tiger.id===cage.tigerId&&isBossTiger(tiger))).length;
   S.missionDebriefs=api.record(S.missionDebriefs,report).state;
   S.missionDebriefs=window.TigerMasteryRewards?.remember(S.missionDebriefs,'solo')||S.missionDebriefs;
+  S.missionDebriefs.lastChanges.recruitEarned=!wasRecruit&&!!window.TigerMasteryRewards?.rewards(S.missionDebriefs,'solo').find(r=>r.id==='rescue-recruit'&&r.unlocked);
+}
+
+function renderRecruitVictoryCard(){
+  const node=document.getElementById('recruitVictoryCard'),api=window.TigerMasteryRewards,state=window.TigerMissionDebrief?.normalize(S.missionDebriefs),run=state?.last;
+  if(!node||!api)return;
+  node.replaceChildren();node.hidden=true;
+  if(window.__TUTORIAL_MODE__||!S.missionEnded||!run?.completed||run.scope!=='solo'||run.mode!=='Story')return;
+  node.hidden=false;
+  const el=(tag,text)=>{const n=document.createElement(tag);n.textContent=text;return n;},rows=api.rewards(state,'solo'),badge=rows.find(r=>r.id==='rescue-recruit');
+  node.append(el('h3',state.lastChanges.recruitEarned?'First rescue victory • Rescue Recruit earned!':badge.unlocked?'Your Rescue Recruit badge is earned':'Your first rescue badge'),el('p',badge.unlocked?'Your permanent Solo badge recognizes a completed Story rescue. Equip it whenever you like.':'Finish a Story mission with at least one civilian safely rescued to earn Rescue Recruit. Practice does not award it.'));
+  if(badge.unlocked){const b=el('button',api.identity(state,'solo').badge?.id==='rescue-recruit'?'Rescue Recruit equipped':'Equip Rescue Recruit badge');b.disabled=api.identity(state,'solo').badge?.id==='rescue-recruit';b.onclick=()=>{missionMasteryRewardCommand('equip','rescue-recruit',b);renderRecruitVictoryCard();};node.append(b);}
+  if(state.lastChanges.recruitEarned){const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=600;canvas.setAttribute('aria-label','Your soldier celebrating a completed rescue');node.append(canvas);window.TigerShowcaseScene?.drawVictory(canvas.getContext('2d'),{players:[{eliteAppearance:window.TigerEliteArmory?.appearance()||{}}],staticPose:true,title:'FIRST RESCUE • RESCUE RECRUIT',subtitle:'Permanent Solo badge earned from your completed mission'});}
+  const next=rows.filter(r=>r.target>0&&!r.unlocked).sort((a,b)=>b.progress/b.target-a.progress/a.target)[0];
+  if(next)node.append(el('p',`Next reward: ${next.name} • ${next.progress}/${next.target}. ${api.requirementText(next)}`));
+  node.append(el('p',run.campaignLevel<100?`Next: Story Mission ${run.campaignLevel+1}. Use Start Next Mission below, or invite a friend to prepare Co-op.`:'Story campaign complete. Replay a favorite mission or prepare Co-op with a friend.'));
 }
 
 function renderMissionVictoryHero(summary=null){
@@ -11222,6 +11241,7 @@ function storyObjectiveProgressText(cfg){
   return bits.length ? ` • ${bits.join(" • ")}` : "";
 }
 function storyMissionLiveStepText(cfg, state=S){
+  if(window.__TUTORIAL_MODE__)return "Training: follow the highlighted lesson. End Practice or Skip Tutorial returns your original supplies.";
   if(!cfg) return "";
   const src = (state && typeof state === "object") ? state : S;
   const civilians = Array.isArray(src.civilians) ? src.civilians : [];
@@ -18001,6 +18021,7 @@ function stabilizeStateForPersistence(state, reason="save"){
   return state;
 }
 function buildPersistedState(){
+  if(window.__TUTORIAL_MODE__ && S._tutorialSnapshot)return cloneState(S._tutorialSnapshot);
   captureActiveModeProfile(S);
   const out = { ...S };
   if(S._debriefClock && window.TigerMissionDebrief)out._debriefClock=window.TigerMissionDebrief.clock(S._debriefClock,Date.now(),false);
@@ -19009,6 +19030,7 @@ function screenToWorldPoint(x, y, state=S){
 }
 
 function flushSaveNow(){
+  if(window.__TUTORIAL_MODE__) return;
   __lastSave = Date.now();
   __savePending = false;
   let primarySaved = false;
@@ -19026,6 +19048,7 @@ function flushSaveNow(){
 }
 
 function flushStoryLiteNow(source="autosave-lite"){
+  if(window.__TUTORIAL_MODE__) return;
   __lastSave = Date.now();
   __savePending = false;
   const mode = normalizeModeName(S.mode);
@@ -34041,6 +34064,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]} Timers show what is urgent now: daily rewards, weekly challenges, live co-op goals, and boss hunt seasons.`,
       actions:[
         ["Live Rescue Event","openRescueEventBoard()"],
+        ["New Recruit Guide","openRecruitWelcome()"],
         ["Live Co-op","openLiveCoopWorldEventsFromBaseHQ()"],
         ["Live Ops","openLiveOpsFromBaseHQ()"],
         ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
@@ -34149,6 +34173,8 @@ function baseHqCommandActions(){
     openBaseHqLeaderboardBoard,
     openBaseHqEventBoard,
     openRescueEventBoard,
+    openRecruitWelcome,
+    openRecruitPracticeMenu,
     openStoryFromBaseHQ,
     openModeFromBaseHQ,
     openShopFromBaseHQ,
@@ -34936,6 +34962,8 @@ function renderBaseHqQuickBar(){
     ${button("Story", "openBaseHqModePreview('Story')", "primary")}
     ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
+    ${button("New Recruit Guide", "openRecruitWelcome()", "primary")}
+    ${button("Free Practice", "openRecruitPracticeMenu()", "primary")}
     ${button("Tutorial", "startTutorialFromBaseHQ()", "primary")}
     ${button("World Map", "openWorldMapCampaign()", "primary")}
     ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
@@ -35679,6 +35707,8 @@ function closeBaseHQ(){
 function startModeFromBaseHQ(mode="Story"){
   openBaseHqModePreview(mode);
 }
+function openRecruitWelcome(){return window.showFirstLaunchTutorialChoice?.(true);}
+function openRecruitPracticeMenu(){return window.showRecruitPracticeMenu?.();}
 function startTutorialFromBaseHQ(){
   leaveBaseHqView({ restoreMenu:true });
   resetTouchStick();
@@ -35690,6 +35720,7 @@ function startTutorialFromBaseHQ(){
 function startTutorialPracticeFromBaseHQ(kind="full"){
   const keyByKind = {
     full:"",
+    movement:"move",
     rescue:"escort",
     combat:"scan_line",
     capture:"scan_line",
@@ -35705,7 +35736,7 @@ function startTutorialPracticeFromBaseHQ(kind="full"){
   resetTouchStick();
   setPaused(false, null);
   closeMissionBrief(true);
-  window.startTutorial?.(startKey ? { startKey } : undefined);
+  window.startTutorial?.(startKey ? { startKey, practiceKind:["movement","rescue","combat","capture"].includes(safeKind)?safeKind:"" } : undefined);
   const label = safeKind === "full" ? "Full tutorial" : `${safeKind.charAt(0).toUpperCase()}${safeKind.slice(1)} practice`;
   toast(`${label} started from HQ Training.`);
   syncGamepadFocus();
@@ -38661,6 +38692,7 @@ window.enterTutorialMode = function () {
   // Tutorial can be launched from the desktop button, the mobile menu, or an
   // HQ Training card. All paths must leave the walkable HQ world first.
   try{ leaveBaseHqView({ restoreMenu:true }); }catch(e){}
+  applyMobileMenuState(true);
   // Training owns the screen while it runs. A pending daily reward or startup
   // movie must never sit invisibly above the joystick and swallow touches.
   ["dailyRewardOverlay","baseHqOverlay","launchIntroOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","worldMapCampaignOverlay"].forEach((id)=>{
@@ -43811,7 +43843,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
-  if(document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
@@ -43967,7 +43999,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -52362,7 +52394,7 @@ function renderFirstHuntCoach(target=null){
   }else if(S.inBattle){
     step = 4;
     title = "Weaken the tiger";
-    hint = "Attack, watch your HP, and use Roll or Armor when danger is called.";
+    hint = "Use Rubber to weaken without killing. Roll when an attack is warned; Med heals and Armor restores protection.";
   }else if(!state.moved){
     step = 1;
   }else if(!state.rescued){
@@ -52376,7 +52408,7 @@ function renderFirstHuntCoach(target=null){
   }else if(!state.resolved){
     step = 4;
     title = target ? "Tap the locked tiger to engage" : "Follow the scan line to a tiger";
-    hint = "Move closer if needed. Attack until the Capture button highlights.";
+    hint = "Move closer to engage. Use Rubber from the first shot; use Capture once the tiger is weakened.";
   }else{
     step = 5;
     title = state.extractionReady ? "Secure the extraction route" : "Finish the rescue";
@@ -52923,6 +52955,7 @@ function renderHUD(){
             ? `Arcade ${arcadeMission.number}/100 • ${arcadeLeft}s • ${arcadeMedal}`
           : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
   }
+  if(window.__TUTORIAL_MODE__&&mobileMissionChip)mobileMissionChip.innerText="Training • No real supplies spent";
   if(mobileThreatChip){
     const nearestAwareTiger = (S.tigers || []).filter((t)=>t?.alive).sort((a,b)=>dist(S.me.x,S.me.y,a.x,a.y)-dist(S.me.x,S.me.y,b.x,b.y))[0];
     const awarenessVisual = livingTigerVisual(nearestAwareTiger?.awarenessState);
