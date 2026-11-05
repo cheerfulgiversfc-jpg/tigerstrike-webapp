@@ -7,7 +7,7 @@ test('rescue cards require a recorded completed claimed result, never an unlock,
  assert.equal(C.model(raw({completed:false}),saved(raw())),null);
  assert.equal(C.model(raw({rewardState:'pending'}),saved(raw())),null);
  assert.equal(C.model(raw({id:'not-recorded'}),saved(raw())),null);
- const m=C.model(raw(),saved(raw()));assert.equal(m.captures,1);assert.equal(m.time,'2:00');assert(m.highlights.includes('Everyone Home'));assert(m.highlights.includes('Boss captured alive'));assert(!m.highlights.includes('New personal best'));
+ const m=C.model(raw(),saved(raw()));assert.equal(m.captures,1);assert.equal(m.time,'2:00');assert(m.highlights.includes('Everyone Home'));assert(m.highlights.includes('First recorded boss capture'));assert(!m.highlights.includes('New personal best'));
 });
 test('personal best highlights use this run’s recorded improvement, separately from the first clear',()=>{
  let s=saved(raw());const r=raw({id:'solo:run2',durationMs:110000});s=D.record(s,r).state;

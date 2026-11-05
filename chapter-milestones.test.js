@@ -15,7 +15,7 @@ test('legacy migration preserves verified chapter clears without invented medals
   const old=debrief.normalize({records:state.records,storyLastMission:100});assert.deepEqual(old.milestones.solo.trophies,[2]);assert.equal(old.lastChanges.newChapters,undefined);
   const unverified=debrief.normalize({storyLastMission:100,unlockedStoryLevel:100});assert.deepEqual(unverified.milestones.solo.trophies,[]);
   const archived=debrief.normalize({...state,records:{}});assert.deepEqual(archived.milestones.solo.trophies,[2]);assert.deepEqual(archived.milestones.coop.trophies,[]);
-  assert.deepEqual(api.normalize({solo:{trophies:[0,1,1,11,'2'],bossCaptureRecorded:'yes'}}).solo,{trophies:[1],bossCaptureRecorded:false});
+  assert.deepEqual(api.normalize({solo:{trophies:[0,1,1,11,'2'],bossCaptureRecorded:'yes'}}).solo,{trophies:[1],bossCaptureRecorded:false,firstBossCaptureRunId:''});
 });
 test('all ten chapters award separately; failed runs and other modes cannot create Story trophies',()=>{
   let state={};for(let n=1;n<=100;n++)state=debrief.record(state,run(n)).state;

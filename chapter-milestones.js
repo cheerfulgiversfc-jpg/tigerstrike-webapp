@@ -9,14 +9,14 @@
   function normalize(raw={},records={}){
     return Object.fromEntries(['solo','coop'].map(scope=>{
       const known=counts(records,scope),stored=Array.isArray(raw?.[scope]?.trophies)?raw[scope].trophies:[];
-      return [scope,{trophies:Array.from({length:10},(_,i)=>i+1).filter(c=>known[c-1]===10||stored.includes(c)),bossCaptureRecorded:raw?.[scope]?.bossCaptureRecorded===true}];
+      return [scope,{trophies:Array.from({length:10},(_,i)=>i+1).filter(c=>known[c-1]===10||stored.includes(c)),bossCaptureRecorded:raw?.[scope]?.bossCaptureRecorded===true,firstBossCaptureRunId:raw?.[scope]?.bossCaptureRecorded===true?String(raw?.[scope]?.firstBossCaptureRunId||'').slice(0,150):''}];
     }));
   }
   function capture(state,run,changes){
     const previous=normalize(state.milestones),next=normalize(previous,state.records),scope=run.scope==='coop'?'coop':'solo';
     changes.newChapters=next[scope].trophies.filter(c=>!previous[scope].trophies.includes(c));
     const highlights=[];
-    if(run.bossCaptures>0&&!previous[scope].bossCaptureRecorded){next[scope].bossCaptureRecorded=true;highlights.push('First recorded boss capture');}
+    if(run.bossCaptures>0&&!previous[scope].bossCaptureRecorded){next[scope].bossCaptureRecorded=true;next[scope].firstBossCaptureRunId=run.id;highlights.push('First recorded boss capture');}
     if(run.civilianTotal>0&&run.rescued===run.civilianTotal&&run.civilianLost===0)highlights.push(`Everyone home: ${run.rescued}/${run.civilianTotal} civilians saved`);
     if(changes.personalBest)highlights.push('New fastest recorded clear');
     changes.highlights=highlights;

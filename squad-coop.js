@@ -954,7 +954,7 @@
     const snap=state.snapshot,run=snap?.status==='complete'?snap.debrief:state.profile?.missionDebriefs?.last;
     if(!window.TigerRescueCards?.model(run,state.profile?.missionDebriefs))return setMessage('Claim a completed mission result before making its card.',true);
     const players=(snap?.players||[]).map(p=>({...p}));
-    window.TigerRescueCards.open({run,records:state.profile.missionDebriefs,players,squad:()=>state.snapshot,invite:async()=>{
+    window.TigerRescueCards.open({run,records:state.profile.missionDebriefs,players,profileType:rescueEventActive()?(soloRescueEvent()?'monsoon-solo':'monsoon-rescue'):'',squad:()=>state.snapshot,invite:async()=>{
       const code=state.code;await api('sync');
       if(state.code!==code||!window.TigerRescueCards.invitationAvailable(state.snapshot))throw Error('This squad no longer has a waiting space. Return to the squad to check its status.');
       await invite();
