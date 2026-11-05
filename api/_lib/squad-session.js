@@ -4348,6 +4348,7 @@ async function claimReward(session, user){
     profile.sanctuary = sanctuaryCare.state;
   }
   const report=buildMissionDebrief(session,auditPlayers,auditDerived,uid,awardedReward,rewardApplied?'awarded':'already-claimed');
+  try{report.actors=await Promise.all(auditPlayers.map(async p=>{const peer=p.userId===uid?profile:await readCoopProfile(p.userId);return {name:p.name,eliteAppearance:await eliteStore.visual(p.userId),masteryIdentity:{uniform:{palette:masteryRewards.uniformPalette(masteryRewards.identity(peer.missionDebriefs,'coop').uniform?.id)}}};}));}catch{report.actors=[];}
   const recorded=missionDebrief.record(profile.missionDebriefs,report);
   profile.missionDebriefs=recorded.state;
   profile.missionDebriefs=masteryRewards.remember(profile.missionDebriefs,'coop');

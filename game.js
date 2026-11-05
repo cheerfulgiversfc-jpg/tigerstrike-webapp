@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5284";
+const TS_BUILD = "5285";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4922,6 +4922,7 @@ function renderCompleteRecapCard(payload=null){
   renderMissionDebrief();
   renderRecruitVictoryCard();
   const report=S.missionDebriefs?.last;
+  window.TigerRescueCards?.mount(document.getElementById('rescueResultCard'),{run:!window.__TUTORIAL_MODE__&&S.missionEnded?report:null,records:S.missionDebriefs,open:()=>{if(window.__TUTORIAL_MODE__||!S.missionEnded)return;const context=organizerSoloContext();window.TigerRescueCards.open({run:S.missionDebriefs?.last,records:S.missionDebriefs,players:[{name:tg?.initDataUnsafe?.user?.first_name||'Your soldier',eliteAppearance:context.current.appearance,masteryIdentity:{uniform:{palette:context.uniformPalette}}}]});}});
   window.TigerPlayerHub?.mountFirstFeedback(document.getElementById('launchFeedbackPrompt'),{eligible:!window.__TUTORIAL_MODE__&&S.missionEnded&&report?.completed&&report.mode==='Story'&&report.campaignLevel===1&&window.TigerMasteryRewards?.progress(S.missionDebriefs,'solo').clears===1,open:onSaved=>openPlayerReport('feedback',{onSaved})});
 }
 function renderMissionDebrief(){
@@ -4940,6 +4941,8 @@ function recordSoloMissionDebrief(meta,stats,civTotal,civDead){
   const field=fieldContext();if(field)report.field={...field.state,leadStatus:field.lead?.status||'not-offered'};
   report.campaignLevel=S.mode==='Story'&&meta.storyVariant===STORY_VARIANTS.CAMPAIGN?meta.number:0;
   report.bossCaptures=(S.captureCages||[]).filter(cage=>(S.tigers||[]).some(tiger=>tiger.id===cage.tigerId&&isBossTiger(tiger))).length;
+  try{const cardContext=organizerSoloContext();
+  report.actors=[{name:tg?.initDataUnsafe?.user?.first_name||'Your soldier',eliteAppearance:cardContext.current.appearance,masteryIdentity:{uniform:{palette:cardContext.uniformPalette}}}];}catch{report.actors=[];}
   S.missionDebriefs=api.record(S.missionDebriefs,report).state;
   S.missionDebriefs=window.TigerMasteryRewards?.remember(S.missionDebriefs,'solo')||S.missionDebriefs;
   S.missionDebriefs.lastChanges.recruitEarned=!wasRecruit&&!!window.TigerMasteryRewards?.rewards(S.missionDebriefs,'solo').find(r=>r.id==='rescue-recruit'&&r.unlocked);
@@ -43854,7 +43857,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
-  if(document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
@@ -44010,7 +44013,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 

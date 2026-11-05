@@ -66,6 +66,7 @@ test('both players retain separate bests; repeated claims and practice replay ne
   await assert.rejects(()=>squad.applyAction(s,host,'replay'),/claim the result/);
   const first=await squad.claimReward(s,host);await squad.claimReward(s,mate);
   const reconnected=await squad.joinSession(s.code,host),restored=await squad.buildSnapshot(reconnected,host.id);
+  assert.equal(restored.debrief.actors.length,2);assert.equal(restored.debrief.actors[0].name,host.first_name);assert.equal(restored.debrief.actors[0].userId,undefined);assert(require('./result-cards').model(restored.debrief,first.profile.missionDebriefs));
   assert.equal(restored.debrief.rewardState,'awarded');assert.equal(restored.debrief.id,first.profile.missionDebriefs.last.id);
   const key=first.profile.missionDebriefs.last.key,best=first.profile.missionDebriefs.records[key];
   assert(best.fastestMs>=60000);assert.equal(best.clears,1);

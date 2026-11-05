@@ -1333,3 +1333,10 @@ Behavior:
 5. Test in Telegram:
    - `/stats_today`
    - `/liveops_now`
+
+### V16.4 — Rescue Highlights & Share Cards (build 5285)
+- Solo completed results and claimed Co-op results offer a result card rendered with the production soldier/scenery artwork. New records retain both soldiers’ result-time appearance; older results explicitly use current equipment. No preview/sample results are added to player records.
+- Cards read the last completed, receipted debrief in its own scope; medals, time and personal-best claims use those recorded outcomes. No boss-first claim is fabricated. Account IDs and squad codes are excluded. Soldier names are opt-in on the PNG, off by default.
+- Save the PNG or use device file sharing where supported. Telegram result sharing opens the user’s recipient picker with result text and the showcase link; it does not automatically attach the PNG. Save/attach or device image sharing handles the artwork. Nothing is sent automatically, and no share bonus is granted.
+- A prior Co-op card can be reopened in the lobby. Join-my-next-rescue is enabled only for a waiting squad with one member and revalidates the actual squad before the existing invite flow. Full/completed/active squads keep their existing Continue/Leave controls.
+- Local tests and desktop/phone layout checks do not replace physical Telegram recipient-picker and file-sharing checks. The Monsoon event schedule is unchanged.

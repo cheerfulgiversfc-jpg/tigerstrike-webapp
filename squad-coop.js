@@ -317,6 +317,7 @@
       <button type="button" class="squadBtn" data-squad-command="smooth-play">Graphics</button>
       <button type="button" class="squadBtn" data-squad-command="elite-armory">Elite Armory</button>
       <button type="button" class="squadBtn" data-squad-command="organizer">Saved Loadouts</button><button type="button" class="squadBtn" data-squad-command="personal-hq" ${active?'disabled title="Visit HQ after the mission"':''}>Personal Rescue HQ</button>
+      ${!active&&state.profile?.missionDebriefs?.last?.actors?.length&&state.profile?.missionDebriefs?.last?.scope==='coop'&&window.TigerRescueCards?.model(state.profile.missionDebriefs.last,state.profile.missionDebriefs)?'<button type="button" class="squadBtn" data-squad-command="rescue-card">Share last rescue card</button>':''}
       <button type="button" class="squadBtn" data-squad-command="arrange-controls">Arrange Controls</button>
       ${state.snapshot?.routeVersion===1&&sharedStoryActive()&&window.TigerMissionRoutes?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="mission-route">Mission Route</button>':''}
       ${active&&state.snapshot?.fieldVersion===1&&sharedStoryActive()&&window.TigerFieldOperations?.enabled(state.storyMissionLevel)?'<button type="button" class="squadBtn" data-squad-command="field-actions">Field Actions</button>':''}
@@ -948,6 +949,18 @@
     </div>`;
   }
 
+  async function openRescueResultCard(){
+    clearPresentationInput();
+    const snap=state.snapshot,run=snap?.status==='complete'?snap.debrief:state.profile?.missionDebriefs?.last;
+    if(!window.TigerRescueCards?.model(run,state.profile?.missionDebriefs))return setMessage('Claim a completed mission result before making its card.',true);
+    const players=(snap?.players||[]).map(p=>({...p}));
+    window.TigerRescueCards.open({run,records:state.profile.missionDebriefs,players,squad:()=>state.snapshot,invite:async()=>{
+      const code=state.code;await api('sync');
+      if(state.code!==code||!window.TigerRescueCards.invitationAvailable(state.snapshot))throw Error('This squad no longer has a waiting space. Return to the squad to check its status.');
+      await invite();
+    }});
+  }
+
   function completionActionsHtml(){
     const snap = state.snapshot;
     if(!snap) return "";
@@ -957,6 +970,7 @@
     const mine = localSnapshotPlayer();
     const nextLevel = Number(snap.nextStoryMissionLevel || 0);
     const parts = [];
+    if(mine?.rewardClaimed&&window.TigerRescueCards?.model(snap.debrief,state.profile?.missionDebriefs))parts.push('<button type="button" class="squadBtn" data-squad-command="rescue-card">View & share rescue card</button>');
     if(!mine?.rewardClaimed) parts.push(`<button type="button" class="squadBtn good" data-squad-command="claim">Claim Mission Reward</button>`);
     else parts.push(`<button type="button" class="squadBtn" disabled>✅ Reward Claimed</button>${rescueEventActive()?'<button type="button" class="squadBtn" data-squad-command="claim">Retry event credit</button>':''}`);
     if(sharedStoryActive() && nextLevel){
@@ -1308,6 +1322,7 @@
       'mastery-preview':()=>masteryRewardCommand('preview',button?.dataset?.squadItem,button),
       'mastery-equip':()=>masteryRewardCommand('equip',button?.dataset?.squadItem,button),
       "gear-use":()=>gearCommand("gear-use", button?.dataset?.squadItem),
+      'rescue-card':()=>openRescueResultCard(),
       claim:()=>claim(),
       "transport-skip":()=>skipSquadTransportMovie(),
       leave:()=>leave(),
@@ -3149,7 +3164,7 @@
   window.addEventListener('mission-route-open',()=>{clearPresentationInput();if(state.open&&state.code)sync(true).catch(()=>{});});
   window.addEventListener('blur',clearPresentationInput);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPresentationInput();});
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('playerLaunchHub')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });

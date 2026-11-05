@@ -3,16 +3,16 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="tiger-build" content="5284">
+  <meta name="tiger-build" content="5285">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V16.3 (Player Launch Hub)</title>
+  <title>Tiger Strike 🐅 — V16.4 (Rescue Highlights)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5284-launch-hub">
-  <link rel="stylesheet" href="./touch-layout.css?v=5284-launch-hub">
-  <link rel="stylesheet" href="./battlefield-awareness.css?v=5284-launch-hub">
+  <link rel="stylesheet" href="./squad-coop.css?v=5285-rescue-cards">
+  <link rel="stylesheet" href="./touch-layout.css?v=5285-rescue-cards">
+  <link rel="stylesheet" href="./battlefield-awareness.css?v=5285-rescue-cards">
 
   <style>
     :root{
@@ -2577,15 +2577,16 @@
 .missionExperience{display:grid;gap:5px;margin:7px 0}.missionExperience[hidden],.missionExperience [hidden]{display:none!important}.missionExperience button{width:100%;text-align:left;padding:10px 12px;min-height:44px;border:1px solid #4b8f76;border-radius:12px;background:#0b2925;color:#ecfdf5;font-size:12px;line-height:1.4}.missionExperience [role=status]{font-size:12px;padding:7px 10px;border-radius:10px;background:#172033;color:#dbeafe}.missionExperience [data-stage=ready]{background:#14532d;color:#dcfce7}.missionExperience [data-stage=blocked]{background:#541b2c;color:#ffe4e6}
 </style>
 <style>.soloFieldRadio{border:1px solid #467d78;border-radius:12px;padding:8px;font-size:12px;background:#0c2629;color:#e0f2fe}.soloFieldRadio summary{cursor:pointer;min-height:28px;font-weight:850}.radioCommands{display:flex;flex-wrap:wrap;gap:5px}.missionExperience .radioCommands button{width:auto;flex:1 1 110px}.soloFieldRadio [role=status]{margin-top:6px}</style>
-  <link rel="stylesheet" href="./elite-armory.css?v=5284-launch-hub">
+  <link rel="stylesheet" href="./elite-armory.css?v=5285-rescue-cards">
 </head>
 
 <body>
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V16.3</span> <span class="tag">Player Launch Hub</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V16.4</span> <span class="tag">Rescue Highlights</span></div>
       <div class="sub">
+        V16.4 — Rescue Highlights &amp; Share Cards: completed recorded mission results now have a View &amp; Share Rescue Card button in Solo results and claimed Co-op results. Detailed production soldiers show equipment recorded at the result; older records use the current appearance and say so. Cards show actual civilian, capture, kill and time results, with earned perfect-rescue, boss-capture and personal-best highlights. Soldier names are excluded from image exports unless you opt in. Save the PNG, use supported device image sharing, or share result text plus the game link on Telegram. A waiting squad with one open seat can invite a teammate from its last rescue card; squad availability is rechecked before opening the existing invitation flow. Sharing changes no rewards or progress. Monsoon Rescue remains paused.<br>
         V16.3 — Player Launch &amp; Feedback Hub: the public /discover page shows the current production mission cinematic, detailed soldiers and Story-style scenery, with the configured official Telegram launch link and accurate Solo/Co-op instructions. Invitations explain the actual squad mission before a new player joins; returning members retain direct reconnection. Optional first-mission feedback and bug-report forms live at HQ → Player Feedback &amp; Reports, with a Report a Problem button in Solo results. Reports attach the game build, mode, mission and screen; the player reviews and explicitly sends them. The owner dashboard requires a signed configured Telegram administrator and displays real recorded activity since V16.3, UTC return visits, tutorial reports, client-synced single-player clears and server-verified Co-op clear accounts. Unavailable storage is labeled, never replaced with sample counts. Reports are deduplicated and rate limited. No gameplay reward is attached to reporting. Monsoon Rescue remains paused until the organizer resumes it.<br>
         V13.5 off-screen guidance, live progress and optional Docked Controls remain available.<br>
         V13.4 targeting and attack-warning improvements remain active.<br>
@@ -3387,7 +3388,7 @@
         <div class="storySceneText" id="completeRecapCard">Mission recap preparing...</div>
       </div>
       <div class="storyScene"><div class="storySceneTitle">Your Mission Impact</div><div id="missionImpact" class="storySceneText"></div></div>
-      <div id="missionDebriefCard"></div>
+      <div id="missionDebriefCard"></div><section id="rescueResultCard" class="premiumSummaryCard" hidden></section>
       <div class="cinemaOutroCard" id="completeCinemaOutro" style="display:none">
         <div class="cinemaOutroTitle">🎬 Cinematic Escape Recap</div>
         <div class="cinemaOutroLine" id="completeCinemaOutroText">Escape recap preparing...</div>
@@ -3657,56 +3658,58 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./water-terrain.js?v=5284-launch-hub"></script>
-  <script src="./engagement-rules.js?v=5284-launch-hub"></script>
-  <script src="./smooth-play.js?v=5284-launch-hub"></script>
-  <script src="./combat-feel.js?v=5284-launch-hub"></script>
-  <script src="./combat-reactions.js?v=5284-launch-hub"></script>
-  <script src="./chapter-maps.js?v=5284-launch-hub"></script>
-  <script src="./mission-routes.js?v=5284-launch-hub"></script>
-  <script src="./field-operations.js?v=5284-launch-hub"></script>
-  <script src="./extraction-geometry.js?v=5284-launch-hub"></script>
-  <script src="./ammo-modes.js?v=5284-launch-hub"></script>
-  <script src="./government-policy.js?v=5284-launch-hub"></script>
-  <script src="./tiger-intelligence.js?v=5284-launch-hub"></script>
-  <script src="./tiger-encounters.js?v=5284-launch-hub"></script>
-  <script src="./tiger-pursuit.js?v=5284-launch-hub"></script>
-  <script src="./living-world.js?v=5284-launch-hub"></script>
-  <script src="./mission-map-truth.js?v=5284-launch-hub"></script>
-  <script src="./post-campaign.js?v=5284-launch-hub"></script>
-  <script src="./sanctuary.js?v=5284-launch-hub"></script>
-  <script src="./player-experience.js?v=5284-launch-hub"></script>
-  <script src="./battlefield-awareness.js?v=5284-launch-hub"></script>
-  <script src="./field-radio.js?v=5284-launch-hub"></script>
-  <script src="./civilian-rescue.js?v=5284-launch-hub"></script>
-  <script src="./rescue-tools.js?v=5284-launch-hub"></script>
-  <script src="./escort-teamwork.js?v=5284-launch-hub"></script>
-  <script src="./chapter-milestones.js?v=5284-launch-hub"></script>
-  <script src="./mission-debrief.js?v=5284-launch-hub"></script>
-  <script src="./mastery-rewards.js?v=5284-launch-hub"></script>
-  <script src="./vehicle-art.js?v=5284-launch-hub"></script>
-  <script src="./shared-battlefield-renderer.js?v=5284-launch-hub"></script>
-  <script src="./touch-layout.js?v=5284-launch-hub"></script>
-  <script src="./elite-catalog.js?v=5284-launch-hub"></script>
-  <script src="./wildlife-tranq.js?v=5284-launch-hub"></script>
-  <script src="./showcase-scene.js?v=5284-launch-hub"></script>
-  <script src="./commander-celebration.js?v=5284-launch-hub"></script>
-  <script src="./armory-organizer.js?v=5284-launch-hub"></script>
-  <script src="./personal-rescue-hq.js?v=5284-launch-hub"></script>
-  <script src="./hq-world-art.js?v=5284-launch-hub"></script>
-  <script src="./live-rescue-event.js?v=5284-launch-hub"></script>
-  <script src="./rescue-event-board.js?v=5284-launch-hub"></script>
-  <link rel="stylesheet" href="./player-launch.css?v=5284-launch-hub">
-  <script src="./player-launch.js?v=5284-launch-hub"></script>
-  <script src="./game.js?v=5284-launch-hub"></script>
-  <script src="./story-cinematics.js?v=5284-launch-hub"></script>
-  <script src="./field-systems.js?v=5284-launch-hub"></script>
-  <script src="./tutorial.js?v=5284-launch-hub"></script>
-  <script src="./squad-motion.js?v=5284-launch-hub"></script>
-  <script src="./character-voice.js?v=5284-launch-hub"></script>
-  <script src="./elite-armory.js?v=5284-launch-hub"></script>
-  <script src="./squad-coop.js?v=5284-launch-hub"></script>
-  <script src="./extraction-qa.js?v=5284-launch-hub"></script>
+  <script src="./water-terrain.js?v=5285-rescue-cards"></script>
+  <script src="./engagement-rules.js?v=5285-rescue-cards"></script>
+  <script src="./smooth-play.js?v=5285-rescue-cards"></script>
+  <script src="./combat-feel.js?v=5285-rescue-cards"></script>
+  <script src="./combat-reactions.js?v=5285-rescue-cards"></script>
+  <script src="./chapter-maps.js?v=5285-rescue-cards"></script>
+  <script src="./mission-routes.js?v=5285-rescue-cards"></script>
+  <script src="./field-operations.js?v=5285-rescue-cards"></script>
+  <script src="./extraction-geometry.js?v=5285-rescue-cards"></script>
+  <script src="./ammo-modes.js?v=5285-rescue-cards"></script>
+  <script src="./government-policy.js?v=5285-rescue-cards"></script>
+  <script src="./tiger-intelligence.js?v=5285-rescue-cards"></script>
+  <script src="./tiger-encounters.js?v=5285-rescue-cards"></script>
+  <script src="./tiger-pursuit.js?v=5285-rescue-cards"></script>
+  <script src="./living-world.js?v=5285-rescue-cards"></script>
+  <script src="./mission-map-truth.js?v=5285-rescue-cards"></script>
+  <script src="./post-campaign.js?v=5285-rescue-cards"></script>
+  <script src="./sanctuary.js?v=5285-rescue-cards"></script>
+  <script src="./player-experience.js?v=5285-rescue-cards"></script>
+  <script src="./battlefield-awareness.js?v=5285-rescue-cards"></script>
+  <script src="./field-radio.js?v=5285-rescue-cards"></script>
+  <script src="./civilian-rescue.js?v=5285-rescue-cards"></script>
+  <script src="./rescue-tools.js?v=5285-rescue-cards"></script>
+  <script src="./escort-teamwork.js?v=5285-rescue-cards"></script>
+  <script src="./chapter-milestones.js?v=5285-rescue-cards"></script>
+  <script src="./mission-debrief.js?v=5285-rescue-cards"></script>
+  <script src="./mastery-rewards.js?v=5285-rescue-cards"></script>
+  <script src="./vehicle-art.js?v=5285-rescue-cards"></script>
+  <script src="./shared-battlefield-renderer.js?v=5285-rescue-cards"></script>
+  <script src="./touch-layout.js?v=5285-rescue-cards"></script>
+  <script src="./elite-catalog.js?v=5285-rescue-cards"></script>
+  <script src="./wildlife-tranq.js?v=5285-rescue-cards"></script>
+  <script src="./showcase-scene.js?v=5285-rescue-cards"></script>
+  <script src="./commander-celebration.js?v=5285-rescue-cards"></script>
+  <script src="./armory-organizer.js?v=5285-rescue-cards"></script>
+  <script src="./personal-rescue-hq.js?v=5285-rescue-cards"></script>
+  <script src="./hq-world-art.js?v=5285-rescue-cards"></script>
+  <script src="./live-rescue-event.js?v=5285-rescue-cards"></script>
+  <script src="./rescue-event-board.js?v=5285-rescue-cards"></script>
+  <link rel="stylesheet" href="./player-launch.css?v=5285-rescue-cards">
+  <link rel="stylesheet" href="./result-cards.css?v=5285-rescue-cards">
+  <script src="./result-cards.js?v=5285-rescue-cards"></script>
+  <script src="./player-launch.js?v=5285-rescue-cards"></script>
+  <script src="./game.js?v=5285-rescue-cards"></script>
+  <script src="./story-cinematics.js?v=5285-rescue-cards"></script>
+  <script src="./field-systems.js?v=5285-rescue-cards"></script>
+  <script src="./tutorial.js?v=5285-rescue-cards"></script>
+  <script src="./squad-motion.js?v=5285-rescue-cards"></script>
+  <script src="./character-voice.js?v=5285-rescue-cards"></script>
+  <script src="./elite-armory.js?v=5285-rescue-cards"></script>
+  <script src="./squad-coop.js?v=5285-rescue-cards"></script>
+  <script src="./extraction-qa.js?v=5285-rescue-cards"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";
