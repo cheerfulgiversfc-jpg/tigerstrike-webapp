@@ -3363,6 +3363,7 @@ async function buildSnapshot(session, viewerId){
   const profiles=new Map(await Promise.all(profileIds.map(async id=>[id,await readCoopProfile(id)])));
   const viewerProfile=profiles.get(userIdOf(viewerId)),leaderProfile=profiles.get(session.hostId);
   const eliteIdentities=new Map(await Promise.all(players.map(async p=>[p.userId,await eliteStore.visual(p.userId)])));
+  let partnerStyles={};if(players.length===2)try{partnerStyles=await require('./rescue-partner-store').styles(players[0].userId,players[1].userId);}catch{}
   const markers=await readyMarkers(session,players);
   const masteryIdentities=new Map(players.map(player=>[player.userId,masteryRewards.identity(profiles.get(player.userId).missionDebriefs,'coop')]));
   const leaderSanctuaryState = sanctuarySystem.syncLegacyCaptures(leaderProfile.sanctuary, leaderProfile.stats.captures);
@@ -3479,7 +3480,7 @@ async function buildSnapshot(session, viewerId){
     readyVersion:session.readyVersion,readyRevision:session.readyRevision,
     readyCount:players.filter(p=>isReady(session,p,profiles.get(p.userId),markers.get(p.userId),at)).length,
     allReady:players.length===2&&players.every(p=>isReady(session,p,profiles.get(p.userId),markers.get(p.userId),at)),
-    players:players.map((p)=>({ ...p, ready:isReady(session,p,profiles.get(p.userId),markers.get(p.userId),at), eliteAppearance:eliteIdentities.get(p.userId), masteryIdentity:masteryIdentities.get(p.userId), online:at - p.lastSeenAt <= 15000 })),
+    players:players.map((p)=>({ ...p, partnerStyle:partnerStyles[String(p.userId)]||'', ready:isReady(session,p,profiles.get(p.userId),markers.get(p.userId),at), eliteAppearance:eliteIdentities.get(p.userId), masteryIdentity:masteryIdentities.get(p.userId), online:at - p.lastSeenAt <= 15000 })),
   };
 }
 
@@ -4409,7 +4410,14 @@ async function claimReward(session, user){
     profile.sanctuary = sanctuaryCare.state;
   }
   const report=buildMissionDebrief(session,auditPlayers,auditDerived,uid,awardedReward,rewardApplied?'awarded':'already-claimed');
-  try{report.actors=await Promise.all(auditPlayers.map(async p=>{const peer=p.userId===uid?profile:await readCoopProfile(p.userId);return {name:p.name,eliteAppearance:await eliteStore.visual(p.userId),masteryIdentity:{uniform:{palette:masteryRewards.uniformPalette(masteryRewards.identity(peer.missionDebriefs,'coop').uniform?.id)}}};}));}catch{report.actors=[];}
+  const partnerStore=require('./rescue-partner-store');let teamProgress=null,partnerStyles={};
+  if(auditPlayers.length===2){
+    const members=await Promise.all(auditPlayers.map(async p=>{let eliteAppearance={},palette={};try{eliteAppearance=await eliteStore.visual(p.userId);const peer=p.userId===uid?profile:await readCoopProfile(p.userId);palette=masteryRewards.uniformPalette(masteryRewards.identity(peer.missionDebriefs,'coop').uniform?.id)||{};}catch{}return {id:p.userId,name:p.name,eliteAppearance,masteryIdentity:{uniform:{palette}}};}));
+    const teamEvent={run:{...report,id:`${session.code}:${session.startedAt}`,key:session.launchType==='shared-story'?`coop:Story:${session.storyMissionLevel}`:`coop:Operation:${session.launchType}`},members};
+    try{await partnerStore.record(teamEvent);teamProgress={saved:true};}catch{try{await partnerStore.queue(uid,teamEvent);teamProgress={pending:true,message:'Team records are pending. Open Rescue Partners → Retry team records. Your mission payout is saved separately.'};}catch{teamProgress={pending:true,message:'Team records could not queue. Use Retry team record on this mission result when the connection returns. Your mission payout will not repeat.'};}}
+    try{partnerStyles=await partnerStore.styles(auditPlayers[0].userId,auditPlayers[1].userId);}catch{}
+  }
+  try{report.actors=await Promise.all(auditPlayers.map(async p=>{const peer=p.userId===uid?profile:await readCoopProfile(p.userId);return {name:p.name,partnerStyle:partnerStyles[String(p.userId)]||'',eliteAppearance:await eliteStore.visual(p.userId),masteryIdentity:{uniform:{palette:masteryRewards.uniformPalette(masteryRewards.identity(peer.missionDebriefs,'coop').uniform?.id)}}};}));}catch{report.actors=[];}
   const recorded=missionDebrief.record(profile.missionDebriefs,report);
   profile.missionDebriefs=recorded.state;
   profile.missionDebriefs=masteryRewards.remember(profile.missionDebriefs,'coop');
@@ -4426,6 +4434,7 @@ async function claimReward(session, user){
 
   return {
     liveRescueProgress,
+    teamProgress,
     profileScope:rescueProfileScope.suffix(),
     firstClaim:rewardApplied,
     receipt,

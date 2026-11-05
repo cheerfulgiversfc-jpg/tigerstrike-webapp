@@ -1,6 +1,15 @@
 # tigerstrike-webapp
 Telegram Mini App for Tiger Strike: scan regions, engage tiger packs, capture or kill, earn rewards, and track stats.
 
+## V16.6 — Rescue Partners & Team Progress
+
+- HQ and Co-op lobby open a signed, private Rescue Partners hub. Recent teammates come only from server-confirmed completed two-player Co-op results from V16.6 onward, with no invented historical backfill. Both claimants share one atomic result receipt; genuine replay clears count as runs, without changing existing cash reward protections. Shared counters include distinct missions, rescued civilians, live captures, perfect rescues and mission fastest times.
+- Partnerships require mutual consent between recorded teammates. Requests, acceptance, decline, cancellation and removal are explicit. Requests have a daily limit, a 20-connection cap and a decline cooldown. No automated Telegram messages or contact importing occur. Refresh checks requests. Removing a partnership retains its earned history and disables its paired cosmetics.
+- First Response badge (one clear), Rescue Link uniform patch (five distinct missions) and Conservation Team card design (ten live captures) are free earned cosmetics. Each partner chooses their own earned style; production shared soldier rendering shows it only when both partners play together. New saved result cards preserve their result-time style. Preview art uses the same detailed soldiers and scenery as gameplay; no stats or mission difficulty change.
+- Invitations reuse actual waiting squads with one available seat, recheck room status and keep the player-confirmed Telegram flow. From HQ, Prepare a squad opens existing Live Squad setup. Active missions do not open the hub. Co-op movement and Solo keyboard/gamepad input respect the native modal.
+- Durable Redis performs atomic pair recording and consent/equip edits. Missing storage fails visibly. Failed result metadata has a separate compare-and-set retry queue; retrying never mutates mission supplies, cash, unlocks or paid ownership. Records remain private to each pair's own account indexes. Local-memory fallbacks require explicit test flags. Monsoon Rescue remains paused.
+- Validation covers independent accounts, consent and locked/equipped cosmetics, duplicate claims, server-completed/replayed missions, private API authorization, retry isolation, real Redis transactions and desktop/phone-width hub controls. Physical Telegram invitation sending and two-phone use of the new hub remain player checks.
+
 ## V16.3 — Player Launch & Feedback Hub
 
 - Public `/discover` introduces current Story gameplay and uses `TigerStoryCinema.drawScene` for its optional 26-second preview, with production shared soldier/scenery rendering. No audio autoplay, invented player counts or testimonials. Reduced-motion visitors receive a still preview. The official Telegram link comes from configured bot identity (or bot getMe), and invalid/unavailable squad links show an explicit message. `/` remains the game entry point; existing hosting is retained.

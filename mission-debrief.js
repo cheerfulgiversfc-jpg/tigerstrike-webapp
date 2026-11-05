@@ -10,7 +10,7 @@
     const level=number(r?.campaignLevel||match?.[1]);
     return level<=100?level:0;
   }
-  function cardActors(raw){return (Array.isArray(raw)?raw:[]).slice(0,2).map(p=>({name:clean(p?.name),eliteAppearance:Object.fromEntries(['soldier','weapon','equipment','extraction','badge'].map(k=>[k,clean(p?.eliteAppearance?.[k]).slice(0,32)])),masteryIdentity:{uniform:{palette:Object.fromEntries(Object.entries(p?.masteryIdentity?.uniform?.palette||{}).filter(([k,v])=>['body','light','dark','vest','helmet','trim'].includes(k)&&/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(String(v))).slice(0,6))}}}));}
+  function cardActors(raw){return (Array.isArray(raw)?raw:[]).slice(0,2).map(p=>({name:clean(p?.name),partnerStyle:['first-response','rescue-link','conservation-team'].includes(p?.partnerStyle)?p.partnerStyle:'',eliteAppearance:Object.fromEntries(['soldier','weapon','equipment','extraction','badge'].map(k=>[k,clean(p?.eliteAppearance?.[k]).slice(0,32)])),masteryIdentity:{uniform:{palette:Object.fromEntries(Object.entries(p?.masteryIdentity?.uniform?.palette||{}).filter(([k,v])=>['body','light','dark','vest','helmet','trim'].includes(k)&&/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(String(v))).slice(0,6))}}}));}
   function summary(raw={}){
     const scope=raw.scope==='coop'?'coop':'solo';
     return {id:clean(raw.id),key:`${scope}:${clean(raw.missionKey||String(raw.key||'').replace(/^(solo|coop):/,''))}`,scope,title:clean(raw.title||'Mission'),completed:!!raw.completed,mode:clean(raw.mode),durationMs:raw.durationMs>0?number(raw.durationMs):null,

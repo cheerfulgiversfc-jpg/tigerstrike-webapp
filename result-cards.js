@@ -23,6 +23,7 @@
   const art=document.createElement('canvas');art.width=1200;art.height=600;
   window.TigerShowcaseScene.drawVictory(art.getContext('2d'),{players:players.slice(0,m.scope==='coop'?2:1),staticPose:true,title:'RESCUE COMPLETE',subtitle:'BRING THEM HOME • RESCUE OPERATIONS'});
   c.drawImage(art,0,96,1200,600);
+  if(players.some(p=>p.partnerStyle==='conservation-team')){c.strokeStyle='#74ddb1';c.lineWidth=10;c.strokeRect(8,8,1184,984);c.fillStyle='#74ddb1';c.font='bold 20px system-ui';c.textAlign='right';c.fillText('CONSERVATION TEAM',1150,88);c.textAlign='left';}
   c.fillStyle='#edd8a4';c.font='bold 38px system-ui';c.fillText('TIGER STRIKE',48,60);c.textAlign='right';c.font='24px system-ui';c.fillText(m.scope==='coop'?'CO-OP RESCUE':'SOLO RESCUE',1152,58);c.textAlign='left';
   function line(text,x,y,max=1104){c.fillText(text,x,y,max);}
   c.fillStyle='#eff8f1';c.font='bold 32px system-ui';line(m.title,48,728);

@@ -207,6 +207,12 @@
     line(ctx,"#1b2a31",2,[[-9,-26],[-10,-20],[-5,-19]]);
     ellipse(ctx,-10,-23,2.2,3,"#263a3e");ellipse(ctx,-5,-19,1,1,"#111c22");
 
+    const partnerStyle=String(entity.partnerStyle||options.partnerStyle||'');
+    if(['first-response','rescue-link','conservation-team'].includes(partnerStyle)){
+      box(-13,-14,7,8,'#102e39',1);box(-12,-13,5,6,partnerStyle==='rescue-link'?'#e9c45b':partnerStyle==='conservation-team'?'#6ada9a':'#81d8e3',1);
+      line(ctx,'#113e38',1.1,[[-11,-10],[-9,-10]]);line(ctx,'#113e38',1.1,[[-10,-12],[-10,-8]]);
+      if(partnerStyle==='rescue-link')line(ctx,'#fff0af',1,[[-12,-5],[-7,-5]]);
+    }
     // Arms and weapon point toward the aim direction without rotating the body.
     // Mirroring handles left-facing aim; only the two-arm weapon rig pitches.
     const salute=elite.soldier==='crimson_commander'&&!downed?clamp(options.celebration,0,1):0;
