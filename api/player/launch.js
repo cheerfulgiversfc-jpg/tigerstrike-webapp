@@ -26,6 +26,7 @@ module.exports=async(req,res)=>{
   if(req.method!=='POST')return json(res,405,{ok:false,error:'Method not allowed.'});
   const b=readJsonBody(req),{user}=validateTelegramInitData(String(b.initData||''),process.env.TELEGRAM_BOT_TOKEN||'');
   const owner=canManage(user),action=String(b.action||'status');
+  if(action.startsWith('partners:'))return require('../_lib/rescue-partner-api')({...req,method:'POST',body:{...b,action:action.slice(9)}},res);
   if(action==='dashboard'){if(!owner)throw Error('Only a configured Tiger Strike administrator can view player reports.');return json(res,200,{ok:true,...await store.dashboard()});}
   if(action==='invite')return json(res,200,{ok:true,invitation:await invite(String(b.code||'').toUpperCase(),user.id)});
   if(action==='open')await store.track(user.id,'open');

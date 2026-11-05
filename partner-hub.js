@@ -1,7 +1,7 @@
 (function(){
  'use strict';let dialog=null;
  const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
- async function api(action,extra={}){const tg=window.Telegram?.WebApp;if(!tg?.initData)throw Error('Open Tiger Strike through Telegram to view your rescue partners.');const r=await fetch('/api/player/partners',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData,action,...extra}),signal:AbortSignal.timeout(20000)}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Rescue partners unavailable.');return d;}
+ async function api(action,extra={}){const tg=window.Telegram?.WebApp;if(!tg?.initData)throw Error('Open Tiger Strike through Telegram to view your rescue partners.');const r=await fetch('/api/player/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData,action:'partners:'+action,...extra}),signal:AbortSignal.timeout(20000)}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Rescue partners unavailable.');return d;}
  function open(options={}){
   if(dialog)return false;const d=el('dialog');dialog=d;d.id='rescuePartnersDialog';d.setAttribute('aria-labelledby','rescuePartnersTitle');let busy=false,afterClose=null;
   const h=el('header'),title=el('h2','Rescue Partners & Team Progress'),close=el('button','Close');close.setAttribute('aria-label','Close rescue partners');title.id='rescuePartnersTitle';h.append(title,close);d.append(h,el('p','Complete Co-op missions together to build your team record. Records begin with V16.6. Both players must agree to a partnership; invitations are always your choice.'));
