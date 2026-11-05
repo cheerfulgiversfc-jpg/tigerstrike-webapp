@@ -178,6 +178,7 @@ module.exports = async function handler(req, res){
       return json(res,200,{ok:true,profile:await equipCoopMasteryReward(user,body?.itemId),profileScope:require('../_lib/rescue-profile-scope').suffix()});
     }
     if(action === "gear-buy" || action === "gear-equip"){
+      if(action==='gear-equip'&&requestRoom?.status==='waiting'&&requestRoom.memberIds.includes(userIdOf(user)))await require('../_lib/squad-session').invalidateReady(requestRoom,userIdOf(user));
       return json(res, 200, { ok:true, profile:await applyCoopEquipmentAction(null, user, action, body || {}), profileScope:require('../_lib/rescue-profile-scope').suffix(), gearCatalog:COOP_GEAR_CATALOG });
     }
     let session = null;
@@ -190,18 +191,20 @@ module.exports = async function handler(req, res){
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 100
           ? "shared-story"
           : (["monsoon-solo","monsoon-rescue","tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival", ...postCampaign.CRISIS_TYPES.map((row)=>row.coopLaunchType)].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
-        postCampaignOperation:body?.postCampaignOperation,
+        postCampaignOperation:body?.postCampaignOperation,readyCheck:body.readyCheck===true,
       });
     }else if(action === "quick-match"){
       const requestedStoryLevel = Math.max(0, Math.min(100, Math.floor(Number(body?.storyMissionLevel || 0))));
       const requestedLaunchType = String(body?.launchType || "").trim().toLowerCase();
       session = await quickMatch(user, {
+        readyCheck:body.readyCheck===true,
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 100
           ? "shared-story"
           : (["monsoon-rescue","tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
       });
     }else if(action === "join"){
+      if(requestRoom?.readyVersion===1&&body.readyCheck!==true)throw Error('Reopen Tiger Strike to join this squad with ready-check support.');
       session = await joinSession(cleanCode(body?.code), user);
     }else{
       session = requestRoom;
@@ -213,7 +216,7 @@ module.exports = async function handler(req, res){
     let reward = null;
     if(action === "sync" || action === "status" || action === "role"){
       await updateOwnPresence(session, user, body?.player || (action === "role" ? { role:body?.role } : {}));
-    }else if(["organizer-apply","start","restart","continue","replay","handoff","vote","radio","tool-select","tool-use","route-choice","field-use","escort-offer","escort-accept","escort-decline","escort-recover","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
+    }else if(["ready","organizer-apply","start","restart","continue","replay","handoff","vote","radio","tool-select","tool-use","route-choice","field-use","escort-offer","escort-accept","escort-decline","escort-recover","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
       session = await applyAction(session, user, action, body || {});
     }else if(["gear-buy","gear-equip","gear-use"].includes(action)){
       await applyCoopEquipmentAction(session, user, action, body || {});

@@ -424,7 +424,7 @@
       response = await fetch(API, {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ initData:String(tgApp?.initData || ""), action, code:state.code, ...extra }),
+        body:JSON.stringify({ initData:String(tgApp?.initData || ""), action, code:state.code, readyCheck:true, ...extra }),
         signal:controller.signal,
       });
     }catch(error){
@@ -449,6 +449,10 @@
   function applySnapshot(snapshot, roles){
     if(!snapshot || typeof snapshot !== "object") return;
     const previousStatus=state.snapshot?.status;
+    const leadershipChanged=state.snapshot?.code===snapshot.code&&state.snapshot?.hostId!==snapshot.hostId;
+    if(state.snapshot?.code===snapshot.code&&state.snapshot?.memberCount===2&&snapshot.memberCount===1)state.readyNotice='Teammate left. Continue practicing, invite someone, or choose Solo setup.';
+    const joinedNotice=state.snapshot?.code===snapshot.code&&state.snapshot?.memberCount===1&&snapshot.memberCount===2;
+    if(joinedNotice){state.readyNotice='Teammate joined. Review this mission, then both press I’m ready.';if(window.TigerCombatFeel?.settings()?.vibration)try{tgApp?.HapticFeedback?.notificationOccurred?.('success');}catch{}}
     if(state.snapshot && cleanCode(snapshot.code) === cleanCode(state.snapshot.code) && Number(snapshot.serverNow || 0) < Number(state.snapshot.serverNow || 0)) return;
     if(state.open&&snapshot.status==='active')document.getElementById('personalRescueHQ')?.close?.();
     const changedRun=state.snapshot?.startedAt !== snapshot.startedAt || state.snapshot?.code !== snapshot.code;
@@ -508,13 +512,14 @@
       if(state.lastEquipmentMarkup !== equipmentHtml()) render();
     }else if(snapshot.status === "active" && bodyMode === "active" && $("squadArena")){
       updateActiveHud();
-    }else if(snapshot.status === "waiting" && bodyMode === "waiting"){
+    }else if(snapshot.status === "waiting" && bodyMode === "waiting" && !leadershipChanged){
       updateWaitingLobby();
     }else if(["complete","failed"].includes(snapshot.status) && bodyMode === snapshot.status){
       updateActiveHud();
     }else{
       render();
     }
+    window.TigerWaitingPractice?.observe(waitingStatus());
     maybeApplyReward();
     if(['complete','failed'].includes(snapshot.status)&&previousStatus!==snapshot.status)window.requestAnimationFrame(()=>$('squadDebrief')?.scrollIntoView({block:'start'}));
   }
@@ -523,20 +528,22 @@
     const snapshot = state.snapshot;
     if(!snapshot) return;
     const count = $("squadMemberCount");
-    if(count) count.textContent = `${snapshot.memberCount}/${soloRescueEvent()?1:2} players connected`;
+    if(count) count.textContent = `${snapshot.memberCount}/${soloRescueEvent()?1:2} players in squad • ${(snapshot.players||[]).filter(p=>p.online).length} online`;
     const roster = $("squadRoster");
     if(roster){roster.innerHTML = rosterHtml();window.TigerEliteArmory?.renderPortraits(roster);}
+    const readyPanel=$('squadReadyPanel');if(readyPanel){const html=readyPanelHtml();if(readyPanel.__html!==html){readyPanel.innerHTML=html;readyPanel.__html=html;bindCommandButtons();}}
     const mine = localSnapshotPlayer();
     document.querySelectorAll("#liveSquadOverlay [data-squad-role]").forEach((button)=>{
       button.classList.toggle("active", button.dataset.squadRole === mine?.role);
     });
     const votePanel=$("squadCrisisVote");
     if(votePanel){votePanel.innerHTML=crisisVoteHtml();bindCommandButtons();}
+    const inviteButton=$("squadInviteButton");if(inviteButton){inviteButton.disabled=snapshot.memberCount>=2;inviteButton.title=snapshot.memberCount>=2?'Squad is full':'Invite one teammate to this mission';}
     const startButton = $("squadStartButton");
     if(startButton){
       const voteRequired=postCampaignActive()&&snapshot.memberCount===2&&!snapshot.crisisVote?.resolvedOptionId;
-      startButton.disabled = state.pending.has("start")||voteRequired;
-      startButton.textContent = voteRequired?"Both Players Must Vote":(snapshot.memberCount < 2 ? ((postCampaignActive()||soloRescueEvent()) ? "Start Solo Now" : "Need Teammate") : "Start Mission");
+      startButton.disabled = state.pending.has("start")||voteRequired||(snapshot.memberCount<2&&!postCampaignActive()&&!soloRescueEvent())||(snapshot.readyVersion===1&&snapshot.memberCount===2&&!snapshot.allReady);
+      startButton.textContent = snapshot.readyVersion===1&&snapshot.memberCount===2&&!snapshot.allReady?"Both Players Must Be Ready":voteRequired?"Both Players Must Vote":(snapshot.memberCount < 2 ? ((postCampaignActive()||soloRescueEvent()) ? "Start Solo Now" : "Need Teammate") : "Start Mission");
     }
   }
 
@@ -680,7 +687,7 @@
         <div class="squadMemberMeta">${esc(window.TigerMasteryRewards?.identityText(player.masteryIdentity)||'No mastery identity equipped')}</div>
         <div class="squadMemberMeta">Uniform: ${esc(window.TigerEliteCatalog?.items[player.eliteAppearance?.soldier]?.name||player.masteryIdentity?.uniform?.name||'Default')}</div>
         ${player.eliteAppearance?.equipment==='rescue_equipment'?'<div class="squadMemberMeta">Rescue Equipment finish equipped</div>':''}
-        <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
+        <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}${snapshot.status==='waiting'&&snapshot.readyVersion===1?player.ready?' • READY':' • Not ready':''}</div>
         <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Escorting ${(state.snapshot?.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(player.userId)).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
     });
@@ -745,9 +752,10 @@
       ${equipmentButtonsHtml()}
       <div class="squadHero">
         <div><div class="squadKicker">${snapshot.matchmaking === "public" ? "Public Quick Match" : (postCampaignActive() ? "Shared Living World Crisis" : (sharedStoryActive() ? "Private Shared Story Squad" : "Private Live Squad"))}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${postCampaignActive() ? "Start alone now or invite one teammate. A teammate may also join after deployment, and difficulty adjusts automatically." : (snapshot.matchmaking === "public" && !full ? "Searching for another Telegram player who selected this exact mission. You can choose your role while you wait." : (soloRescueEvent()?"Choose your role and start your Solo event mission.":"Choose a role. The squad leader starts when both players are connected."))}</div></div>
-        <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/${soloRescueEvent()?1:2} players connected</span></button>
+        <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/${soloRescueEvent()?1:2} players in squad • ${(snapshot.players||[]).filter(p=>p.online).length} online</span></button>
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
+      <section class="squadReadyPanel" id="squadReadyPanel">${readyPanelHtml()}</section>
       ${chapterShelfHtml()}
       ${masteryLockerHtml()}
       ${leaderSanctuaryHtml()}
@@ -758,8 +766,8 @@
       <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : selectedOperation().title} works</summary><div><b>1.</b> ${soloRescueEvent() ? "Cyan soldier = you. This is a one-player event mission.<br><b>2.</b> Rescue villagers, secure the river checkpoints and capture the marked tiger alive.<br><b>3.</b> Lead your followers to the Rescue House. Your event supplies stay separate from other modes." : "Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Either player can rescue an available civilian or attack a tiger. A following civilian belongs to that rescuer, and only one player can complete each tiger capture."}<br><b>4.</b> Bring your followers to the Rescue House and tap Take to House. ${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Then clear the final threat and extract together to complete the Shared Story campaign." : `Then clear the Story threats and extract together. After both rewards are claimed, the same squad can continue to Mission ${Number(state.storyMissionLevel || 1) + 1}.`) : `${esc(missionMeta().objective || selectedOperation().short)} Special Operation progress stays separate from Story.`}</div></details>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
-        ${waiting&&!soloRescueEvent() ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
-        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" data-squad-command="start" ${voteRequired?"disabled":""}>${voteRequired?"Both Players Must Vote":(full ? "Start Mission" : ((postCampaignActive()||soloRescueEvent()) ? "Start Solo Now" : "Need Teammate"))}</button>` : ""}
+        ${waiting&&!soloRescueEvent() ? `<button type="button" class="squadBtn primary" id="squadInviteButton" data-squad-command="invite" ${full?'disabled title="Squad is full"':''}>Invite Teammate</button>` : ""}
+        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" data-squad-command="start" ${voteRequired||snapshot.memberCount<2&&!postCampaignActive()&&!soloRescueEvent()||snapshot.readyVersion===1&&snapshot.memberCount===2&&!snapshot.allReady?"disabled":""}>${snapshot.readyVersion===1&&snapshot.memberCount===2&&!snapshot.allReady?"Both Players Must Be Ready":voteRequired?"Both Players Must Vote":(full ? "Start Mission" : ((postCampaignActive()||soloRescueEvent()) ? "Start Solo Now" : "Need Teammate"))}</button>` : ""}
         ${waiting && !snapshot.isHost ? `<button type="button" class="squadBtn good" disabled>Waiting for Leader</button>` : ""}
         ${waiting && snapshot.memberCount===2 && snapshot.isHost ? `<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>` : ""}
         <button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>
@@ -1280,6 +1288,9 @@
       "hub-operations":()=>selectHubSection("operations"),
       "select-story":()=>selectMission("shared-story", Number(button?.dataset?.squadStoryLevel || 1)),
       "select-operation":()=>selectMission(button?.dataset?.squadOperation || "live-squad"),
+      'waiting-practice':()=>openWaitingPractice(),
+      'waiting-ready':()=>waitingReady(),
+      'waiting-solo':()=>waitingSolo(),
       "play-solo":()=>playSoloStory(),
       create:()=>create(),
       "quick-match":()=>quickMatch(),
@@ -1373,6 +1384,17 @@
     updateHeader();
     render();
   }
+
+  function waitingStatus(){const s=state.snapshot,m=localSnapshotPlayer();return {code:s?.code,status:s?.status,mission:missionName(),memberCount:s?.memberCount||0,onlineCount:(s?.players||[]).filter(p=>p.online).length,readyCount:s?.readyCount||0,mineReady:!!m?.ready,allReady:!!s?.allReady,readyVersion:s?.readyVersion,targetCount:soloRescueEvent()?1:2,canStart:!!s?.allReady||s?.memberCount===1&&(postCampaignActive()||soloRescueEvent()),isHost:!!s?.isHost,canSolo:true,soloLabel:s?.launchType==='shared-story'?'Leave queue • Solo setup':'Leave queue • Solo menu',notice:s?.allReady?'Both players ready. The leader can start when you choose.':state.readyNotice||((s?.players||[]).some(p=>!p.online)?'Waiting for a player to reconnect.':'Both players review the mission before deploying.')};}
+  function readyPanelHtml(){const q=waitingStatus();if(q.status!=='waiting')return '';return `<div role="status"><b>${esc(q.mission)}</b> • ${q.memberCount}/${q.targetCount} players • ${q.onlineCount}/${q.targetCount} online${q.targetCount===2?` • ${q.readyCount}/2 ready`:''}</div><p class="squadReadyNotice" aria-live="polite">${esc(q.notice)}</p><div class="squadRow"><button type="button" class="squadBtn" data-squad-command="waiting-practice">Practice while waiting</button>${q.readyVersion===1&&q.memberCount===2?`<button type="button" class="squadBtn good" data-squad-command="waiting-ready" ${q.onlineCount<2?'disabled':''}>${q.mineReady?'Not ready':'I’m ready'}</button>`:''}<button type="button" class="squadBtn" data-squad-command="waiting-solo">${esc(q.soloLabel)}</button></div><small>Practice uses unlimited training shots and grants no progress. Solo keeps your own Solo supplies and unlocks.${q.readyVersion!==1?' This older squad uses leader-start; create a new squad to enable ready checks.':''}</small>`;}
+  async function waitingReady(){const s=state.snapshot;if(s?.status!=='waiting'||state.readyBusy)return;state.readyBusy=true;try{await state.syncPromise?.catch(()=>{});await api('ready',{ready:!localSnapshotPlayer()?.ready,readyRevision:s.readyRevision});}finally{state.readyBusy=false;}}
+  async function waitingSolo(){
+    const s=state.snapshot;if(s?.status!=='waiting')throw Error('Solo fallback is available from a waiting squad.');
+    const story=s.launchType==='shared-story';
+    if(typeof (story?window.openSoloStoryMissionFromCoop:window.openBaseHQ)!=='function')throw Error('Solo setup is unavailable. Stay in this squad and try again.');
+    const level=s.storyMissionLevel;await api('leave');stopPolling();window.TigerWaitingPractice?.close();resetRoomState();close();if(story)window.openSoloStoryMissionFromCoop(level);else window.openBaseHQ({home:true});
+  }
+  function openWaitingPractice(){if(state.snapshot?.status!=='waiting')return;clearPresentationInput();const p=localSnapshotPlayer(),weapon=(state.gearCatalog||[]).find(w=>w.id===state.profile?.equippedWeaponId);window.TigerWaitingPractice?.open({status:waitingStatus,loadout:{weaponName:weapon?.name||'Equipped Co-op weapon',ammoMode:state.snapshot.mission?.survival?'real':p?.ammoMode,eliteAppearance:window.TigerWildlifeTranq?.presentation(p?.eliteAppearance||{},{ammoMode:p?.ammoMode,survival:!!state.snapshot.mission?.survival})||p?.eliteAppearance,uniformPalette:window.TigerMasteryRewards?.uniformPalette(p?.masteryIdentity?.uniform?.id)},ready:waitingReady,start,solo:waitingSolo,onClose:clearPresentationInput});}
 
   function playSoloStory(){
     if(state.snapshot) return;
@@ -1577,6 +1599,7 @@
   }
 
   function close(){
+    window.TigerWaitingPractice?.close();
     state.open = false;
     syncSquadMusicContext();
     stopPolling();
@@ -1752,12 +1775,12 @@
     try{
       setMessage(`Restarting ${missionName()} with both field lives restored…`);
       await api("restart");
-      setMessage("Mission restarted. Both soldiers are back at Base Camp.");
+      setMessage(state.snapshot?.status==='waiting'?"Retry prepared. Both players must confirm ready before deployment.":"Mission restarted. Both soldiers are back at Base Camp.");
       ensureFrame();
     }catch(error){ setMessage(error.message, true); }
   }
   async function replayTogether(){
-    try{await api('replay');setMessage('Same squad, fresh attempt. Beat your personal best; no repeat mission payout.');ensureFrame();}
+    try{await api('replay');setMessage(state.snapshot?.status==='waiting'?'Replay prepared. Both players must confirm ready.':'Same squad, fresh attempt. Beat your personal best; no repeat mission payout.');ensureFrame();}
     catch(error){setMessage(error.message,true);}
   }
 
@@ -1767,7 +1790,7 @@
       const nextLevel = Number(state.snapshot?.nextStoryMissionLevel || 0);
       setMessage(`Keeping the squad together and deploying Story Mission ${nextLevel}…`);
       await api("continue");
-      setMessage(`Story Mission ${Number(state.snapshot?.storyMissionLevel || nextLevel)} is live. Same squad, same code.`);
+      setMessage(state.snapshot?.status==='waiting'?`Story Mission ${Number(state.snapshot.storyMissionLevel)} prepared. Same squad; both players confirm ready.`:`Story Mission ${Number(state.snapshot?.storyMissionLevel || nextLevel)} is live. Same squad, same code.`);
       ensureFrame();
     }catch(error){ setMessage(error.message, true); }
   }
@@ -1856,6 +1879,7 @@
     state.connectionFailed = false;
     reactionPresentation?.reset();
     combatPresentation?.clear();
+    window.TigerWaitingPractice?.close();state.readyNotice='';
     state.roomEpoch += 1;
     state.pending.clear();
     state.code = "";
@@ -1993,7 +2017,7 @@
   function stopPolling(){ state.polling = false; clearTimeout(state.pollTimer); state.pollTimer = 0; }
 
   async function sync(force=false){
-    if(state.routeBusy)return;
+    if(state.routeBusy||state.readyBusy)return;
     if(state.syncBusy){
       if(!force) return;
       await state.syncPromise?.catch(()=>{});
@@ -3164,7 +3188,7 @@
   window.addEventListener('mission-route-open',()=>{clearPresentationInput();if(state.open&&state.code)sync(true).catch(()=>{});});
   window.addEventListener('blur',clearPresentationInput);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPresentationInput();});
-  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;if(document.getElementById('waitingPracticeDialog')?.open||document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;if(document.getElementById('combatComfortDialog')?.open||document.getElementById('smoothPlayDialog')?.open||document.getElementById('missionRouteDialog')?.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });

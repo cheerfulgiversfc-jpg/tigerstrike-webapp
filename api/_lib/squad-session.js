@@ -4,7 +4,7 @@ const rescueProfileScope=require('./rescue-profile-scope');
 const eliteStore = require('./elite-store');
 const organizer=require('../../armory-organizer');
 const crypto = require("crypto");
-const { getState, setState, setStateIfAbsent } = require("./metrics-store");
+const { getState, setState, setStateIfAbsent, compareAndSetState } = require("./metrics-store");
 const ammoRules = require("../../ammo-modes");
 const tigerIntelligence = require("../../tiger-intelligence");
 const livingWorld = require("../../living-world");
@@ -2040,9 +2040,9 @@ function playerName(user){
 function cleanCode(value){ return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6); }
 function sessionKey(code){ return `live_squad_session_${cleanCode(code)}`; }
 function playerKey(code, userId){ return `live_squad_player_${cleanCode(code)}_${userIdOf(userId)}`; }
-function matchQueueKey(launchType, storyMissionLevel, bucket, lane){
+function matchQueueKey(launchType, storyMissionLevel, bucket, lane,readyVersion=0){
   const mission = normalizeLaunchType(launchType) === "shared-story" ? `story_${clamp(Math.floor(Number(storyMissionLevel || 1)), 1, 100)}` : normalizeLaunchType(launchType);
-  return `live_squad_match_${mission}_${bucket}_${lane}`;
+  return `live_squad_match_${mission}_${bucket}_${lane}${readyVersion===1?'_ready1':''}`;
 }
 function roleKey(value){ return ROLE_DEFS[String(value || "").toLowerCase()] ? String(value).toLowerCase() : "tracker"; }
 function distance(a, b){ return Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0)); }
@@ -2538,6 +2538,11 @@ function randomCode(){
   return out;
 }
 
+function readyLoadoutKey(p,profile){return [p.role,p.rescueTool?.id||'',profile?.equippedWeaponId||''].join(':');}
+function readyKey(session,uid){return `live_squad_ready_${session.code}_${uid}`;}
+async function invalidateReady(session,uid){if(session?.readyVersion===1)await setState(readyKey(session,uid),{revision:0,key:''});}
+async function readyMarkers(session,players){return session.readyVersion===1&&session.status==='waiting'?new Map(await Promise.all(players.map(async p=>[p.userId,await getState(readyKey(session,p.userId))]))):new Map();}
+function isReady(session,p,profile,marker,at){return marker?.revision===session.readyRevision&&marker?.key===readyLoadoutKey(p,profile)&&at-p.lastSeenAt<=15000;}
 function normalizeSession(raw){
   if(!raw || typeof raw !== "object") return null;
   const code = cleanCode(raw.code);
@@ -2561,6 +2566,9 @@ function normalizeSession(raw){
   const sessionLike={...raw,launchType,memberIds,hostId,postCampaignOperation};
   return {
     version:2,
+    readyVersion:Number(raw.readyVersion)===1?1:0,
+    readyRevision:Math.max(1,Math.floor(Number(raw.readyRevision)||1)),
+    pendingDeployment:raw.pendingDeployment==='restart'?'restart':'',
     code,
     hostId,
     memberIds,
@@ -2967,6 +2975,7 @@ async function createSession(user, opts={}){
     storyMissionLevel,
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
+    readyVersion:opts.readyCheck===true?1:0,readyRevision:1,
     postCampaignOperation,
     crisisVote:postCampaignSession({launchType})?normalizeCrisisVote(null,{launchType,memberIds:[uid],hostId:uid,postCampaignOperation}):null,
     livingWorldMission:launchType === "shared-story" && storyMissionLevel <= livingWorld.PILOT_MAX_MISSION
@@ -2992,6 +3001,7 @@ async function joinSession(codeValue, user){
     if(session.launchType==="monsoon-solo")throw new Error("This is a Solo event run. Create a Squad event run to invite a teammate.");
     if(session.memberIds.length >= 2) throw new Error("This squad already has two players.");
     session.memberIds.push(uid);
+    session.readyRevision++;
     session.departedIds = session.departedIds.filter((id)=>id !== uid);
     if(postCampaignSession(session)&&session.status==="waiting"){
       session.crisisVote=normalizeCrisisVote(session.crisisVote,session);
@@ -3031,6 +3041,22 @@ async function joinSession(codeValue, user){
   return readSession(code);
 }
 
+async function matchEntryVacant(entry){
+  if(!entry||Number(entry.expiresAt)<nowMs())return true;
+  const room=await readSession(entry.code);if(!room||room.status!=='waiting'||room.memberIds.length!==1)return true;
+  const host=await readPlayer(room.code,room.hostId);return nowMs()-host.lastSeenAt>15000;
+}
+async function refreshWaitingMatch(session,uid,now){
+  if(session.readyVersion!==1||session.matchmaking!=='public'||session.status!=='waiting'||session.memberIds.length!==1||session.hostId!==uid)return;
+  const stampKey=`live_squad_match_refresh_${session.code}`,stamp=await getState(stampKey);if(now-Number(stamp?.at||0)<30000||!await compareAndSetState(stampKey,stamp,{at:now},7200))return;
+  const bucket=Math.floor(now/MATCH_QUEUE_BUCKET_MS),entry={code:session.code,hostId:uid,launchType:session.launchType,storyMissionLevel:session.storyMissionLevel,createdAt:session.createdAt,expiresAt:now+MATCH_QUEUE_BUCKET_MS*2};
+  for(let lane=0;lane<MATCH_QUEUE_LANES;lane++){
+    const key=matchQueueKey(session.launchType,session.storyMissionLevel,bucket,lane,1),old=await getState(key);
+    if((old?.code===session.code||await matchEntryVacant(old))&&await compareAndSetState(key,old,entry,7200))break;
+  }
+
+}
+
 async function quickMatch(user, opts={}){
   const uid = userIdOf(user);
   if(!uid) throw new Error("Telegram player identity is missing.");
@@ -3048,19 +3074,21 @@ async function quickMatch(user, opts={}){
     if(normalizeLaunchType(entry.launchType) !== launchType || Number(entry.storyMissionLevel || 0) !== storyMissionLevel) return null;
     const waiting = await readSession(entry.code);
     if(!waiting || waiting.status !== "waiting" || waiting.memberIds.length !== 1 || waiting.memberIds.includes(uid)) return null;
-    const reserved = await setStateIfAbsent(`live_squad_match_claim_${waiting.code}`, { userId:uid, claimedAt:nowMs() });
+    if(waiting.readyVersion!==(opts.readyCheck===true?1:0))return null;
+    const host=await readPlayer(waiting.code,waiting.hostId);if(nowMs()-host.lastSeenAt>15000)return null;
+    const reserved = await setStateIfAbsent(`live_squad_match_claim_${waiting.code}_${waiting.readyRevision}`, { userId:uid, claimedAt:nowMs() });
     if(!reserved) return null;
     try{ return await joinSession(waiting.code, user); }catch(error){ return null; }
   }
 
   for(const bucket of [bucketNow, bucketNow - 1]){
     for(let lane=0; lane<MATCH_QUEUE_LANES; lane++){
-      const joined = await joinWaitingEntry(await getState(matchQueueKey(launchType, storyMissionLevel, bucket, lane)));
+      const joined = await joinWaitingEntry(await getState(matchQueueKey(launchType, storyMissionLevel, bucket, lane,opts.readyCheck===true?1:0)));
       if(joined) return joined;
     }
   }
 
-  const created = await createSession(user, { launchType, storyMissionLevel, matchmaking:"public" });
+  const created = await createSession(user, { launchType, storyMissionLevel, matchmaking:"public",readyCheck:opts.readyCheck===true });
   const queueEntry = {
     code:created.code,
     hostId:uid,
@@ -3070,8 +3098,9 @@ async function quickMatch(user, opts={}){
     expiresAt:nowMs() + MATCH_QUEUE_BUCKET_MS * 2,
   };
   for(let lane=0; lane<MATCH_QUEUE_LANES; lane++){
-    const key = matchQueueKey(launchType, storyMissionLevel, bucketNow, lane);
-    if(await setStateIfAbsent(key, queueEntry)) return created;
+    const key = matchQueueKey(launchType, storyMissionLevel, bucketNow, lane,opts.readyCheck===true?1:0);
+    const existing=await getState(key);
+    if(await matchEntryVacant(existing)&&await compareAndSetState(key,existing,queueEntry,7200))return created;
     const joined = await joinWaitingEntry(await getState(key));
     if(joined){
       await closeSession(created, user);
@@ -3334,6 +3363,7 @@ async function buildSnapshot(session, viewerId){
   const profiles=new Map(await Promise.all(profileIds.map(async id=>[id,await readCoopProfile(id)])));
   const viewerProfile=profiles.get(userIdOf(viewerId)),leaderProfile=profiles.get(session.hostId);
   const eliteIdentities=new Map(await Promise.all(players.map(async p=>[p.userId,await eliteStore.visual(p.userId)])));
+  const markers=await readyMarkers(session,players);
   const masteryIdentities=new Map(players.map(player=>[player.userId,masteryRewards.identity(profiles.get(player.userId).missionDebriefs,'coop')]));
   const leaderSanctuaryState = sanctuarySystem.syncLegacyCaptures(leaderProfile.sanctuary, leaderProfile.stats.captures);
   const leaderSanctuarySummary = sanctuarySystem.collectionSummary(leaderSanctuaryState);
@@ -3446,7 +3476,10 @@ async function buildSnapshot(session, viewerId){
     },
     gearCatalog:COOP_GEAR_CATALOG,
     extractionReadyIds:derived.extractionReadyIds,
-    players:players.map((p)=>({ ...p, eliteAppearance:eliteIdentities.get(p.userId), masteryIdentity:masteryIdentities.get(p.userId), online:at - p.lastSeenAt <= 15000 })),
+    readyVersion:session.readyVersion,readyRevision:session.readyRevision,
+    readyCount:players.filter(p=>isReady(session,p,profiles.get(p.userId),markers.get(p.userId),at)).length,
+    allReady:players.length===2&&players.every(p=>isReady(session,p,profiles.get(p.userId),markers.get(p.userId),at)),
+    players:players.map((p)=>({ ...p, ready:isReady(session,p,profiles.get(p.userId),markers.get(p.userId),at), eliteAppearance:eliteIdentities.get(p.userId), masteryIdentity:masteryIdentities.get(p.userId), online:at - p.lastSeenAt <= 15000 })),
   };
 }
 
@@ -3464,8 +3497,10 @@ async function updateOwnPresence(session, user, patch={}){
   const spawn = lastCheckpoint
     ? { x:lastCheckpoint.x + (fieldSlot === 0 ? -42 : 42), y:lastCheckpoint.y + 54 }
     : defaultSpawn;
+  await refreshWaitingMatch(session,uid,now);
   player.name = playerName(user);
-  if(session.status === "waiting" && patch.role) player.role = roleKey(patch.role);
+  if(session.status==='waiting'&&now-player.lastSeenAt>15000)await invalidateReady(session,uid);
+  if(session.status === "waiting" && patch.role){if(player.role!==roleKey(patch.role))await invalidateReady(session,uid);player.role = roleKey(patch.role);}
   const def = ROLE_DEFS[player.role];
   player.maxHp = def.maxHp;
   player.hp = clamp(player.hp ?? def.maxHp, 0, def.maxHp);
@@ -3666,17 +3701,28 @@ async function updateOwnPresence(session, user, patch={}){
 }
 
 async function applyAction(session, user, action, payload={}){
-  if(action==='rescue'||action==='deliver')session=await readSession(session.code);
+  if(['rescue','deliver','ready','start','restart','continue','replay'].includes(action))session=await readSession(session.code);
   const uid = userIdOf(user);
   const slot = session.memberIds.indexOf(uid);
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
   syncEscortOwnership(session,player);
   const now = nowMs();
+  if(action==='ready'){
+    session=await readSession(session.code);ensureLiveSession(session);
+    if(session.status!=='waiting'||session.readyVersion!==1)throw Error('Ready checks are available in this waiting squad only.');
+    if(Number(payload.readyRevision)!==session.readyRevision)throw Error('The squad changed. Check the current mission and confirm ready again.');
+    if(typeof payload.ready!=='boolean')throw Error('Choose Ready or Not ready.');
+    if(payload.ready&&session.memberIds.length<2)throw Error('Wait for a teammate before confirming ready.');
+    if(payload.ready&&(await memberPlayers(session)).some(p=>p.userId!==uid&&now-p.lastSeenAt>15000))throw Error('Wait for your teammate to reconnect.');
+    await updateOwnPresence(session,user,{});player=await readPlayer(session.code,uid,user,slot);
+    await setState(readyKey(session,uid),{revision:payload.ready?session.readyRevision:0,key:payload.ready?readyLoadoutKey(player,await readCoopProfile(user)):''});return session;
+  }
   if(action==='organizer-apply'){
     session=await readSession(session.code);if(!session||session.status!=='waiting')throw Error('Apply Co-op loadouts in a waiting squad lobby.');
     const checked=await eliteStore.getPreset(uid,'Coop',payload.slot,payload.expectedRevision),profile=await readCoopProfile(user),preset=checked.preset;
     organizer.validate(preset,'Coop',{mode:'Coop',allowed:true,survival:session.launchType==='endless-survival',weapons:COOP_GEAR_CATALOG.filter(w=>w.type==='weapon'&&profile.ownedWeaponIds.includes(w.id)),tools:Object.keys(rescueTools.DEFS),roles:Object.keys(ROLE_DEFS),ammoFor:(_id,mode)=>profile.ammo[mode]});
+    await invalidateReady(session,uid);
     await eliteStore.applyCoopPreset(uid,{slot:payload.slot,expectedRevision:payload.expectedRevision,createdAt:session.createdAt,sessionKey:sessionKey(session.code),playerKey:playerKey(session.code,uid),profileKey:coopProfileKey(uid),weaponKey:`coop_weapon_selection_${uid}${rescueProfileScope.suffix()}`,profile});
     return readSession(session.code);
   }
@@ -3696,7 +3742,7 @@ async function applyAction(session, user, action, payload={}){
   if(action === 'tool-select'){
     if(session.status!=='waiting')throw new Error('Choose your rescue tool before deployment.');
     if(!rescueTools.DEFS[payload.toolId])throw new Error('Choose Smoke Grenade, Med Drone, or Signal Flare.');
-    player.rescueTool=rescueTools.create(payload.toolId);
+    await invalidateReady(session,uid);player.rescueTool=rescueTools.create(payload.toolId);
     await writePlayer(session.code,player);return session;
   }
   if(action === "vote"){
@@ -3763,11 +3809,26 @@ async function applyAction(session, user, action, payload={}){
     if(eventSchedule&&eventSchedule.phase!=="active")throw new Error("The event is paused or closed. Existing active runs may finish; new attempts open when the event resumes.");
     if(session.memberIds.length < 2 && !postCampaignSession(session)&&session.launchType!=="monsoon-solo") throw new Error("Invite one teammate before starting.");
     if(action === "start" && session.status !== "waiting") return session;
-    if(action === "restart" && session.status !== "failed") throw new Error("Restart is available after the mission ends.");
+    if(action==='start'&&session.readyVersion===1&&session.memberIds.length===2){
+      const members=await memberPlayers(session),markers=await readyMarkers(session,members);if((await Promise.all(members.map(async p=>!isReady(session,p,await readCoopProfile(p.userId),markers.get(p.userId),now)))).some(Boolean))throw Error('Both connected players must confirm I’m ready before deployment.');
+    }
+    const preparedRestart=action==='start'&&session.pendingDeployment==='restart';if(preparedRestart)action='restart';
+    if(action === "restart" && session.status !== "failed" && !preparedRestart) throw new Error("Restart is available after the mission ends.");
     if(action==='replay'){
       if(session.status!=='complete')throw new Error('Replay is available after completing the mission.');
       if(!(await memberPlayers(session)).every(p=>p.rewardClaimed))throw new Error('Every player must claim the result before replaying.');
     }
+    if(session.readyVersion===1&&session.memberIds.length===2&&['continue','replay','restart'].includes(action)&&!preparedRestart){
+      if(action==='continue'){
+        if(session.launchType!=='shared-story'||session.status!=='complete')throw Error('Finish this Story mission before continuing.');
+        if(!(await memberPlayers(session)).every(p=>p.rewardClaimed))throw Error('Both players must claim this mission’s reward before continuing.');
+        if(!EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel)+1])throw Error('The Story campaign is complete.');
+        session.storyMissionLevel++;
+      }
+      session.pendingDeployment=action==='restart'?'restart':'';session.readyRevision++;session.status='waiting';session.pausedBy={};session.pausedAt=0;
+      return writeSession(session);
+    }
+    session.pendingDeployment='';
     if(action==='restart'){session.missionElapsedMs=Number(session.missionElapsedMs||0)+Math.max(0,Number(session.completedAt||now)-session.startedAt);session.missionRestarts=Number(session.missionRestarts||0)+1;}
     else{session.missionElapsedMs=0;session.missionWipes=0;session.missionRestarts=0;session.debriefSurvivalKills=0;}
     if(action!=='restart')session.debriefVersion=1;
@@ -4417,6 +4478,7 @@ async function closeSession(session, user){
   }
   const completedAndClaimed = session.status === "complete" && session.launchType === "shared-story" && players.every((player)=>player.rewardClaimed);
   session.memberIds = session.memberIds.filter((id)=>id !== uid);
+  session.readyRevision++;
   session.departedIds = [...new Set([...(session.departedIds || []), uid])].slice(0, 2);
   if(session.hostId === uid) session.hostId = session.memberIds[0];
   // An active two-person mission cannot silently finish with one soldier.
@@ -4457,6 +4519,7 @@ async function readPersonalHq(user,code=''){
 
 module.exports = {
   readPersonalHq,
+  invalidateReady,
   ROLE_DEFS,
   COOP_GEAR_CATALOG,
   TIGER_DEFS,

@@ -235,6 +235,16 @@ async function getState(name){
   try{ return JSON.parse(String(raw)); }catch(e){ return null; }
 }
 
+// Atomic queue-slot replacement; an old reader must never overwrite a newer waiter.
+async function compareAndSetState(name,expected,value,ttlSeconds=STATE_TTL_SECONDS){
+  const key=stateKey(name),before=expected==null?null:JSON.stringify(expected),after=JSON.stringify(value),ttl=Math.max(1,Math.min(STATE_TTL_SECONDS,Math.floor(Number(ttlSeconds)||STATE_TTL_SECONDS)));
+  if(hasKv()){
+    const lua="local old=redis.call('GET',KEYS[1]);if (not old and ARGV[1]~='__missing__') or (old and old~=ARGV[1]) then return 0 end;redis.call('SET',KEYS[1],ARGV[2],'EX',ARGV[3]);return 1";
+    const out=await kvPipeline([['EVAL',lua,1,key,before??'__missing__',after,ttl]]);return Number(out[0])===1;
+  }
+  const mem=memStore(),old=mem.get(key);if((old??null)!==before)return false;mem.set(key,after);return true;
+}
+
 module.exports = {
   stateKey,
   dayIdFromMs,
@@ -247,5 +257,6 @@ module.exports = {
   summarizeMetrics,
   setState,
   setStateIfAbsent,
+  compareAndSetState,
   getState,
 };

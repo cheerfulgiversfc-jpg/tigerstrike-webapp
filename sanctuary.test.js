@@ -78,8 +78,8 @@ test("government path visibly changes the same headquarters identity",()=>{
 });
 
 test("game integration makes sanctuary persistent, useful, and reachable",()=>{
-  assert(html.includes("sanctuary.js?v=5286-telegram-photos"));
-  assert(html.indexOf("sanctuary.js?v=5286-telegram-photos")<html.indexOf("game.js?v=5286-telegram-photos"));
+  assert(html.includes("sanctuary.js?v=5287-squad-ready"));
+  assert(html.indexOf("sanctuary.js?v=5287-squad-ready")<html.indexOf("game.js?v=5287-squad-ready"));
   assert(game.includes('"cosmeticCollection","sanctuary","achievements"'));
   assert(game.includes("recordSanctuaryCapture(tiger, source)"));
   assert(game.includes("advanceSanctuaryAfterMission(S._missionRunId, missionStats)"));
@@ -99,8 +99,8 @@ test("Shared Story keeps a separate server-backed sanctuary and read-only leader
 });
 
 test("V11.4 cache key reaches every gameplay asset",()=>{
-  assert(html.includes("V16.4.1 (Telegram Photo Sharing)"));
+  assert(html.includes("V16.5 (Squad Ready & Waiting Practice)"));
   for(const file of ["extraction-geometry.js","ammo-modes.js","government-policy.js","tiger-intelligence.js","living-world.js","mission-map-truth.js","post-campaign.js","sanctuary.js","game.js","story-cinematics.js","field-systems.js","tutorial.js","squad-motion.js","shared-battlefield-renderer.js","squad-coop.js","extraction-qa.js","squad-coop.css"]){
-    assert(html.includes(`${file}?v=5286-telegram-photos`),`stale cache key for ${file}`);
+    assert(html.includes(`${file}?v=5287-squad-ready`),`stale cache key for ${file}`);
   }
 });
