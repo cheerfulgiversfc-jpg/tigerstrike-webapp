@@ -3,7 +3,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="tiger-build" content="5289">
+  <meta name="tiger-build" content="5290">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
@@ -1009,6 +1009,16 @@
     .governmentMovePad .up{grid-area:up}.governmentMovePad .left{grid-area:left}.governmentMovePad .down{grid-area:down}.governmentMovePad .right{grid-area:right}
     .trainingMeters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
     .trainingMeter{padding:9px;border:1px solid rgba(96,165,250,.35);border-radius:10px;background:rgba(15,23,42,.78)}
+    .missionHubModal{width:min(720px,96vw)}
+    .missionHubGroup+.missionHubGroup{margin-top:15px}
+    .missionHubGroup h2{font-size:15px;margin:0 0 7px;color:#d6e7fa}
+    .missionHubGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .missionHubGrid button{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;min-height:62px;padding:10px;text-align:left;white-space:normal}
+    .missionHubGrid button small{color:#c0cee0;font-size:12px;line-height:1.25}
+    @media(max-width:540px){.missionHubGroup+.missionHubGroup .missionHubGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    .missionHubDetails{margin-top:9px;padding:0 10px 10px;border:1px solid #354e6b;border-radius:12px;background:#101c2c}
+    .missionHubDetails:not([open]){padding-bottom:0}
+    .missionHubDetails summary{min-height:44px;padding:12px 0;box-sizing:border-box;font-weight:800;cursor:pointer}
     .worldMapLaunchCard{padding:14px;border:1px solid #4c8273;border-radius:14px;background:#142b30}
     .worldMapRegionLabel{color:#a5d2c3;font-size:13px;font-weight:750}
     .worldMapLaunchCard h2{margin:4px 0 12px;font-size:clamp(20px,4vw,27px);line-height:1.15}
@@ -2882,34 +2892,55 @@
 
 <!-- Mode -->
 <div class="overlay" id="modeOverlay">
-  <div class="modal">
-    <div class="modalTop"><div class="modalTitle">Choose Mode</div><button class="ghost" onclick="closeMode()">Back</button></div>
+  <div class="modal missionHubModal">
+    <div class="modalTop"><div class="modalTitle">🎮 Missions &amp; Modes</div><button class="ghost" onclick="closeMode()">Back</button></div>
     <div class="modalBody">
-      <div class="tabs">
-        <button class="tab" id="mStory" onclick="openBaseHqModePreview('Story')">📖 Story</button>
-        <button class="tab" id="mArcade" onclick="openBaseHqModePreview('Arcade')">🕹️ Arcade</button>
-        <button class="tab" id="mSurvival" onclick="openBaseHqModePreview('Survival')">🔥 Survival</button>
+      <div class="missionHubGroup">
+        <h2>Main modes</h2>
+        <div class="missionHubGrid">
+          <button class="tab" id="mStory" onclick="openBaseHqModePreview('Story')"><strong>📖 Story</strong><small>Campaign missions</small></button>
+          <button class="tab" id="mArcade" onclick="openBaseHqModePreview('Arcade')"><strong>🕹️ Arcade</strong><small>Timed score runs</small></button>
+          <button class="tab" id="mSurvival" onclick="openBaseHqModePreview('Survival')"><strong>🔥 Survival</strong><small>Fight rising waves</small></button>
+        </div>
       </div>
-      <div class="divider"></div>
-      <div class="hudLine" id="modeDesc"></div>
-      <div class="divider"></div>
-      <div class="hudLine" id="modeClanStatus">Clan data loading...</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-        <button class="ghost" id="modeWeeklySeedBtn" onclick="toggleArcadeWeeklySeedChallenge()">🎯 Weekly Seed Challenge: OFF</button>
-        <button class="ghost" id="modeRaidBtn" onclick="toggleRaidMode()">🤝 Co-op Raid: OFF</button>
-        <button class="ghost" id="modeClanTagBtn" onclick="setClanTagPrompt()">🏷️ Clan Tag</button>
-        <button class="ghost" id="modeClanNameBtn" onclick="setClanNamePrompt()">✍️ Clan Name</button>
+      <div class="missionHubGroup">
+        <h2>More missions</h2>
+        <div class="missionHubGrid">
+          <button class="ghost" onclick="openLiveSquadOps({hubSection:'story'})"><strong>👥 Shared Story</strong><small>Find or invite a teammate</small></button>
+          <button class="ghost" onclick="openLiveSquadOps({hubSection:'operations'})"><strong>🐅 Special Operations</strong><small>Night Fang and more</small></button>
+          <button class="ghost" onclick="openWorldMapCampaign()"><strong>🌎 World Map</strong><small>Choose a mission or region</small></button>
+          <button class="ghost" onclick="openWorldMapCampaign({showCrises:true})"><strong>🚨 Living World Crises</strong><small>Unlock through Story</small></button>
+          <button class="ghost" onclick="openRescueEventBoard()"><strong>🌧️ Monsoon Rescue</strong><small>Community event</small></button>
+          <button class="ghost" onclick="openRecruitPracticeMenu()"><strong>🎯 Training</strong><small>Full Tutorial and Free Practice</small></button>
+        </div>
       </div>
-      <div class="divider"></div>
-      <div class="hudTitle">Story Endgame Loop</div>
-      <div class="hudLine" id="modeEndgameStatus">Endgame unlocks after Story Mission 100.</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-        <button class="ghost" id="modeStoryCampaignBtn" onclick="setStoryCampaignMode()">📖 Campaign</button>
-        <button class="ghost" id="modeNgPlusBtn" onclick="startStoryNgPlus()">🧬 New Game+ (0)</button>
-        <button class="ghost" id="modeGauntletBtn" onclick="startEndlessGauntlet()">♾️ Gauntlet</button>
-        <button class="ghost" id="modeEliteHuntBtn" onclick="startEliteBossHunt()">👑 Elite Hunt</button>
-        <button class="ghost" id="modeEliteChapterBtn" onclick="cycleEliteHuntChapter()">🗺️ Hunt Chapter 1</button>
-      </div>
+      <details class="missionHubDetails">
+        <summary>Story Endgame</summary>
+        <div class="hudLine" id="modeEndgameStatus">Endgame unlocks after Story Mission 100.</div>
+        <div class="row">
+          <button class="ghost" id="modeStoryCampaignBtn" onclick="setStoryCampaignMode()">📖 Campaign</button>
+          <button class="ghost" id="modeNgPlusBtn" onclick="startStoryNgPlus()">🧬 New Game+ (0)</button>
+          <button class="ghost" id="modeGauntletBtn" onclick="startEndlessGauntlet()">♾️ Gauntlet</button>
+          <button class="ghost" id="modeEliteHuntBtn" onclick="startEliteBossHunt()">👑 Elite Hunt</button>
+          <button class="ghost" id="modeEliteChapterBtn" onclick="cycleEliteHuntChapter()">🗺️ Hunt Chapter 1</button>
+        </div>
+      </details>
+      <details class="missionHubDetails">
+        <summary>Arcade Challenges</summary>
+        <div class="row">
+          <button class="ghost" id="modeWeeklySeedBtn" onclick="toggleArcadeWeeklySeedChallenge()">🎯 Play Weekly Seed Challenge</button>
+          <button class="ghost" id="modeRaidBtn" onclick="toggleRaidMode()">🤝 Co-op Raid: OFF</button>
+        </div>
+      </details>
+      <details class="missionHubDetails">
+        <summary>Mode Details &amp; Clan</summary>
+        <div class="hudLine" id="modeDesc"></div>
+        <div class="hudLine" id="modeClanStatus">Clan data loading...</div>
+        <div class="row">
+          <button class="ghost" id="modeClanTagBtn" onclick="setClanTagPrompt()">🏷️ Clan Tag</button>
+          <button class="ghost" id="modeClanNameBtn" onclick="setClanNamePrompt()">🏷️ Clan Name</button>
+        </div>
+      </details>
     </div>
   </div>
 </div>
@@ -3716,7 +3747,7 @@
   <script src="./partner-hub.js?v=5288-rescue-partners"></script>
   <script src="./result-cards.js?v=5288-rescue-partners"></script>
   <script src="./player-launch.js?v=5288-rescue-partners"></script>
-  <script src="./game.js?v=5289-world-map-launch"></script>
+  <script src="./game.js?v=5290-mission-hub"></script>
   <script src="./story-cinematics.js?v=5288-rescue-partners"></script>
   <script src="./field-systems.js?v=5288-rescue-partners"></script>
   <script src="./tutorial.js?v=5288-rescue-partners"></script>

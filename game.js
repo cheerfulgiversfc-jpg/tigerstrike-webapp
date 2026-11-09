@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5289";
+const TS_BUILD = "5290";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4348,16 +4348,19 @@ function toggleRaidMode(){
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   toast(`Co-op raid mode ${S.clanRaidEnabled ? "enabled" : "disabled"} (Arcade only).`);
 }
-function toggleArcadeWeeklySeedChallenge(){
-  ensureArcadeWeeklySeedState(S);
-  if(normalizeModeName(S.mode) !== "Arcade"){
-    toast("Switch to Arcade mode first.");
-    return;
-  }
-  S.arcadeWeeklySeedEnabled = !S.arcadeWeeklySeedEnabled;
+function configureArcadeWeeklySeed(enabled){
+  S.arcadeWeeklySeedEnabled = enabled;
   S.arcadeWeeklySeedKey = weeklyChallengeWeekKey();
   S.arcadeWeeklyRunId = "";
   S.arcadeWeeklyRunStartedAt = 0;
+}
+function toggleArcadeWeeklySeedChallenge(){
+  ensureArcadeWeeklySeedState(S);
+  if(normalizeModeName(S.mode) !== "Arcade"){
+    setMode("Arcade", {weeklySeed:true});
+    return;
+  }
+  configureArcadeWeeklySeed(!S.arcadeWeeklySeedEnabled);
   deploy();
   save(true);
   updateModeDesc();
@@ -14487,7 +14490,7 @@ function renderWorldMapCampaign(resetView=false){
   `;
   const strategy = `
     ${worldMapPendingChoiceHtml(wm)}
-    ${worldMapPostCampaignHtml(wm)}
+    <div id="worldMapCrisisBoard">${worldMapPostCampaignHtml(wm)}</div>
     ${stats.crisis ? `<div class="card"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
     ${wm.lastOutcome ? `<div class="card"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px">
@@ -14595,7 +14598,7 @@ function renderWorldMapCampaign(resetView=false){
   root.scrollTop = scrollTop;
   truthQaAuditButtons(root, "world-map");
 }
-function openWorldMapCampaign(){
+function openWorldMapCampaign({showCrises=false}={}){
   if(window.__TUTORIAL_MODE__){
     if(!tutorialAllows("worldMap")) return toast(tutorialBlockMessage("worldMap"));
     if(window.TigerTutorial?.isRunning){
@@ -14621,6 +14624,11 @@ function openWorldMapCampaign(){
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "flex";
   renderWorldMapCampaign(true);
+  if(showCrises){
+    const strategy = overlay?.querySelector('[data-world-map-section="strategy"]');
+    if(strategy) strategy.open = true;
+    document.getElementById("worldMapCrisisBoard")?.scrollIntoView({block:"start"});
+  }
   sfx("ui");
   syncGamepadFocus();
 }
@@ -21011,8 +21019,8 @@ function setTigerStrikeMusicContext(context=""){
 }
 function gameMusicMode(){
   if(!S.soundOn || S.musicOn === false) return "off";
-  // A visible World Map is a menu even if a mission is still loaded behind it.
-  if(document.getElementById("worldMapCampaignOverlay")?.style.display === "flex") return "menu";
+  // The mission selection menus can open while a mission is still loaded.
+  if(["modeOverlay", "worldMapCampaignOverlay"].some(id=>document.getElementById(id)?.style.display === "flex")) return "menu";
   if(__gameMusicExternalContext){
     const allowed = ["menu","hq","mission","danger","battle","boss","boss-mission","victory","defeat"];
     if(allowed.includes(__gameMusicExternalContext)) return __gameMusicExternalContext;
@@ -28644,7 +28652,11 @@ function pickProgressGuardAction(action){
 function openModeOverlay(){
   setPaused(true,"mode");
   document.getElementById("modeOverlay").style.display="flex";
-  updateModeDesc(); markModeTabs(); sfx("ui");
+  document.querySelector("#modeOverlay .modalBody").scrollTop = 0;
+  updateModeDesc();
+  markModeTabs();
+  syncGamepadFocus();
+  sfx("ui");
 }
 function openMode(){
   if(S.missionEnded && !S.gameOver){
@@ -31529,7 +31541,7 @@ function toggleChapterRecap(){
 function startStoryIntroMission(){
   beginStoryMissionFromIntro();
 }
-function setMode(m){
+function setMode(m, {weeklySeed=false}={}){
   const nextMode = normalizeModeName(m);
   const wantsStoryIntro = (nextMode==="Story" && !window.__TUTORIAL_MODE__);
   ensureStoryEndgameState(S);
@@ -31538,7 +31550,10 @@ function setMode(m){
   setModeWallet(S.mode, S.funds, S);
   activateModeProfile(nextMode, S);
   applyModeTheme(S.mode);
-  if(nextMode==="Arcade") S.arcadeLevel = clamp(Math.floor(Number(S.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  if(nextMode==="Arcade"){
+    S.arcadeLevel = clamp(Math.floor(Number(S.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+    if(weeklySeed) configureArcadeWeeklySeed(true);
+  }
   if(nextMode==="Survival"){
     S.survivalWave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
     S.survivalStart = Date.now();
@@ -31753,7 +31768,9 @@ function updateModeDesc(){
   }
   const weeklyBtn = document.getElementById("modeWeeklySeedBtn");
   if(weeklyBtn){
-    weeklyBtn.innerText = `🎯 Weekly Seed Challenge: ${S.arcadeWeeklySeedEnabled ? "ON" : "OFF"}`;
+    weeklyBtn.innerText = S.mode === "Arcade"
+      ? `🎯 Weekly Seed Challenge: ${S.arcadeWeeklySeedEnabled ? "ON" : "OFF"}`
+      : "🎯 Play Weekly Seed Challenge";
     weeklyBtn.className = (S.mode === "Arcade" && S.arcadeWeeklySeedEnabled) ? "good" : "ghost";
   }
   updateStoryEndgameControls();
@@ -35000,6 +35017,7 @@ function renderBaseHqQuickBar(){
   const html = `
     <div class="baseHqQuickHint"><b>Base HQ Home:</b> ${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
     ${button("Continue", "startMissionFromBaseHQ()", "primary")}
+    ${button("Missions & Modes", "openModeFromBaseHQ()", "primary")}
     ${button("Story", "openBaseHqModePreview('Story')", "primary")}
     ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
