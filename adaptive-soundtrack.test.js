@@ -63,7 +63,37 @@ test("music unlocks from a gesture and respects both audio controls", () => {
 });
 
 test("V11.4 cache key forces Telegram to load Living Sanctuary", () => {
-  assert(game.includes('const TS_BUILD = "5288"'));
-  assert(html.includes("game.js?v=5288-rescue-partners"));
+  assert(game.includes('const TS_BUILD = "5289"'));
+  assert(html.includes("game.js?v=5289-world-map-launch"));
   assert(html.includes("tutorial.js?v=5288-rescue-partners"));
+});
+
+test("World Map keeps menu music and gameplay paused even with a fight loaded behind it", () => {
+  const vm = require("node:vm");
+  const overlay = {style:{display:"flex"}};
+  const state = {soundOn:true, musicOn:true, mode:"Story", paused:true, pauseReason:"world-map", inBattle:true};
+  const context = vm.createContext({
+    S:state,
+    document:{getElementById:id=>id === "worldMapCampaignOverlay" ? overlay : null},
+    __gameMusicExternalContext:"",
+    introOverlayVisible:()=>false,
+    baseHqActive:()=>false,
+    hasAliveBossTiger:()=>false,
+    pushStabilityEvent:()=>{},
+  });
+  const between = (start, end)=>game.slice(game.indexOf(start), game.indexOf(end));
+  vm.runInContext([
+    between("function gameMusicMode(", "function gameMusicTrackKey("),
+    between("function missionBlockingOverlayVisible(", "function recoverMissionInputLock("),
+    between("function stabilityMasterUnpauseGameplay(", "function stabilityMasterEnsurePlayableMission("),
+  ].join("\n"), context);
+
+  assert.equal(vm.runInContext("gameMusicMode()", context), "menu");
+  assert.equal(vm.runInContext("stabilityMasterUnpauseGameplay()", context), false);
+  assert.equal(state.paused, true);
+  assert.equal(state.pauseReason, "world-map");
+
+  overlay.style.display = "none";
+  assert.equal(vm.runInContext("stabilityMasterUnpauseGameplay()", context), true);
+  assert.equal(vm.runInContext("gameMusicMode()", context), "battle");
 });

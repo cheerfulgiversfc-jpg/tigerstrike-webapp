@@ -3,7 +3,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="tiger-build" content="5288">
+  <meta name="tiger-build" content="5289">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
@@ -1009,6 +1009,16 @@
     .governmentMovePad .up{grid-area:up}.governmentMovePad .left{grid-area:left}.governmentMovePad .down{grid-area:down}.governmentMovePad .right{grid-area:right}
     .trainingMeters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
     .trainingMeter{padding:9px;border:1px solid rgba(96,165,250,.35);border-radius:10px;background:rgba(15,23,42,.78)}
+    .worldMapLaunchCard{padding:14px;border:1px solid #4c8273;border-radius:14px;background:#142b30}
+    .worldMapRegionLabel{color:#a5d2c3;font-size:13px;font-weight:750}
+    .worldMapLaunchCard h2{margin:4px 0 12px;font-size:clamp(20px,4vw,27px);line-height:1.15}
+    .worldMapLaunchCard p{margin:10px 0 0;color:#d5e2ef;font-size:14px;line-height:1.4}
+    .worldMapLaunchActions{display:flex;flex-wrap:wrap;gap:8px}
+    .worldMapLaunchActions button{min-height:46px;white-space:normal}
+    .worldMapSection{margin-top:9px;border:1px solid #354e6b;border-radius:12px;background:#101c2c}
+    .worldMapSection>summary{min-height:44px;padding:12px;box-sizing:border-box;font-weight:800;cursor:pointer}
+    .worldMapSectionBody{padding:0 10px 10px;overflow-wrap:anywhere}
+    @media(max-width:480px){.worldMapLaunchActions button{width:100%}}
     .worldMapPrepChoice{display:flex!important;flex:1 1 210px;min-width:190px;max-width:100%;flex-direction:column;align-items:flex-start!important;gap:5px;text-align:left!important;white-space:normal!important;line-height:1.25}
     .worldMapPrepChoice .prepChoiceName{display:block;font-size:15px;font-weight:950;color:#f8fafc}
     .worldMapPrepChoice .prepChoiceMeta{display:block;font-size:12px;font-weight:850;color:#93c5fd}
@@ -2908,7 +2918,7 @@
 <div class="overlay" id="worldMapCampaignOverlay">
   <div class="modal" style="width:min(760px,96vw)">
     <div class="modalTop">
-      <div class="modalTitle">🌎 World Map Campaign 2.0 • Phase 9</div>
+      <div class="modalTitle">🌎 World Map</div>
       <button class="ghost" onclick="closeWorldMapCampaign()">Close</button>
     </div>
     <div class="modalBody" id="worldMapCampaignRoot">
@@ -3706,7 +3716,7 @@
   <script src="./partner-hub.js?v=5288-rescue-partners"></script>
   <script src="./result-cards.js?v=5288-rescue-partners"></script>
   <script src="./player-launch.js?v=5288-rescue-partners"></script>
-  <script src="./game.js?v=5288-rescue-partners"></script>
+  <script src="./game.js?v=5289-world-map-launch"></script>
   <script src="./story-cinematics.js?v=5288-rescue-partners"></script>
   <script src="./field-systems.js?v=5288-rescue-partners"></script>
   <script src="./tutorial.js?v=5288-rescue-partners"></script>

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5288";
+const TS_BUILD = "5289";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -12565,6 +12565,13 @@ function setWorldMapPrep(key, value){
   if(queued&&field&&prep[safeKey]===String(value))delete queued[field];
   save();
   renderWorldMapCampaign();
+  if(safeKey === "selectedLevel"){
+    const root = document.getElementById("worldMapCampaignRoot");
+    const picker = root?.querySelector('[data-world-map-section="missions"]');
+    if(picker) picker.open = false;
+    if(root) root.scrollTop = 0;
+    root?.querySelector(".worldMapLaunchActions button:not([disabled])")?.focus({preventScroll:true});
+  }
   return false;
 }
 function missionMasteryRewardCommand(action,id,button){
@@ -12611,8 +12618,8 @@ function worldMapPrepPanelHtml(state=S){
   const selectedSecondary = WORLD_MAP_PREP_SECONDARIES.find((secondary)=>secondary.id === prep.secondaryId) || WORLD_MAP_PREP_SECONDARIES[0];
   return `
     <div class="card" style="margin:10px 0;border-color:rgba(74,222,128,.58);background:linear-gradient(145deg,rgba(20,83,45,.56),rgba(8,15,26,.96))">
-      <div class="hudTitle">World Map Pre-Deploy Setup</div>
-      <div class="small">Pick your mission prep before choosing a level. These choices apply when you press Deploy.</div>
+      <div class="hudTitle">Mission Loadout</div>
+      <div class="small">Your selected loadout is used when you start a Solo mission.</div>
       <div class="divider"></div>
       <div class="hudLine"><b>Choose Soldier</b></div>
       <div class="row">${WORLD_MAP_PREP_SOLDIERS.map((soldier)=>worldMapPrepButtonHtml("soldierId", soldier, prep.soldierId, soldier.role)).join("")}</div>
@@ -12648,7 +12655,6 @@ function worldMapStoryLevelPickerHtml(state=S){
         <button class="ghost" type="button" onclick="setWorldMapPrep('selectedLevel',${Math.max(1, maxLevel - 1)})">Previous</button>
         <button class="good" type="button" onclick="setWorldMapPrep('selectedLevel',${maxLevel})">Current ${maxLevel}</button>
       </div>
-      ${window.TigerMasteryRewards?.lockerHtml?.(window.TigerMissionDebrief?.normalize(state.missionDebriefs),'solo')||''}
       ${window.TigerMissionDebrief?.journeyHtml?.({scope:'solo',state:state.missionDebriefs,maxLevel,selectedLevel,missions:STORY_CAMPAIGN_OBJECTIVES.map(objective=>({objective}))}) || `<div class="row" style="margin-top:8px">${buttons.join("")}</div>`}
     </div>
   `;
@@ -14400,9 +14406,18 @@ function recordPostCampaignCrisisOutcome({missionStats=null,civDead=0}={}){
   return `\nPost-Campaign Crisis: ${wm.lastOutcome}\n`;
 }
 
-function renderWorldMapCampaign(){
+function renderWorldMapCampaign(resetView=false){
   const root = document.getElementById("worldMapCampaignRoot");
   if(!root) return;
+  const scrollTop = resetView ? 0 : root.scrollTop;
+  const openSections = new Set(resetView ? [] : Array.from(
+    root.querySelectorAll("details[data-world-map-section][open]"), section=>section.dataset.worldMapSection
+  ));
+  const section = (id, title, content)=>`
+    <details class="worldMapSection" data-world-map-section="${id}" ${openSections.has(id) ? "open" : ""}>
+      <summary>${title}</summary>
+      <div class="worldMapSectionBody">${content}</div>
+    </details>`;
   stabilizeWorldMapResumeState(S, "world-map-render");
   const wm = updateWorldMapCampaignSpread(S);
   refreshWorldMapLiveEvents(S);
@@ -14456,30 +14471,25 @@ function renderWorldMapCampaign(){
   }).join("");
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
-  const activeRunRegion = wm.activeRegionId ? worldMapRegionById(wm.activeRegionId) : null;
   const sharedStoryPilotAvailable = FLEXIBLE_SHARED_STORY_ENABLED && selectedMissionLevel <= FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL;
   const deployActions = selectedUnlocked
     ? `
-        <button class="good" onclick="startWorldMapRegionMission('${selected.id}')">👤 Play Story ${selectedMissionLevel} Solo</button>
+        <button class="good" onclick="startWorldMapRegionMission('${selected.id}')">Start Mission ${selectedMissionLevel} Solo</button>
         ${sharedStoryPilotAvailable
-          ? `<button class="good" onclick="startWorldMapStoryCoopMission('${selected.id}')">👥 Play Story ${selectedMissionLevel} with Teammate</button>`
+          ? `<button class="ghost" onclick="startWorldMapStoryCoopMission('${selected.id}')">Play with a Teammate</button>`
           : `<button class="ghost" disabled title="Two-player Story currently includes Missions 1-${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL}.">👥 Two Player • Missions 1-${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL}</button>`}
-        <button class="ghost" onclick="openMissionBriefFromWorldMap()">Brief First</button>
-        <button class="ghost" onclick="setWorldMapActiveRegion('${selected.id}')">Focus Region</button>
       `
     : `<span class="tag">Locked until Story Mission ${Math.floor(Number(selected.unlockAt || 1))} or neighboring defense</span>`;
-  root.innerHTML = `
-    <div class="hudLine"><b>World Map Campaign:</b> Pick prep, choose replay/current story level, then deploy.</div>
+  const progress = `
     ${window.TigerChapterMilestones?.hubHtml(window.TigerMissionDebrief?.normalize(S.missionDebriefs),'solo',worldMapMaxUnlockedStoryLevel(S),window.TigerMasteryRewards)||''}
-    ${worldMapPrepPanelHtml(S)}
-    ${worldMapStoryLevelPickerHtml(S)}
-    ${worldMapDebugInfoPanelHtml(selected, stats, wm)}
+    ${window.TigerMasteryRewards?.lockerHtml?.(window.TigerMissionDebrief?.normalize(S.missionDebriefs),'solo')||''}
     ${worldMapSeasonHtml(selected)}
+  `;
+  const strategy = `
     ${worldMapPendingChoiceHtml(wm)}
     ${worldMapPostCampaignHtml(wm)}
-    ${worldMapLivingChapterOneHtml(wm)}
-    ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
-    ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
+    ${stats.crisis ? `<div class="card"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
+    ${wm.lastOutcome ? `<div class="card"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px">
       <div class="card"><div class="small">Regions Open</div><div class="hudTitle">${stats.unlocked}/${stats.total}</div></div>
       <div class="card"><div class="small">High Threat</div><div class="hudTitle">${stats.high}</div></div>
@@ -14504,12 +14514,6 @@ function renderWorldMapCampaign(){
       <div class="card"><div class="small">Tiger Control</div><div class="hudTitle">${Number(stats.factionCounts?.tigers || 0)}</div></div>
       <div class="card"><div class="small">Rival Zones</div><div class="hudTitle">${Number(stats.rivalZones || 0)}</div></div>
       <div class="card"><div class="small">Rival Pressure</div><div class="hudTitle">${Number(stats.rivalPressureAvg || 0)}%</div></div>
-    </div>
-    <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
-      <div style="position:absolute;inset:18px;border:1px dashed rgba(191,219,254,.20);border-radius:20px"></div>
-      <div style="position:absolute;left:12%;right:10%;top:50%;border-top:4px solid rgba(125,211,252,.16);transform:rotate(4deg)"></div>
-      <div style="position:absolute;left:25%;right:18%;top:68%;border-top:4px solid rgba(250,204,21,.13);transform:rotate(-7deg)"></div>
-      ${nodes}
     </div>
     <div class="grid2">
       <div class="card" style="border-color:rgba(74,222,128,.42)">
@@ -14536,7 +14540,7 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Deploy Plan</div>
+        <div class="hudTitle">Deployment Details</div>
         <div class="hudLine">Story Mission ${selectedMissionLevel}/${worldMapTotalStoryLevels()} • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
@@ -14554,17 +14558,41 @@ function renderWorldMapCampaign(){
         <div class="small">Post-mission choice: after a clear, pick one strategic priority to shape this region.</div>
         <div class="small">Region reward: ${worldMapEsc(worldMapRewardText(rewardPreview))}</div>
         <div class="small">Reward focus: ${worldMapEsc(selected.reward)} • Mission Rewards 2.0 still controls core payout.</div>
-        <div class="row" style="margin-top:10px">
-          ${deployActions}
-        </div>
+        ${selectedUnlocked ? `<div class="row" style="margin-top:10px">
+          <button class="ghost" type="button" onclick="openMissionBriefFromWorldMap()">Read Mission Brief</button>
+          <button class="ghost" type="button" onclick="setWorldMapActiveRegion('${selected.id}')">Focus Region</button>
+        </div>` : ""}
       </div>
     </div>
     ${worldMapFactionControlHtml(selected)}
     ${worldMapSupplyNetworkHtml(selected)}
     ${worldMapRegionUpgradeHtml(selected)}
-    <div class="divider"></div>
+    ${section("districts", "Living World districts", worldMapLivingChapterOneHtml(wm))}
+    ${worldMapDebugInfoPanelHtml(selected, stats, wm)}
+  `;
+  const regions = `
+    <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
+      <div style="position:absolute;inset:18px;border:1px dashed rgba(191,219,254,.20);border-radius:20px"></div>
+      <div style="position:absolute;left:12%;right:10%;top:50%;border-top:4px solid rgba(125,211,252,.16);transform:rotate(4deg)"></div>
+      <div style="position:absolute;left:25%;right:18%;top:68%;border-top:4px solid rgba(250,204,21,.13);transform:rotate(-7deg)"></div>
+      ${nodes}
+    </div>
     <div class="grid2">${cards}</div>
   `;
+  root.innerHTML = `
+    <section class="worldMapLaunchCard" aria-labelledby="worldMapMissionTitle">
+      <div class="worldMapRegionLabel">${worldMapEsc(selected.name)}</div>
+      <h2 id="worldMapMissionTitle">Story Mission ${selectedMissionLevel}</h2>
+      <div class="worldMapLaunchActions">${deployActions}</div>
+      <p>${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</p>
+    </section>
+    ${section("missions", "Choose another mission", worldMapStoryLevelPickerHtml(S))}
+    ${section("loadout", "Change loadout", worldMapPrepPanelHtml(S))}
+    ${section("regions", "Choose a region", regions)}
+    ${section("strategy", "World activity and strategy", strategy)}
+    ${section("progress", "Trophies, mastery and season rewards", progress)}
+  `;
+  root.scrollTop = scrollTop;
   truthQaAuditButtons(root, "world-map");
 }
 function openWorldMapCampaign(){
@@ -14592,7 +14620,7 @@ function openWorldMapCampaign(){
   setPaused(true, "world-map");
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "flex";
-  renderWorldMapCampaign();
+  renderWorldMapCampaign(true);
   sfx("ui");
   syncGamepadFocus();
 }
@@ -14616,6 +14644,8 @@ function selectWorldMapRegion(id){
   wm.selectedRegionId = region.id;
   if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   renderWorldMapCampaign();
+  const root = document.getElementById("worldMapCampaignRoot");
+  if(root) root.scrollTop = 0;
   toast(`${region.name} selected.`);
   save();
   return false;
@@ -14630,7 +14660,7 @@ function setWorldMapActiveRegion(id){
   wm.selectedRegionId = region.id;
   if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   renderWorldMapCampaign();
-  toast(`${region.name} focused. Tap Deploy To Region to launch a real mission run.`);
+  toast(`${region.name} focused. Use the Start Mission button at the top of the map to deploy.`);
   save();
   return false;
 }
@@ -14728,7 +14758,9 @@ function openSoloStoryMissionFromCoop(level=1){
   wm.selectedRegionId = region.id;
   save();
   openWorldMapCampaign();
-  toast(`Story Mission ${missionLevel} selected for Solo. Review your prep, then tap Play Story ${missionLevel} Solo.`);
+  // The Co-op chooser is closed. Let the Solo screen drive the soundtrack again.
+  setTigerStrikeMusicContext("");
+  toast(`Story Mission ${missionLevel} selected. Tap Start Mission ${missionLevel} Solo when ready.`);
   return false;
 }
 function applySharedStoryCompletion(progress={}, receipt=""){
@@ -20979,6 +21011,8 @@ function setTigerStrikeMusicContext(context=""){
 }
 function gameMusicMode(){
   if(!S.soundOn || S.musicOn === false) return "off";
+  // A visible World Map is a menu even if a mission is still loaded behind it.
+  if(document.getElementById("worldMapCampaignOverlay")?.style.display === "flex") return "menu";
   if(__gameMusicExternalContext){
     const allowed = ["menu","hq","mission","danger","battle","boss","boss-mission","victory","defeat"];
     if(allowed.includes(__gameMusicExternalContext)) return __gameMusicExternalContext;
@@ -63743,6 +63777,7 @@ let __phase15SelfHealState = {
 };
 function missionBlockingOverlayVisible(){
   const ids = [
+    "worldMapCampaignOverlay",
     "baseHqOverlay",
     "missionCinemaOverlay",
     "missionBriefOverlay",
@@ -64196,6 +64231,7 @@ function closeTransientMissionOverlaysForGameplay(reason="stability-master"){
 function stabilityMasterUnpauseGameplay(reason="stability-master"){
   if(!S || typeof S !== "object" || S.gameOver || S.missionEnded) return false;
   const blocking = missionBlockingOverlayVisible();
+  if(blocking === "worldMapCampaignOverlay") return false;
   const sticky = new Set(["manual", "complete", "mode", "base-hq"]);
   if(S.paused && (!blocking || S.pauseReason === "mission-transition" || S.pauseReason === "mission-brief" || S.pauseReason === "world-map")){
     if(!sticky.has(String(S.pauseReason || "")) || S.pauseReason === "mission-transition" || S.pauseReason === "mission-brief" || S.pauseReason === "world-map"){
