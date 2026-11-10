@@ -105,6 +105,7 @@ windowObject.cancelAnimationFrame = context.cancelAnimationFrame;
 windowObject.performance = context.performance;
 
 vm.runInNewContext(fs.readFileSync("squad-motion.js", "utf8"), context, { filename:"squad-motion.js" });
+context.window.TigerRescueExpedition=require("./rescue-expedition");
 vm.runInNewContext(fs.readFileSync("squad-coop.js", "utf8"), context, { filename:"squad-coop.js" });
 
 async function run(){

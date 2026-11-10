@@ -1,0 +1,46 @@
+#rescueExpeditionDialog {
+  width: min(580px, calc(100% - 20px));
+  max-height: 86dvh;
+  overflow: auto;
+  padding: 0;
+  border: 1px solid #40627e;
+  border-radius: 16px;
+  background: #0d1b2a;
+  color: #eff7ff;
+}
+#rescueExpeditionDialog::backdrop { background: #030911b8; }
+#rescueExpeditionDialog header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: linear-gradient(145deg,#163e42,#10243b);
+}
+#rescueExpeditionDialog h2 { margin: 4px 0 0; font-size: clamp(19px,5vw,27px); }
+#rescueExpeditionDialog header small { color: #92f1c9; font-weight: 800; }
+#rescueExpeditionDialog .expBody { padding: 14px; }
+#rescueExpeditionDialog p { margin: 0 0 12px; }
+#rescueExpeditionDialog fieldset { padding: 9px; border: 1px solid #40627e; border-radius: 10px; }
+#rescueExpeditionDialog .expRoute { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px; cursor: pointer; }
+#rescueExpeditionDialog .expRoute:has(:checked) { background: #184750; border-radius: 8px; }
+#rescueExpeditionDialog .expRoute input { flex: 0 0 18px; accent-color: #5eead4; }
+#rescueExpeditionDialog .expRoute small { display: block; color: #c3d6e8; }
+#rescueExpeditionDialog .expStages { padding-inline-start: 25px; line-height: 1.6; }
+#rescueExpeditionDialog .current { color: #92f1c9; font-weight: 800; }
+#rescueExpeditionDialog .expActions { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 10px; }
+#rescueExpeditionDialog button { min-height: 44px; }
+#rescueExpeditionDialog .expNote { font-size: 13px; color: #c3d6e8; }
+#rescueExpeditionDialog .expError { color: #fecaca; }
+#squadExpeditionBoat { display: block; max-width: 100%; height: auto; border-radius: 10px; }
+.expeditionArena .expeditionBoarding:empty { display: none; }
+.expeditionArena .expeditionBoarding { color: #a7f3d0; font-weight: 850; }
+.expeditionArena .squadHowTo { margin: 5px 0; }
+.expeditionArena .squadStatus { margin: 5px 0; min-height: 0; }
+.expeditionArena .squadStoryStrip { margin-block: 5px; }
+.expeditionArena .squadMapLegend { margin-block: 4px; }
+@media (max-width:640px) {
+  .expeditionArena .squadStoryStrip span:not(:first-child),
+  .expeditionArena .squadMapLegend { display: none; }
+  .expeditionArena .squadPrepBar { min-width: 0; }
+}

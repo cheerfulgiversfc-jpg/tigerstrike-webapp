@@ -3,10 +3,12 @@ const { telegramBotApi } = require("../_lib/telegram-api");
 const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { getCommunitySnapshot } = require("../_lib/community");
 const { storageMode } = require("../_lib/metrics-store");
+const expedition=require("../../rescue-expedition");
 const postCampaign = require("../../post-campaign");
 const {
   readPersonalHq,
   ROLE_DEFS,
+  expeditionStatus,
   COOP_GEAR_CATALOG,
   cleanCode,
   createSession,
@@ -86,6 +88,13 @@ async function prepareInvite(botToken, user, session){
         button:"⛈️ Join Storm Extraction",
         heading:"⛈️ STORM EXTRACTION TEAMMATE REQUEST",
         detail:"Rescue three stranded evacuation specialists, clear the storm pack, defeat Tempest Alpha, revive each other, and reach storm extraction together.",
+      },
+    "expedition-squad":{
+        id:"river_gate_expedition",
+        name:`${expedition.title} · Stage ${session.expedition?.stage}`,
+        button:"🛟 Join Rescue Expedition",
+        heading:"🛟 BLACKOUT AT RIVER GATE",
+        detail:`Join this private expedition at Stage ${session.expedition?.stage}. Both players confirm ready before deployment.`,
       },
     "endless-survival":{
         id:"endless_survival",
@@ -170,6 +179,7 @@ module.exports = async function handler(req, res){
     const requestRoom=action!=='create'&&body.code?await readSession(cleanCode(body.code)):null;
     const rescueType=['create','quick-match'].includes(action)?String(body.launchType||'').trim().toLowerCase():requestRoom?.launchType;
     return await require('../_lib/rescue-profile-scope').run(rescueType,async()=>{
+    if(action==='expedition-status')return json(res,200,{ok:true,expedition:await expeditionStatus(user)});
     if(action === 'hq-profile')return json(res,200,{ok:true,...await readPersonalHq(user,cleanCode(body?.code))});
     if(action === "profile"){
       return json(res, 200, { ok:true, profile:await readCoopProfile(user), profileScope:require('../_lib/rescue-profile-scope').suffix(), gearCatalog:COOP_GEAR_CATALOG });
@@ -190,7 +200,8 @@ module.exports = async function handler(req, res){
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 100
           ? "shared-story"
-          : (["monsoon-solo","monsoon-rescue","tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival", ...postCampaign.CRISIS_TYPES.map((row)=>row.coopLaunchType)].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+          : ([...expedition.types,"monsoon-solo","monsoon-rescue","tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival", ...postCampaign.CRISIS_TYPES.map((row)=>row.coopLaunchType)].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+        expeditionRoute:body.expeditionRoute,expeditionReplay:body.expeditionReplay===true,
         postCampaignOperation:body?.postCampaignOperation,readyCheck:body.readyCheck===true,
       });
     }else if(action === "quick-match"){
@@ -216,7 +227,7 @@ module.exports = async function handler(req, res){
     let reward = null;
     if(action === "sync" || action === "status" || action === "role"){
       await updateOwnPresence(session, user, body?.player || (action === "role" ? { role:body?.role } : {}));
-    }else if(["ready","organizer-apply","start","restart","continue","replay","handoff","vote","radio","tool-select","tool-use","route-choice","field-use","escort-offer","escort-accept","escort-decline","escort-recover","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
+    }else if(["ready","organizer-apply","start","restart","continue","replay","handoff","vote","radio","tool-select","tool-use","route-choice","field-use","expedition-interact","escort-offer","escort-accept","escort-decline","escort-recover","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
       session = await applyAction(session, user, action, body || {});
     }else if(["gear-buy","gear-equip","gear-use"].includes(action)){
       await applyCoopEquipmentAction(session, user, action, body || {});

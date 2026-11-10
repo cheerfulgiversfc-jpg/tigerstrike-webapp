@@ -71,6 +71,7 @@ windowObject.cancelAnimationFrame = context.cancelAnimationFrame;
 windowObject.performance = context.performance;
 
 vm.runInNewContext(fs.readFileSync("squad-motion.js", "utf8"), context, { filename:"squad-motion.js" });
+context.window.TigerRescueExpedition=require("./rescue-expedition");
 vm.runInNewContext(fs.readFileSync("squad-coop.js", "utf8"), context, { filename:"squad-coop.js" });
 
 function commandButton(command, extra={}){
@@ -109,7 +110,7 @@ async function run(){
   assert(squadApi.includes('"handoff"'), "the live squad API exposes the explicit leadership handoff action");
   assert(squad.includes('data-squad-command="handoff"'), "the squad leader can visibly pass leadership");
   assert(squad.includes('Invite Replacement'), "a departed teammate can be replaced after an active mission stops");
-  assert(squad.includes('eventClosed||snap.memberCount < 2&&!soloRescueEvent() ? "disabled"'), "a squad cannot restart without a real second player");
+  assert(squad.includes('eventClosed||snap.memberCount < 2&&!soloSquadMission() ? "disabled"'), "a squad cannot restart without a real second player");
   assert(squad.includes('squadMotion.accept(') && squad.includes('squadMotion.step('), "remote co-op soldiers use verified smooth motion");
   assert(squad.includes('movementInput().moving ? 300 : 750'), "moving players sync more often than idle players");
   assert(squad.includes('await sync(true)'), "actions send the latest serialized position before judging range");

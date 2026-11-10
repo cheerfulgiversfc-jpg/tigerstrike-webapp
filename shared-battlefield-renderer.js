@@ -661,7 +661,7 @@
   function drawStoryMapFoundation(ctx,options={}){
     options={...options,clearZones:[...(options.clearZones||[]),...(routes?.shelters(options.routesEnabled===false?0:options.level,{width:options.worldW,height:options.worldH})||[]).map(s=>({...s,r:120,objective:true})),...(fields?.fixtures(options.fieldsEnabled===false?0:options.level,{width:options.worldW,height:options.worldH})||[]).map(s=>({...s,r:100,objective:true}))]};
     const chapterMap=Number(options.level)>0?chapterMaps?.forMission(options.level):null;
-    if(chapterMap)options={...options,family:chapterMap.family,waterZones:chapterMap.waterZones};
+    if(chapterMap)options={...options,family:chapterMap.family,waterZones:options.useMissionWater?options.waterZones:chapterMap.waterZones};
     const random=(i,salt)=>seeded(i+(chapterMap?.seed||0),salt);
     const worldW=Math.max(900,Number(options.worldW)||900),worldH=Math.max(760,Number(options.worldH)||760);
     const view=options.view||{x:0,y:0,w:worldW,h:worldH},family=String(options.family||storyFamilyForLevel(options.level));

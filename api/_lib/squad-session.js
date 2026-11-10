@@ -1,3 +1,5 @@
+const expedition=require('../../rescue-expedition');
+const expeditionStore=require('./rescue-expedition-store');
 const rescueSchedule=require('./rescue-event-schedule');
 const rescueEvent=require('../../live-rescue-event');
 const rescueProfileScope=require('./rescue-profile-scope');
@@ -2223,7 +2225,7 @@ const SPECIAL_OPERATION_MISSIONS = Object.freeze({
   "storm-extraction":EXPANDED_STORM_EXTRACTION_MISSION,
   "endless-survival":EXPANDED_ENDLESS_SURVIVAL_MISSION,
 });
-const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...Object.keys(SPECIAL_OPERATION_MISSIONS), ...POST_CAMPAIGN_LAUNCH_TYPES]);
+const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...expedition.types, ...Object.keys(SPECIAL_OPERATION_MISSIONS), ...POST_CAMPAIGN_LAUNCH_TYPES]);
 const ALL_COOP_MISSIONS = Object.freeze([
   ...Object.values(EXPANDED_SHARED_STORY_MISSIONS),
   ...Object.values(SPECIAL_OPERATION_MISSIONS),
@@ -2251,7 +2253,7 @@ const LIVING_WORLD_PATROL_DEFS = Object.freeze({
   ]),
 });
 const ALL_COOP_TIGERS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []), ...Object.values(LIVING_WORLD_PATROL_DEFS).flat(), ...POST_CAMPAIGN_TIGERS, ...POST_CAMPAIGN_GOVERNMENT, Object.freeze({ ...POST_CAMPAIGN_TIGERS[0], id:"crisis_escaped_alpha", hpMax:1800 })]);
-const ALL_COOP_CIVILIANS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []), ...POST_CAMPAIGN_CIVILIANS]);
+const ALL_COOP_CIVILIANS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []), ...POST_CAMPAIGN_CIVILIANS, ...[1,2,3].map(i=>({id:`exp_civ_${i}`}))]);
 const ALL_COOP_CHECKPOINTS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.checkpoints || []));
 
 function normalizeLaunchType(value){
@@ -2508,6 +2510,7 @@ function postCampaignMissionDefinition(session){
 }
 
 function missionDefinition(session){
+  if(session?.expedition)return expeditionStore.mission(EXPANDED_SHARED_STORY_MISSIONS[1],session);
   const crisis = postCampaignMissionDefinition(session);
   const base = crisis || (session?.launchType === "shared-story"
     ? (EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0)] || EXPANDED_SHARED_STORY_MISSIONS[1])
@@ -2590,6 +2593,9 @@ function normalizeSession(raw){
     survivalWavesCleared:clamp(Math.floor(Number(raw.survivalWavesCleared || 0)), 0, 50),
     survivalIntermissionUntil:Math.max(0, Number(raw.survivalIntermissionUntil || 0)),
     livingWorldMission:normalizeLivingWorldMission(raw.livingWorldMission),
+    expedition:expedition.isExpedition(launchType)&&raw.expedition?.ownerId===hostId&&expedition.routes[raw.expedition.route]&&[1,2,3].includes(raw.expedition.stage)?raw.expedition:null,
+    expeditionBridgeOpen:raw.expeditionBridgeOpen===true,
+    expeditionBoardingAt:Math.max(0,Number(raw.expeditionBoardingAt)||0),
     postCampaignOperation,
     crisisVote:normalizeCrisisVote(raw.crisisVote,sessionLike),
     escortOwners:raw.escortOwners && typeof raw.escortOwners==='object' ? raw.escortOwners : {},
@@ -2608,7 +2614,7 @@ function normalizeSession(raw){
     routeVersion:Number(raw.routeVersion)===1?1:0,
     fieldVersion:Number(raw.fieldVersion)===1?1:0,
     fieldLeadRescuedAt:Number.isFinite(raw.fieldLeadRescuedAt)?raw.fieldLeadRescuedAt:null,
-    title:launchType === "shared-story"
+    title:expedition.isExpedition(launchType)?expedition.title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
   };
@@ -2759,7 +2765,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     civilianEscorts:src.civilianEscorts && typeof src.civilianEscorts === 'object' ? src.civilianEscorts : {},
     civilianHealing:src.civilianHealing && typeof src.civilianHealing === 'object' ? src.civilianHealing : {},
     rescueTool:rescueTools.DEFS[src.rescueTool?.id] ? src.rescueTool : rescueTools.create(),
-    checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id)))],
+    checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>(expedition.checkpointIds.includes(id)||ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id))))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     revives:clamp(src.revives, 0, 999),
     joinedAt:Math.max(0, Number(src.joinedAt || base.joinedAt)),
@@ -2950,6 +2956,7 @@ async function createSession(user, opts={}){
     ? "live-squad"
     : requestedLaunchType;
   if(rescueEvent.isEvent(launchType)&&(await rescueSchedule.read()).phase!=="active")throw new Error("Operation: Monsoon Rescue is not open for new runs.");
+  const plan=expedition.isExpedition(launchType)?await expeditionStore.prepare(uid,opts,readExpeditionRoom):null;
   const hostProfile = await readCoopProfile(user);
   const storyMissionLevel = launchType === "shared-story" ? requestedStoryMissionLevel : 0;
   const postCampaignOperation = normalizePostCampaignOperation(opts?.postCampaignOperation, launchType);
@@ -2975,7 +2982,8 @@ async function createSession(user, opts={}){
     storyMissionLevel,
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
-    readyVersion:opts.readyCheck===true?1:0,readyRevision:1,
+    readyVersion:plan||opts.readyCheck===true?1:0,readyRevision:1,
+    expedition:plan?{runId:plan.run.id,ownerId:uid,stage:plan.run.stage,route:plan.run.route}:null,
     postCampaignOperation,
     crisisVote:postCampaignSession({launchType})?normalizeCrisisVote(null,{launchType,memberIds:[uid],hostId:uid,postCampaignOperation}):null,
     livingWorldMission:launchType === "shared-story" && storyMissionLevel <= livingWorld.PILOT_MAX_MISSION
@@ -2984,7 +2992,23 @@ async function createSession(user, opts={}){
   });
   await writePlayer(code, newPlayer(user, 0));
   await writeCoopProfile(hostProfile, user);
+  if(plan&&!await expeditionStore.attach(uid,plan,code)){
+    await writeSession({...session,status:'closed'});
+    throw Error('An expedition stage was opened on another device. Refresh Rescue Mode.');
+  }
   return session;
+}
+
+async function readExpeditionRoom(code){
+  const room=await readSession(code);
+  return room?.status!=='closed'&&nowMs()-Number(room?.updatedAt||0)<=SESSION_TTL_MS?room:null;
+}
+
+async function expeditionStatus(user){
+  const uid=userIdOf(user),run=await expeditionStore.read(uid);
+  if(!run)return null;
+  const room=run.roomCode&&await readExpeditionRoom(run.roomCode);
+  return {...run,roomCode:room?.code||'',roomStatus:room?.status||''};
 }
 
 async function joinSession(codeValue, user){
@@ -2992,6 +3016,7 @@ async function joinSession(codeValue, user){
   const uid = userIdOf(user);
   const session = await readSession(code);
   ensureLiveSession(session);
+  if(expedition.isSolo(session.launchType)&&!session.memberIds.includes(uid))throw Error('This is a Solo expedition stage.');
   await writeCoopProfile(await readCoopProfile(user), user);
   const returningMember = session.departedIds.includes(uid);
   if(rescueEvent.isEvent(session.launchType)&&session.status==="waiting"&&!session.memberIds.includes(uid)&&(await rescueSchedule.read()).phase!=="active")throw Error("The rescue event is paused or closed.");
@@ -3156,7 +3181,9 @@ function sessionDerived(session, players, at=nowMs()){
     : captureTargetIds.every((id)=>capturedIds.includes(id));
   const checkpoints = mission.checkpoints || [];
   const checkpointCompletedIds = checkpoints
-    .filter((checkpoint)=>players.length === session.memberIds.length && players.every((player)=>(player.checkpointIds || []).includes(checkpoint.id)))
+    .filter(checkpoint=>checkpoint.manual
+      ? players.some(player=>player.checkpointIds.includes(checkpoint.id))
+      : players.length === session.memberIds.length && players.every(player=>player.checkpointIds.includes(checkpoint.id)))
     .map((checkpoint)=>checkpoint.id);
   const checkpointsReady = checkpointCompletedIds.length >= checkpoints.length;
   const objectivesReady = securedCivilianIds.length >= mission.rescueRequired && captureTargetsReady && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
@@ -3165,6 +3192,7 @@ function sessionDerived(session, players, at=nowMs()){
 }
 
 function rescueHouseFor(mission){
+  if(mission.rescueHouse)return mission.rescueHouse;
   const extraction = mission.extraction;
   if(mission.liveRescueEvent){const bank=waterTerrain.banks(mission.waterZones[0],extraction.x-230);return {x:extraction.x-230,y:bank.top-135,r:105,label:"Riverside Rescue House"};}
   const offset = Math.max(170, Number(extraction.r || 90) + 95);
@@ -3297,19 +3325,38 @@ async function maybeFinishSession(session, players){
     }
     return session;
   }
-  if(
-    derived.objectivesReady &&
-    derived.onlineIds.length === session.memberIds.length &&
-    derived.extractionReadyIds.length === session.memberIds.length
-  ){
+  const squadAtExtraction=derived.onlineIds.length===session.memberIds.length &&
+    derived.extractionReadyIds.length===session.memberIds.length;
+  const canExtract=derived.objectivesReady&&squadAtExtraction;
+  if(session.expedition?.stage===3){
+    const canBoard=squadAtExtraction&&derived.securedCivilianIds.length>=missionDefinition(session).rescueRequired;
+    if(!canBoard&&session.expeditionBoardingAt){
+      return writeSession({...session,expeditionBoardingAt:0});
+    }
+    if(canBoard&&!session.expeditionBoardingAt){
+      return writeSession({...session,expeditionBoardingAt:now});
+    }
+    if(now-session.expeditionBoardingAt<expedition.holdMs)return session;
+  }
+  if(canExtract){
     session.status = "complete";
     session.completedAt = now;
-    return writeSession(session);
+    const completed=await writeSession(session);
+    if(completed.expedition){
+      try{await claimExpeditionStage(completed);}
+      catch(error){console.error('Expedition checkpoint needs a save retry:',error.message);}
+    }
+    return completed;
   }
   return session;
 }
 
 function missionSceneWater(mission,session){
+  if(session.expedition){
+    const {route,stage}=session.expedition;
+    const bridgeOpen=route==='bridge'&&(stage>1||session.expeditionBridgeOpen);
+    return bridgeOpen?mission.waterZones:mission.waterZones.map(zone=>({...zone,bridges:[]}));
+  }
   if(session.launchType==='shared-story')return chapterMaps.forMission(mission.level).waterZones;
   const w=Number(mission.world?.width||WORLD.width),h=Number(mission.world?.height||WORLD.height);
   const families=['forest','suburbs','forest','downtown','suburbs','industrial','forest','downtown','suburbs','industrial'];
@@ -3325,7 +3372,7 @@ function missionSceneWater(mission,session){
 }
 
 async function maybeTransferDisconnectedLeader(session, players, at=nowMs()){
-  if(session.memberIds.length !== 2) return session;
+  if(session.expedition||session.memberIds.length !== 2) return session;
   const leader = players.find((player)=>player.userId === session.hostId);
   const teammate = players.find((player)=>player.userId !== session.hostId);
   if(!leader || !teammate || at - leader.lastSeenAt < LEADER_DISCONNECT_HANDOFF_MS || at - teammate.lastSeenAt > 15000) return session;
@@ -3345,7 +3392,7 @@ function buildMissionDebrief(session,players,derived,viewerId,reward=null,reward
     field:session.fieldVersion===1&&session.launchType==='shared-story'&&fieldOperations.enabled(session.storyMissionLevel)?{...players.find(p=>p.userId===userIdOf(viewerId))?.fieldOps,leadStatus:fieldLead?.status||'not-offered'}:null,
     bossCaptures:mission.tigers.filter(tiger=>tiger.boss&&derived.capturedIds.includes(tiger.id)).length,
     missionKey:`${session.launchType}:${session.storyMissionLevel||0}:${session.postCampaignOperation?.responseId||''}:${mission.survival?session.survivalWavesCleared:''}`,
-    title:mission.title||session.title,mode:mission.survival?'Survival':session.launchType==='shared-story'?'Story':'Special Operation',completed:session.status==='complete',
+    title:mission.title||session.title,mode:session.expedition?'Rescue':mission.survival?'Survival':session.launchType==='shared-story'?'Story':'Special Operation',completed:session.status==='complete',
     durationMs:session.debriefVersion&&session.completedAt>session.startedAt?Number(session.missionElapsedMs||0)+session.completedAt-session.startedAt:null,
     rescued:derived.securedCivilianIds.length,civilianTotal:mission.civilians.length,civilianLost:0,captures:derived.capturedIds.length,
     kills:derived.tigerKills+(mission.survival?Number(session.debriefSurvivalKills||0):0),wipes:session.debriefVersion?session.missionWipes:null,restarts:session.missionRestarts,reward,rewardState,
@@ -3376,6 +3423,8 @@ async function buildSnapshot(session, viewerId){
     title:session.title,
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
+    expedition:session.expedition?{stage:session.expedition.stage,route:session.expedition.route,
+      boat:mission.boat,boardingMs:session.expeditionBoardingAt&&session.status==='active'?Math.max(0,expedition.holdMs-(at-session.expeditionBoardingAt)):0}:null,
     ...(rescueEvent.isEvent(session.launchType)?{eventSchedule:await rescueSchedule.read()}:{}),
     postCampaignOperation:session.postCampaignOperation,
     crisisVote:session.crisisVote,
@@ -3444,7 +3493,7 @@ async function buildSnapshot(session, viewerId){
     fieldNow:Math.max(0,(session.status!=='active'&&session.completedAt?session.completedAt:sessionClockNow(session,at))-session.startedAt),
     fieldTowerUntil:Math.max(0,...players.map(p=>p.fieldOps?.towerUntil||0)),
     fieldLead:session.fieldVersion===1&&session.launchType==='shared-story'?fieldOperations.lead(session.storyMissionLevel,civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds),Math.max(0,(session.status!=='active'&&session.completedAt?session.completedAt:sessionClockNow(session,at))-session.startedAt),session.fieldLeadRescuedAt):null,
-    chapterMapId:session.launchType==='shared-story'?chapterMaps.forMission(mission.level).id:null,
+    chapterMapId:session.launchType==='shared-story'||session.expedition?chapterMaps.forMission(mission.level).id:null,
     spawns:mission.spawns,
     extraction:mission.extraction,
     rescueHouse:rescueHouseFor(mission),
@@ -3583,7 +3632,7 @@ async function updateOwnPresence(session, user, patch={}){
       for(let index=0; index<mission.checkpoints.length; index++){
         const checkpoint = mission.checkpoints[index];
         const priorReady = index === 0 || player.checkpointIds.includes(mission.checkpoints[index - 1].id);
-        if(priorReady && !player.checkpointIds.includes(checkpoint.id) && distance(player, checkpoint) <= Number(checkpoint.r || 120)){
+        if(!checkpoint.manual && priorReady && !player.checkpointIds.includes(checkpoint.id) && distance(player, checkpoint) <= Number(checkpoint.r || 120)){
           player.checkpointIds.push(checkpoint.id);
           break;
         }
@@ -3702,13 +3751,28 @@ async function updateOwnPresence(session, user, patch={}){
 }
 
 async function applyAction(session, user, action, payload={}){
-  if(['rescue','deliver','ready','start','restart','continue','replay'].includes(action))session=await readSession(session.code);
+  if(['expedition-interact','rescue','deliver','ready','start','restart','continue','replay'].includes(action)){
+    session=await readSession(session.code);
+    ensureLiveSession(session);
+  }
   const uid = userIdOf(user);
   const slot = session.memberIds.indexOf(uid);
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
   syncEscortOwnership(session,player);
   const now = nowMs();
+  if(action==='expedition-interact'){
+    if(!session.expedition||session.status!=='active'||sessionPaused(session)||player.downed)throw Error('This interaction is only available during the active expedition stage.');
+    const mission=missionDefinition(session),site=mission.checkpoints.find(point=>point.manual);
+    if(!site||distance(player,site)>site.r)throw Error('Move into the marked objective circle first.');
+    const players=await memberPlayers(session);
+    if(players.some(row=>row.checkpointIds.includes(site.id))&&site.id!=='exp_bridge_open')return session;
+    if(site.id==='exp_triage')for(const civilian of mission.civilians)player.civilianHealing[civilian.id]=45;
+    if(!player.checkpointIds.includes(site.id))player.checkpointIds.push(site.id);
+    await writePlayer(session.code,player);
+    if(site.id==='exp_bridge_open'&&!session.expeditionBridgeOpen)return writeSession({...session,expeditionBridgeOpen:true});
+    return session;
+  }
   if(action==='ready'){
     session=await readSession(session.code);ensureLiveSession(session);
     if(session.status!=='waiting'||session.readyVersion!==1)throw Error('Ready checks are available in this waiting squad only.');
@@ -3767,6 +3831,7 @@ async function applyAction(session, user, action, payload={}){
     return session;
   }
   if(action === "handoff"){
+    if(session.expedition)throw Error("The expedition checkpoint belongs to the captain.");
     if(session.hostId !== uid) throw new Error("Only the squad leader can hand off leadership.");
     if(session.memberIds.length !== 2) throw new Error("A teammate must be in the squad before handing off leadership.");
     const teammate = await readPlayer(session.code, session.memberIds.find((id)=>id !== uid), null, 1);
@@ -3780,6 +3845,7 @@ async function applyAction(session, user, action, payload={}){
     if(session.status !== "active") return session;
     if(!session.pausedBy || typeof session.pausedBy !== "object") session.pausedBy = {};
     if(action === "pause"){
+      if(session.expedition)session.expeditionBoardingAt=0;
       if(!sessionPaused(session)) session.pausedAt = now;
       const reason=cleanText(payload.reason,20).toLowerCase();
       session.pausedBy[String(uid)] = ["inventory","controls","elite"].includes(reason)?reason:"shop";
@@ -3805,10 +3871,11 @@ async function applyAction(session, user, action, payload={}){
     return writeSession(session);
   }
   if(action === "start" || action === "restart" || action === "continue" || action === "replay"){
+    if(session.expedition&&['continue','replay'].includes(action))throw Error('Choose the next stage or Replay from Rescue Mode.');
     if(session.hostId !== uid) throw new Error("Only the squad leader can start the mission.");
     const eventSchedule=rescueEvent.isEvent(session.launchType)?await rescueSchedule.read():null;
     if(eventSchedule&&eventSchedule.phase!=="active")throw new Error("The event is paused or closed. Existing active runs may finish; new attempts open when the event resumes.");
-    if(session.memberIds.length < 2 && !postCampaignSession(session)&&session.launchType!=="monsoon-solo") throw new Error("Invite one teammate before starting.");
+    if(session.memberIds.length < 2 && !postCampaignSession(session)&&session.launchType!=="monsoon-solo"&&!expedition.isSolo(session.launchType)) throw new Error("Invite one teammate before starting.");
     if(action === "start" && session.status !== "waiting") return session;
     if(action==='start'&&session.readyVersion===1&&session.memberIds.length===2){
       const members=await memberPlayers(session),markers=await readyMarkers(session,members);if((await Promise.all(members.map(async p=>!isReady(session,p,await readCoopProfile(p.userId),markers.get(p.userId),now)))).some(Boolean))throw Error('Both connected players must confirm I’m ready before deployment.');
@@ -3881,6 +3948,8 @@ async function applyAction(session, user, action, payload={}){
     session.routeVersion=1;
     session.fieldVersion=1;session.fieldLeadRescuedAt=null;
     session.completedAt = 0;
+    session.expeditionBoardingAt=0;
+    session.expeditionBridgeOpen=false;
     session.failureReason = "";
     session.pausedAt = 0;
     session.pausedBy = {};
@@ -3890,7 +3959,7 @@ async function applyAction(session, user, action, payload={}){
     await writeSession(session);
     const mission = missionDefinition(session);
     const players = await memberPlayers(session);
-    const completedCheckpointIndex = action === "restart"
+    const completedCheckpointIndex = action === "restart"&&!session.expedition
       ? (mission.checkpoints || []).reduce((last, checkpoint, index)=>players.every((row)=>(row.checkpointIds || []).includes(checkpoint.id)) ? index : last, -1)
       : -1;
     const restartCheckpoint = completedCheckpointIndex >= 0 ? mission.checkpoints[completedCheckpointIndex] : null;
@@ -4152,7 +4221,7 @@ async function applyAction(session, user, action, payload={}){
       const routePlayers = await memberPlayers(session);
       const routeState = sessionDerived(session, routePlayers, now);
       if(routeState.checkpointCompletedIds.length < (rescueMission.checkpoints || []).length){
-        throw new Error("Search all marked homes with your teammate before rescuing survivors.");
+        throw new Error(session.expedition?"Complete the marked route objective before escorting survivors.":"Search all marked homes with your teammate before rescuing survivors.");
       }
     }
     if(distance(player, civilian) > 82) throw new Error("Move closer to the civilian.");
@@ -4214,11 +4283,22 @@ async function applyAction(session, user, action, payload={}){
   return session;
 }
 
+async function claimExpeditionStage(session){
+  const derived=sessionDerived(session,await memberPlayers(session));
+  const mission=missionDefinition(session);
+  return expeditionStore.save(session,{
+    mode:expedition.isSolo(session.launchType)?'Solo':'Co-op',
+    survivors:mission.civilians.filter(row=>derived.securedCivilianIds.includes(row.id)).map(row=>row.name),
+    captures:derived.capturedIds.length,kills:derived.tigerKills,
+  });
+}
+
 async function claimReward(session, user){
   const uid = userIdOf(user);
   const slot = session.memberIds.indexOf(uid);
   if(slot < 0) throw new Error("You are not a member of this squad.");
   if(session.status !== "complete") throw new Error("Complete the mission before claiming rewards.");
+  if(session.expedition)return {expedition:await claimExpeditionStage(session)};
   const player = await readPlayer(session.code, uid, user, slot);
   const firstClaim = !player.rewardClaimed;
   player.rewardClaimed = true;
@@ -4450,9 +4530,17 @@ async function claimReward(session, user){
 }
 
 async function closeSession(session, user){
+  if(session.expedition){session=await readSession(session.code);ensureLiveSession(session);}
   const uid = userIdOf(user);
   if(!session.memberIds.includes(uid)) throw new Error("You are not a member of this squad.");
-  if(session.memberIds.length === 1){
+  if(session.expedition&&session.status==='complete'){
+    if(uid===session.hostId){
+      const saved=await claimExpeditionStage(session);
+      await expeditionStore.release(uid,saved,session.code);
+    }
+    return session;
+  }
+  if(session.memberIds.length === 1||session.expedition?.ownerId===uid){
     session.status = "closed";
     return writeSession(session);
   }
@@ -4507,6 +4595,8 @@ async function closeSession(session, user){
     session.storyMissionLevel += 1;
     session.status = "waiting";
     session.completedAt = 0;
+    session.expeditionBoardingAt=0;
+    session.expeditionBridgeOpen=false;
     session.failureReason = "";
   }
   return writeSession(session);
@@ -4537,6 +4627,7 @@ module.exports = {
   SHARED_STORY_MISSIONS,
   POST_CAMPAIGN_LAUNCH_TYPES,
   missionDefinition,
+  expeditionStatus,
   cleanCode,
   createSession,
   joinSession,

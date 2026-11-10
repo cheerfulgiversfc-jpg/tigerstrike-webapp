@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5290";
+const TS_BUILD = "5291";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -43916,7 +43916,7 @@ function gamepadLabel(id=""){
 }
 
 function pollGamepadControls(){
-  if(document.getElementById('rescuePartnersDialog')?.open||document.getElementById('waitingPracticeDialog')?.open||document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('rescueExpeditionDialog')?.open||document.getElementById('rescuePartnersDialog')?.open||document.getElementById('waitingPracticeDialog')?.open||document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('smoothPlayDialog')?.open || document.getElementById('combatComfortDialog')?.open || document.getElementById('missionRouteDialog')?.open) return;
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads[0];
@@ -44072,7 +44072,7 @@ window.addEventListener("gamepaddisconnected", ()=>{
 });
 
 document.addEventListener("keydown",(e)=>{
-  if(document.getElementById('rescuePartnersDialog')?.open||document.getElementById('waitingPracticeDialog')?.open||document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
+  if(document.getElementById('rescueExpeditionDialog')?.open||document.getElementById('rescuePartnersDialog')?.open||document.getElementById('waitingPracticeDialog')?.open||document.getElementById('rescueCardDialog')?.open||document.getElementById('playerLaunchHub')?.open||document.getElementById('recruitPracticeDialog')?.open||document.getElementById('rescueEventBoard')?.open||document.getElementById('personalRescueHQ')?.open||document.getElementById('eliteArmory')?.open||document.getElementById('touchLayoutDialog')?.open||document.getElementById('fieldOperationsDialog')?.open)return;
   if(document.getElementById('combatComfortDialog')?.open || document.getElementById('smoothPlayDialog')?.open || document.getElementById('missionRouteDialog')?.open)return;
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -65844,6 +65844,21 @@ function openPersonalRescueHQ(){
     const eventProgress=await window.TigerRescueEventBoard?.readProgress().catch(()=>null);
     const ctx=organizerSoloContext();return {eventProgress:eventProgress?.progress,records:S.missionDebriefs,gear:ctx.current,mode:S.mode,weaponName:equippedWeapon().name,uniformPalette:ctx.uniformPalette,equipmentLabel:'Current '+S.mode+' equipment'};
   },onClose:()=>setPaused(paused,reason)});
+}
+
+function openRescueExpedition(){
+  const paused=S.paused,reason=S.pauseReason;
+  let launching=false;
+  resetTouchStick();
+  setPaused(true,'rescue-expedition');
+  return window.TigerRescueExpeditionHub.open({
+    play:async options=>{
+      launching=true;
+      try{await window.TigerLiveSquad.startExpedition(options);}
+      catch(error){launching=false;throw error;}
+    },
+    onClose:()=>{if(!launching)setPaused(paused,reason);},
+  });
 }
 
 function openRescueEventBoard(){
