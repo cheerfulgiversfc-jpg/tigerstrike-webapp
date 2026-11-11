@@ -2253,7 +2253,7 @@ const LIVING_WORLD_PATROL_DEFS = Object.freeze({
   ]),
 });
 const ALL_COOP_TIGERS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []), ...Object.values(LIVING_WORLD_PATROL_DEFS).flat(), ...POST_CAMPAIGN_TIGERS, ...POST_CAMPAIGN_GOVERNMENT, Object.freeze({ ...POST_CAMPAIGN_TIGERS[0], id:"crisis_escaped_alpha", hpMax:1800 })]);
-const ALL_COOP_CIVILIANS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []), ...POST_CAMPAIGN_CIVILIANS, ...[1,2,3].map(i=>({id:`exp_civ_${i}`}))]);
+const ALL_COOP_CIVILIANS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []), ...POST_CAMPAIGN_CIVILIANS, ...[1,2,3,4].map(i=>({id:`fv_civ_${i}`})), ...[1,2,3].map(i=>({id:`exp_civ_${i}`}))]);
 const ALL_COOP_CHECKPOINTS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.checkpoints || []));
 
 function normalizeLaunchType(value){
@@ -2593,7 +2593,7 @@ function normalizeSession(raw){
     survivalWavesCleared:clamp(Math.floor(Number(raw.survivalWavesCleared || 0)), 0, 50),
     survivalIntermissionUntil:Math.max(0, Number(raw.survivalIntermissionUntil || 0)),
     livingWorldMission:normalizeLivingWorldMission(raw.livingWorldMission),
-    expedition:expedition.isExpedition(launchType)&&raw.expedition?.ownerId===hostId&&expedition.routes[raw.expedition.route]&&[1,2,3].includes(raw.expedition.stage)?raw.expedition:null,
+    expedition:expedition.isExpedition(launchType)&&raw.expedition?.ownerId===hostId&&Object.hasOwn(expedition.definition(raw.expedition.id)?.routes||{},raw.expedition.route)&&[1,2,3].includes(raw.expedition.stage)?raw.expedition:null,
     expeditionBridgeOpen:raw.expeditionBridgeOpen===true,
     expeditionBoardingAt:Math.max(0,Number(raw.expeditionBoardingAt)||0),
     postCampaignOperation,
@@ -2614,7 +2614,7 @@ function normalizeSession(raw){
     routeVersion:Number(raw.routeVersion)===1?1:0,
     fieldVersion:Number(raw.fieldVersion)===1?1:0,
     fieldLeadRescuedAt:Number.isFinite(raw.fieldLeadRescuedAt)?raw.fieldLeadRescuedAt:null,
-    title:expedition.isExpedition(launchType)?expedition.title:launchType === "shared-story"
+    title:expedition.isExpedition(launchType)?(expedition.definition(raw.expedition?.id)?.title||expedition.title):launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (postCampaign.crisisByLaunchType(launchType)?.name || SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
   };
@@ -2765,6 +2765,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     civilianEscorts:src.civilianEscorts && typeof src.civilianEscorts === 'object' ? src.civilianEscorts : {},
     civilianHealing:src.civilianHealing && typeof src.civilianHealing === 'object' ? src.civilianHealing : {},
     rescueTool:rescueTools.DEFS[src.rescueTool?.id] ? src.rescueTool : rescueTools.create(),
+    expeditionFerryAt:Math.max(0,Number(src.expeditionFerryAt)||0),
     checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>(expedition.checkpointIds.includes(id)||ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id))))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     revives:clamp(src.revives, 0, 999),
@@ -2983,7 +2984,7 @@ async function createSession(user, opts={}){
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
     readyVersion:plan||opts.readyCheck===true?1:0,readyRevision:1,
-    expedition:plan?{runId:plan.run.id,ownerId:uid,stage:plan.run.stage,route:plan.run.route}:null,
+    expedition:plan?{id:plan.expeditionId,runId:plan.run.id,ownerId:uid,stage:plan.run.stage,route:plan.run.route}:null,
     postCampaignOperation,
     crisisVote:postCampaignSession({launchType})?normalizeCrisisVote(null,{launchType,memberIds:[uid],hostId:uid,postCampaignOperation}):null,
     livingWorldMission:launchType === "shared-story" && storyMissionLevel <= livingWorld.PILOT_MAX_MISSION
@@ -3004,8 +3005,9 @@ async function readExpeditionRoom(code){
   return room?.status!=='closed'&&nowMs()-Number(room?.updatedAt||0)<=SESSION_TTL_MS?room:null;
 }
 
-async function expeditionStatus(user){
-  const uid=userIdOf(user),run=await expeditionStore.read(uid);
+async function expeditionStatus(user,expeditionId='river-gate'){
+  if(!expedition.definition(expeditionId))throw Error('Choose an available rescue expedition.');
+  const uid=userIdOf(user),run=await expeditionStore.read(uid,expeditionId);
   if(!run)return null;
   const room=run.roomCode&&await readExpeditionRoom(run.roomCode);
   return {...run,roomCode:room?.code||'',roomStatus:room?.status||''};
@@ -3186,7 +3188,8 @@ function sessionDerived(session, players, at=nowMs()){
       : players.length === session.memberIds.length && players.every(player=>player.checkpointIds.includes(checkpoint.id)))
     .map((checkpoint)=>checkpoint.id);
   const checkpointsReady = checkpointCompletedIds.length >= checkpoints.length;
-  const objectivesReady = securedCivilianIds.length >= mission.rescueRequired && captureTargetsReady && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
+  const ferryReady=!mission.ferry||players.every(p=>p.expeditionFerryAt>0);
+  const objectivesReady = ferryReady && securedCivilianIds.length >= mission.rescueRequired && captureTargetsReady && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
   return { rescuedIds, securedCivilianIds, capturedIds, checkpointCompletedIds, checkpointsReady, bossDamage, bossHp, boss, tigers, tigerKills, aggressionPerKill, aggressionBonus, bloodRageActive, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
 }
@@ -3354,6 +3357,7 @@ async function maybeFinishSession(session, players){
 function missionSceneWater(mission,session){
   if(session.expedition){
     const {route,stage}=session.expedition;
+    if(session.expedition.id==='flooded-village')return mission.waterZones;
     const bridgeOpen=route==='bridge'&&(stage>1||session.expeditionBridgeOpen);
     return bridgeOpen?mission.waterZones:mission.waterZones.map(zone=>({...zone,bridges:[]}));
   }
@@ -3399,8 +3403,36 @@ function buildMissionDebrief(session,players,derived,viewerId,reward=null,reward
     contributions:players.map(p=>({name:p.name,recruited:p.debriefRecruitIds?.length??null,captures:p.capturedIds.length,kills:Object.keys(p.killSites||{}).length,damage:Object.values(p.tigerDamage||{}).reduce((a,b)=>a+Number(b||0),0),revives:p.revives}))
   });
 }
+const ferryKey=session=>`live_squad_expedition_ferry_${session.code}_${session.startedAt}`;
+
+async function ferryState(session){
+  const ferry=session.expedition&&missionDefinition(session).ferry;
+  return ferry&&session.status==='active'?await getState(ferryKey(session)):null;
+}
+
+async function advanceFerry(session,player,transit,at=nowMs()){
+  if(!transit||player.expeditionFerryAt===transit.at)return player;
+  const ferry=missionDefinition(session).ferry;
+  const progress=clamp((at-transit.at)/ferry.duration,0,1);
+  const slot=player.slot===0?0:1;
+  const point=progress<1
+    ? {x:ferry.boatFrom.x+(ferry.boatTo.x-ferry.boatFrom.x)*progress+slot*20-10,
+       y:ferry.boatFrom.y+(ferry.boatTo.y-ferry.boatFrom.y)*progress}
+    : {x:ferry.to.x+slot*38,y:ferry.to.y};
+  player.x=point.x;player.y=point.y;player.moving=false;player.moveX=0;player.moveY=0;
+  player.lastMoveAt=at;
+  for(const id of player.rescuedIds){
+    if(player.securedCivilianIds.includes(id))continue;
+    player.civilianEscorts[id]={x:point.x,y:point.y+28,path:[],updatedAt:at};
+  }
+  if(progress===1)player.expeditionFerryAt=transit.at;
+  return writePlayer(session.code,player);
+}
+
 async function buildSnapshot(session, viewerId){
-  const players = await memberPlayers(session);
+  let players = await memberPlayers(session);
+  const transit=await ferryState(session);
+  if(transit)players=await Promise.all(players.map(p=>advanceFerry(session,p,transit)));
   session = await maybeTransferDisconnectedLeader(session, players);
   session = await maybeFinishSession(session, players);
   const at = nowMs();
@@ -3423,7 +3455,11 @@ async function buildSnapshot(session, viewerId){
     title:session.title,
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
-    expedition:session.expedition?{stage:session.expedition.stage,route:session.expedition.route,
+    expedition:session.expedition?{id:session.expedition.id||'river-gate',title:expedition.definition(session.expedition.id).title,
+      stage:session.expedition.stage,route:session.expedition.route,scene:mission.expeditionScene||null,
+      ferry:mission.ferry?{...mission.ferry,startedAt:transit?.at||players.find(p=>p.expeditionFerryAt)?.expeditionFerryAt||0,
+        active:!!transit&&at-transit.at<mission.ferry.duration,
+        completed:players.every(p=>p.expeditionFerryAt>0)}:null,
       boat:mission.boat,boardingMs:session.expeditionBoardingAt&&session.status==='active'?Math.max(0,expedition.holdMs-(at-session.expeditionBoardingAt)):0}:null,
     ...(rescueEvent.isEvent(session.launchType)?{eventSchedule:await rescueSchedule.read()}:{}),
     postCampaignOperation:session.postCampaignOperation,
@@ -3483,7 +3519,7 @@ async function buildSnapshot(session, viewerId){
       livingWorld:livingWorldEffect.enabled ? livingWorldEffect : null,
       postCampaign:!!mission.postCampaign,
       postCampaignTypeId:cleanText(mission.postCampaignTypeId || "", 40),
-      weatherFx:rescueEvent.isEvent(session.launchType)?"rain":"clear",
+      weatherFx:mission.weatherFx||(rescueEvent.isEvent(session.launchType)?"rain":"clear"),
       difficultyLabel:cleanText(mission.difficultyLabel || "", 30),
       playerCount:Math.max(1, Number(mission.playerCount || session.memberIds.length || 1)),
     },
@@ -3541,6 +3577,11 @@ async function updateOwnPresence(session, user, patch={}){
   syncEscortOwnership(session,player);
   const now = nowMs();
   const mission = missionDefinition(session);
+  const transit=await ferryState(session);
+  if(transit&&(now-transit.at<mission.ferry.duration||player.expeditionFerryAt!==transit.at)){
+    player.lastSeenAt=now;
+    return advanceFerry(session,player,transit,now);
+  }
   const fieldSlot = player.slot === 0 ? 0 : 1;
   const defaultSpawn = mission.spawns[fieldSlot];
   const lastCheckpoint = (mission.checkpoints || []).reduce((last, checkpoint)=>(player.checkpointIds || []).includes(checkpoint.id) ? checkpoint : last, null);
@@ -3751,7 +3792,7 @@ async function updateOwnPresence(session, user, patch={}){
 }
 
 async function applyAction(session, user, action, payload={}){
-  if(['expedition-interact','rescue','deliver','ready','start','restart','continue','replay'].includes(action)){
+  if(['expedition-ferry','expedition-interact','rescue','deliver','ready','start','restart','continue','replay'].includes(action)){
     session=await readSession(session.code);
     ensureLiveSession(session);
   }
@@ -3761,13 +3802,32 @@ async function applyAction(session, user, action, payload={}){
   let player = await readPlayer(session.code, uid, user, slot);
   syncEscortOwnership(session,player);
   const now = nowMs();
+  const transit=await ferryState(session);
+  if(transit&&now-transit.at<missionDefinition(session).ferry.duration){
+    throw Error('The ferry is crossing. Controls return at the far landing.');
+  }
+  if(action==='expedition-ferry'){
+    if(transit)throw Error('The ferry crossing has already been used this attempt.');
+    const mission=missionDefinition(session),ferry=mission.ferry;
+    if(!ferry||session.status!=='active'||sessionPaused(session)||player.downed)throw Error('The ferry is available during the boat-route escort stage.');
+    const players=await memberPlayers(session),derived=sessionDerived(session,players,now);
+    if(!derived.checkpointsReady||derived.rescuedIds.length!==mission.rescueRequired)throw Error('Open both home exits and rescue all four villagers before calling the ferry.');
+    const civilians=civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds);
+    if(players.some(p=>p.downed||now-p.lastSeenAt>15000||distance(p,ferry.from)>ferry.from.r))throw Error('Bring every connected, standing soldier to the ferry landing.');
+    if(civilians.some(c=>!c.following||distance(c,ferry.from)>190))throw Error('Wait for all four following villagers to reach the ferry landing.');
+    if(!await setStateIfAbsent(ferryKey(session),{at:now}))throw Error('The ferry crossing has already been used this attempt.');
+    return session;
+  }
   if(action==='expedition-interact'){
     if(!session.expedition||session.status!=='active'||sessionPaused(session)||player.downed)throw Error('This interaction is only available during the active expedition stage.');
-    const mission=missionDefinition(session),site=mission.checkpoints.find(point=>point.manual);
-    if(!site||distance(player,site)>site.r)throw Error('Move into the marked objective circle first.');
+    const mission=missionDefinition(session);
     const players=await memberPlayers(session);
-    if(players.some(row=>row.checkpointIds.includes(site.id))&&site.id!=='exp_bridge_open')return session;
-    if(site.id==='exp_triage')for(const civilian of mission.civilians)player.civilianHealing[civilian.id]=45;
+    const completed=new Set(players.flatMap(p=>p.checkpointIds));
+    const remaining=mission.checkpoints.filter(point=>point.manual&&!completed.has(point.id));
+    const site=remaining.find(point=>distance(player,point)<=point.r)||remaining[0];
+    if(!site)return session;
+    if(distance(player,site)>site.r)throw Error('Move into the marked objective circle first.');
+    if(['exp_triage','fv_stabilize'].includes(site.id))for(const civilian of mission.civilians)player.civilianHealing[civilian.id]=45;
     if(!player.checkpointIds.includes(site.id))player.checkpointIds.push(site.id);
     await writePlayer(session.code,player);
     if(site.id==='exp_bridge_open'&&!session.expeditionBridgeOpen)return writeSession({...session,expeditionBridgeOpen:true});
@@ -3945,8 +4005,8 @@ async function applyAction(session, user, action, payload={}){
     session.packVersion=1;
     session.soundVersion=1;
     session.pursuitVersion=1;
-    session.routeVersion=1;
-    session.fieldVersion=1;session.fieldLeadRescuedAt=null;
+    session.routeVersion=session.expedition?0:1;
+    session.fieldVersion=session.expedition?0:1;session.fieldLeadRescuedAt=null;
     session.completedAt = 0;
     session.expeditionBoardingAt=0;
     session.expeditionBridgeOpen=false;
@@ -3973,6 +4033,7 @@ async function applyAction(session, user, action, payload={}){
       const spawn = restartCheckpoint
         ? { x:restartCheckpoint.x + (p.slot === 0 ? -42 : 42), y:restartCheckpoint.y + 54 }
         : defaultSpawn;
+      p.expeditionFerryAt=0;
       p.hp = def.maxHp;
       p.maxHp = def.maxHp;
       p.armor = 100;
@@ -4284,12 +4345,15 @@ async function applyAction(session, user, action, payload={}){
 }
 
 async function claimExpeditionStage(session){
-  const derived=sessionDerived(session,await memberPlayers(session));
+  const players=await memberPlayers(session);
+  const derived=sessionDerived(session,players);
   const mission=missionDefinition(session);
   return expeditionStore.save(session,{
     mode:expedition.isSolo(session.launchType)?'Solo':'Co-op',
     survivors:mission.civilians.filter(row=>derived.securedCivilianIds.includes(row.id)).map(row=>row.name),
     captures:derived.capturedIds.length,kills:derived.tigerKills,
+    ferryUsed:!!mission.ferry&&players.every(p=>p.expeditionFerryAt>0),
+    stabilized:civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds).filter(c=>c.hp===100&&mission.civilians.find(source=>source.id===c.id)?.injured).length,
   });
 }
 

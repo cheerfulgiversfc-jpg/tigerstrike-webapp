@@ -25,9 +25,11 @@
     const down=(snap.players||[]).find(p=>p.userId!==player.userId&&p.downed);if(down)return point(down,'Revive teammate');
     if(snap.objectivesReady===true)return point(snap.extraction,'Reach extraction');
     const checkpoint=(snap.checkpoints||[]).find(c=>!(snap.checkpointCompletedIds||[]).includes(c.id));
-    if(snap.mission?.checkpointsBeforeRescue&&checkpoint)return point(checkpoint,'Both players inspect');
+    if(snap.mission?.checkpointsBeforeRescue&&checkpoint)return point(checkpoint,checkpoint.manual?checkpoint.label:'Both players inspect');
     const mine=(snap.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(viewerId)&&!c.secured);
     if(checkpoint&&mine.length)return point(checkpoint,'Escort to checkpoint');
+    const ferry=snap.expedition?.ferry;
+    if(ferry&&!ferry.completed&&(snap.rescuedIds||[]).length>=Number(snap.mission?.rescueRequired||0))return point(ferry.from,ferry.active?'Ferry crossing':'Board ferry with everyone');
     if(mine.length)return point(snap.rescueHouse,'Take followers to Rescue House');
     const rescueRequired=Number(snap.mission?.rescueRequired??(snap.civilians||[]).length);
     const needsRescue=new Set(snap.securedCivilianIds||[]).size<rescueRequired;

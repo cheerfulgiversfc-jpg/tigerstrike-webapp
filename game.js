@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5291";
+const TS_BUILD = "5292";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -65846,12 +65846,13 @@ function openPersonalRescueHQ(){
   },onClose:()=>setPaused(paused,reason)});
 }
 
-function openRescueExpedition(){
+function openRescueExpedition(expeditionId='river-gate'){
   const paused=S.paused,reason=S.pauseReason;
   let launching=false;
   resetTouchStick();
   setPaused(true,'rescue-expedition');
   return window.TigerRescueExpeditionHub.open({
+    expeditionId,
     play:async options=>{
       launching=true;
       try{await window.TigerLiveSquad.startExpedition(options);}

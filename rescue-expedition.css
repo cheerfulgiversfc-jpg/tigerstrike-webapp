@@ -44,3 +44,9 @@
   .expeditionArena .squadMapLegend { display: none; }
   .expeditionArena .squadPrepBar { min-width: 0; }
 }
+#rescueExpeditionDialog .expAdventures { display:flex; gap:8px; padding:10px 14px 0; }
+#rescueExpeditionDialog .expAdventures button { flex:1; min-width:0; white-space:normal; }
+#rescueExpeditionDialog .expAdventures button[aria-pressed="true"] { border-color:#5eead4; background:#184750; }
+@media (max-width:640px) {
+  .expeditionArena > #squadObjective { position:sticky; top:0; z-index:10065; padding:8px; border:1px solid #3a646d; border-radius:8px; background:#0d1b2af5; }
+}

@@ -4,48 +4,50 @@ const expedition=require('../../rescue-expedition');
 const water=require('../../water-terrain');
 const maps=require('../../chapter-maps');
 
-const key=uid=>`rescue_expedition_river_gate_${uid}`;
-const read=uid=>getState(key(uid));
-const hasRoute=route=>Object.hasOwn(expedition.routes,route);
+const key=(uid,id='river-gate')=>`rescue_expedition_${id==='river-gate'?'river_gate':id}_${uid}`;
+const read=(uid,id='river-gate')=>getState(key(uid,id));
 
-async function prepare(uid,{expeditionRoute,expeditionReplay},readRoom){
-  const previous=await read(uid);
+async function prepare(uid,{expeditionId='river-gate',expeditionRoute,expeditionReplay},readRoom){
+  const adventure=expedition.definition(expeditionId);
+  if(!adventure)throw Error('Choose an available rescue expedition.');
+  const previous=await read(uid,adventure.id);
   const room=previous?.roomCode&&await readRoom(previous.roomCode);
   if(room&&room.status!=='closed')throw Error('Resume or leave your current expedition stage first.');
   let run=previous;
   if(!run||run.stage===4){
     if(run&&!expeditionReplay)throw Error('Choose Replay to start a new expedition.');
-    if(!hasRoute(expeditionRoute))throw Error('Choose the clinic or bridge route first.');
-    run={id:randomUUID(),route:expeditionRoute,stage:1,results:[]};
+    if(!Object.hasOwn(adventure.routes,expeditionRoute))throw Error('Choose a route for this expedition first.');
+    run={id:randomUUID(),expeditionId:adventure.id,route:expeditionRoute,stage:1,results:[]};
   }
-  return {previous,run};
+  return {previous,run,expeditionId:adventure.id};
 }
 
 async function attach(uid,plan,roomCode){
-  return compareAndSetState(key(uid),plan.previous,{...plan.run,roomCode});
+  return compareAndSetState(key(uid,plan.expeditionId),plan.previous,{...plan.run,roomCode});
 }
 
 async function release(uid,saved,code){
   if(saved.roomCode!==code)return;
-  if(!await compareAndSetState(key(uid),saved,{...saved,roomCode:''})){
-    if((await read(uid))?.roomCode===code)throw Error('Could not close the saved stage. Try again.');
+  if(!await compareAndSetState(key(uid,saved.expeditionId),saved,{...saved,roomCode:''})){
+    if((await read(uid,saved.expeditionId))?.roomCode===code)throw Error('Could not close the saved stage. Try again.');
   }
 }
 
 async function save(session,result){
-  const {ownerId,runId,stage}=session.expedition;
+  const {ownerId,runId,stage,id}=session.expedition;
   for(let attempt=0;attempt<4;attempt++){
-    const current=await read(ownerId);
+    const current=await read(ownerId,id);
     if(current?.id!==runId)throw Error('This expedition run has been replaced.');
     if(current.results.some(row=>row.stage===stage&&row.roomCode===session.code))return current;
     if(current.stage!==stage||current.roomCode!==session.code)throw Error('This stage no longer owns the expedition checkpoint.');
     const next={...current,stage:stage+1,results:[...current.results,{...result,stage,roomCode:session.code}]};
-    if(await compareAndSetState(key(ownerId),current,next))return next;
+    if(await compareAndSetState(key(ownerId,id),current,next))return next;
   }
   throw Error('The checkpoint is busy. Try saving again.');
 }
 
 function mission(base,session){
+  if(session.expedition.id==='flooded-village')return floodedMission(base,session);
   const {stage,route}=session.expedition;
   const solo=expedition.isSolo(session.launchType);
   const clinic=route==='clinic';
@@ -89,6 +91,72 @@ function mission(base,session){
     objective,civilians:stage===1?[]:survivors,rescueRequired:stage===1?0:survivors.length,
     tigers:threats,timeLimitMs:12*60000,captureRequired:0,captureTargetIds:[],playerCount:solo?1:2,
     tigerDamageMultiplier:solo?.65:.85,extractionType:stage===3?'boat':'ground',
+    mapTruthLandmarks:[],mapTruthRequiredActionIds:[],fireZones:[]};
+}
+
+function floodedMission(base,session){
+  const {stage,route}=session.expedition;
+  const adventure=expedition.definition('flooded-village');
+  const solo=expedition.isSolo(session.launchType);
+  const original=maps.forMission(1);
+  const source={...original.waterZones[0],ry:[130,190,235][stage-1],bridges:[]};
+  const bridgeX=2400;
+  const bridgeBank=water.banks(source,bridgeX);
+  const river={...source,bridges:[{x:bridgeX-58,y:bridgeBank.top-22,w:116,h:bridgeBank.bottom-bridgeBank.top+44}]};
+  const bank=x=>water.banks(river,x);
+  const landingX=3200,landing=bank(landingX);
+  const shelter={x:3650,y:bank(3650).bottom+145,r:95,label:'Village rescue shelter'};
+  const dockX=4140,dockBank=bank(dockX);
+  const dock={x:dockX,y:dockBank.bottom+60,r:90};
+  const boatRoute=route==='boat';
+  const preparation=boatRoute
+    ? {id:'fv_boat_repair',x:landingX,y:landing.top-85,r:95,label:'Repair the rescue boat',manual:true}
+    : {id:'fv_shelter_power',x:shelter.x,y:shelter.y,r:95,label:'Restore shelter power',manual:true};
+  const homes=[
+    {id:'fv_home_west',x:2890,y:bank(2890).top-85,r:100,label:'Open the west home exit',manual:true},
+    {id:'fv_home_east',x:3440,y:bank(3440).top-85,r:100,label:'Open the east home exit',manual:true},
+  ];
+  const survivors=['Asha','Jonah','Suri','Tomas'].map((name,i)=>{
+    const home=homes[i<2?0:1];
+    return {id:`fv_civ_${i+1}`,name,look:i===2?'medic':'field',
+      x:stage===3?3770+(i%2)*85:home.x+(i%2?42:-42),
+      y:stage===3?dockBank.bottom+130+Math.floor(i/2)*50:home.y+25,
+      injured:!boatRoute&&stage>1,
+    };
+  });
+  const ferry=stage===2&&boatRoute?{
+    from:{x:landingX,y:landing.top-65,r:125},to:{x:landingX,y:landing.bottom+90},
+    boatFrom:{x:landingX,y:landing.top+36},boatTo:{x:landingX,y:landing.bottom-36},duration:5000,
+  }:null;
+  const checkpoints=stage===1?[preparation]:stage===2?homes:boatRoute?[]:[
+    {id:'fv_stabilize',...shelter,label:'Stabilize the villagers',manual:true},
+  ];
+  const rescueHouse=stage===3?{x:dockX-160,y:dock.y+45,r:95,label:'Village boat boarding point'}:shelter;
+  const extraction=stage===3?dock:stage===1?{x:preparation.x+155,y:preparation.y,r:90}:{x:shelter.x+155,y:shelter.y,r:90};
+  const spawn=stage===1&&!boatRoute?{x:shelter.x-270,y:shelter.y-25}
+    : stage===3?{x:3550,y:dockBank.bottom+145}:{x:2670,y:bank(2670).top-175};
+  const threats=base.tigers.slice(0,solo?1:2).map((t,i)=>({
+    ...t,boss:false,hpMax:solo?105:150,
+    baseX:stage===3?dockX+80-i*230:stage===1&&!boatRoute?shelter.x-100:3060+i*390,
+    baseY:stage===3?dock.y+100:stage===1&&!boatRoute?shelter.y-100:bank(3060+i*390).top-155,
+  }));
+  const boat=stage===3?{x:dockX,y:dockBank.center,endX:4650}:null;
+  const objective=stage===1
+    ? `${preparation.label}, clear the tiger threat, then regroup at extraction.`
+    : stage===2
+      ? `Open both marked home exits, rescue all four villagers, and ${boatRoute?'bring the whole party to the ferry landing for a dry crossing':'follow the marked bridge route'} to the village shelter.`
+      : `${boatRoute?'Escort':'Stabilize at the restored shelter, then escort'} all four villagers to the boat boarding point. Defend the landing and hold extraction for 8 seconds.`;
+  const floodedHomes=homes.map(home=>({id:home.id,x:home.x-88,y:home.y-106,w:176,h:90,label:home.label}));
+  const shelterBuilding={x:shelter.x-90,y:shelter.y-148,w:180,h:96};
+  return {...base,level:1,title:`Stage ${stage} · ${adventure.stages[stage-1]}`,chapterName:adventure.title,
+    world:original.world,waterZones:[river],spawns:[spawn,{x:spawn.x+48,y:spawn.y+28}],
+    rescueHouse,extraction,boat,ferry,checkpoints,checkpointsBeforeRescue:stage!==3||!boatRoute,
+    objective,civilians:stage===1?[]:survivors,rescueRequired:stage===1?0:4,tigers:threats,
+    captureRequired:0,captureTargetIds:[],timeLimitMs:14*60000,playerCount:solo?1:2,
+    tigerDamageMultiplier:solo?.6:.8,extractionType:stage===3?'boat':'ground',weatherFx:'rain',
+    expeditionScene:{floodStage:stage,homes:floodedHomes,shelter:shelterBuilding,
+      shelterPowered:route==='shelter'&&stage>1,preparationBoat:boatRoute&&stage===1?{x:landingX,y:landing.center}:null,
+      helicopter:stage===1?{x:spawn.x-60,y:spawn.y-75}:null},
     mapTruthLandmarks:[],mapTruthRequiredActionIds:[],fireZones:[]};
 }
 
