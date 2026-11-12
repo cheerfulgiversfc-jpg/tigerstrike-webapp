@@ -179,7 +179,7 @@ module.exports = async function handler(req, res){
     const requestRoom=action!=='create'&&body.code?await readSession(cleanCode(body.code)):null;
     const rescueType=['create','quick-match'].includes(action)?String(body.launchType||'').trim().toLowerCase():requestRoom?.launchType;
     return await require('../_lib/rescue-profile-scope').run(rescueType,async()=>{
-    if(action==='expedition-status')return json(res,200,{ok:true,expedition:await expeditionStatus(user,body.expeditionId)});
+    if(action==='expedition-status')return json(res,200,{ok:true,expedition:await expeditionStatus(user,body.expeditionId,body.own===true)});
     if(action === 'hq-profile')return json(res,200,{ok:true,...await readPersonalHq(user,cleanCode(body?.code))});
     if(action === "profile"){
       return json(res, 200, { ok:true, profile:await readCoopProfile(user), profileScope:require('../_lib/rescue-profile-scope').suffix(), gearCatalog:COOP_GEAR_CATALOG });
@@ -226,8 +226,9 @@ module.exports = async function handler(req, res){
     let invitation = null;
     let reward = null;
     if(action === "sync" || action === "status" || action === "role"){
+      if(action==='status'&&session.expedition)await require('../_lib/rescue-expedition-store').remember(session,userIdOf(user));
       await updateOwnPresence(session, user, body?.player || (action === "role" ? { role:body?.role } : {}));
-    }else if(["ready","organizer-apply","start","restart","continue","replay","handoff","vote","radio","tool-select","tool-use","route-choice","field-use","expedition-ferry","expedition-interact","escort-offer","escort-accept","escort-decline","escort-recover","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
+    }else if(["ready","organizer-apply","start","restart","continue","replay","handoff","vote","radio","tool-select","tool-use","route-choice","field-use","expedition-continue","expedition-mode","expedition-ferry","expedition-interact","escort-offer","escort-accept","escort-decline","escort-recover","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
       session = await applyAction(session, user, action, body || {});
     }else if(["gear-buy","gear-equip","gear-use"].includes(action)){
       await applyCoopEquipmentAction(session, user, action, body || {});
@@ -236,7 +237,7 @@ module.exports = async function handler(req, res){
     }else if(action === "claim"){
       reward = await claimReward(session, user);
     }else if(action === "leave"){
-      await closeSession(session, user);
+      await closeSession(session, user,body);
       return json(res, 200, { ok:true, left:true });
     }
 

@@ -459,6 +459,7 @@
 
   function applySnapshot(snapshot, roles){
     if(!snapshot || typeof snapshot !== "object") return;
+    const expeditionChanged=!!snapshot.expedition&&(state.snapshot?.expedition?.stage!==snapshot.expedition.stage||state.snapshot?.launchType!==snapshot.launchType);
     const previousStatus=state.snapshot?.status;
     const wasCrossing=!!state.snapshot?.expedition?.ferry?.active;
     const leadershipChanged=state.snapshot?.code===snapshot.code&&state.snapshot?.hostId!==snapshot.hostId;
@@ -526,7 +527,7 @@
       if(state.lastEquipmentMarkup !== equipmentHtml()) render();
     }else if(snapshot.status === "active" && bodyMode === "active" && $("squadArena")){
       updateActiveHud();
-    }else if(snapshot.status === "waiting" && bodyMode === "waiting" && !leadershipChanged){
+    }else if(snapshot.status === "waiting" && bodyMode === "waiting" && !leadershipChanged && !expeditionChanged){
       updateWaitingLobby();
     }else if(["complete","failed"].includes(snapshot.status) && bodyMode === snapshot.status){
       updateActiveHud();
@@ -777,7 +778,9 @@
       <div class="squadRow">
         ${snapshot.isHost?`<button class="squadBtn good" id="squadStartButton" data-squad-command="start" ${ready?'':'disabled'}>${solo?'Start Solo Now':ready?'Start Mission':full?'Both Players Must Be Ready':'Need Teammate'}</button>`:'<span>Waiting for the captain to start</span>'}
         ${!solo?`<button class="squadBtn primary" id="squadInviteButton" data-squad-command="invite" ${full?'disabled':''}>Invite Teammate</button><button class="squadBtn" data-squad-command="copy-code">Copy Code · ${esc(displayCode(snapshot.code))}</button>`:''}
-        <button class="squadBtn" data-squad-command="leave">Back to Rescue Mode</button>
+        ${snapshot.isHost&&snapshot.memberCount===1?`<button class="squadBtn" data-squad-command="expedition-mode" data-exp-mode="${solo?'squad':'solo'}">${solo?'Play this stage with a teammate':'Play this stage Solo'}</button>`:''}
+        <button class="squadBtn" data-squad-command="expedition-save-exit">Save &amp; return later</button>
+        <button class="squadBtn danger" data-squad-command="leave">Leave Squad</button>
       </div>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       ${!solo?`<section class="squadReadyPanel" id="squadReadyPanel">${readyPanelHtml()}</section>`:''}
@@ -985,6 +988,7 @@
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>${captureRequired() > 0 ? "🔬 Capture target" : "👤 Civilian"}</span><span>🐅 Tiger</span></div>
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} battlefield with a player-following camera"></canvas>
+      ${snap.expedition?.report?`<section id="squadExpeditionReport">${window.TigerRescueExpeditionHub.reportHtml(snap.expedition.report)}</section>`:''}
       <div id="squadDebrief">${snap.debrief?window.TigerMissionDebrief?.html(snap.debrief,state.profile?.missionDebriefs)||'':''}</div>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? (snap.expedition?"🛟 Expedition Stage Complete":"🏆 Squad Extracted!") : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : (snap.failureReason === "teammate_left" ? "🔄 Teammate Left" : "⏱️ Operation Failed"))}</div>
@@ -1029,8 +1033,14 @@
     const snap = state.snapshot;
     if(!snap) return "";
     if(snap.expedition){
-      if(snap.status==='complete')return `<button class="squadBtn good" data-squad-command="leave">${snap.isHost?(snap.expedition.stage===3?'Save & View Expedition Debrief':'Save & Choose Next Stage'):'Back to Rescue Mode'}</button>`;
-      if(snap.status==='failed')return `${snap.isHost&&(snap.memberCount===2||soloSquadMission())?'<button class="squadBtn good" data-squad-command="restart">Retry This Stage</button>':''}<button class="squadBtn" data-squad-command="leave">Back to Rescue Mode</button>`;
+      const back='<button class="squadBtn" data-squad-command="expedition-save-exit">Save &amp; return later</button><button class="squadBtn danger" data-squad-command="leave">Leave Squad</button>';
+      if(snap.status==='complete'){
+        const next=snap.expedition.stage<3
+          ? snap.isHost?'<button class="squadBtn good" data-squad-command="expedition-continue">Continue Expedition</button>':`<span class="squadSmall">The captain can prepare Stage ${snap.expedition.stage+1} for this squad.</span>`
+          : '<button class="squadBtn good" data-squad-command="expedition-save-exit">View Full Expedition Report</button>';
+        return next+back;
+      }
+      if(snap.status==='failed')return `${snap.isHost&&(snap.memberCount===2||soloSquadMission())?'<button class="squadBtn good" data-squad-command="restart">Retry This Stage</button>':''}${back}`;
     }
     const eventClosed=rescueEventActive()&&snap.eventSchedule?.phase!=='active';
     if(snap.status === "failed") return `${snap.failureReason === "teammate_left" && snap.memberCount < 2 ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Replacement</button><button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>` : ""}${snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart" ${eventClosed||snap.memberCount < 2&&!soloSquadMission() ? "disabled" : ""}>${eventClosed?"Event closed":snap.memberCount < 2&&!soloSquadMission() ? "Need Teammate" : "Restart Mission"}</button>` : `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>`}${snap.isHost && snap.memberCount === 2 ? `<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>` : ""}<button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>`;
@@ -1247,6 +1257,7 @@
       body.innerHTML = lobbyHtml();
     }
     const debrief=$('squadDebrief');if(debrief&&state.snapshot?.debrief)debrief.__renderedHtml=window.TigerMissionDebrief?.html(state.snapshot.debrief,state.profile?.missionDebriefs)||'';
+    window.TigerRescueExpeditionHub?.mountReport($('squadExpeditionReport'),state.snapshot?.expedition?.report);
     bindCommandButtons();
     bindMoveButtons();
     window.TigerTouchLayout?.applyCoop();
@@ -1407,6 +1418,15 @@
       'arrange-controls':async()=>{clearPresentationInput();const active=state.snapshot?.status==='active';if(active)await api('pause',{reason:'controls'});window.TigerTouchLayout?.open({mode:'coop',onClose:()=>{if(active&&state.snapshot?.status==='active')api('resume').catch(error=>setMessage(error.message,true));}});},
       'controls-layout':()=>{window.TigerBattlefieldAwareness?.toggleLayout();window.TigerTouchLayout?.refresh();},
       action:()=>action(actionName),
+      'expedition-continue':async()=>{
+        try{await api('expedition-continue',{stage:state.snapshot.expedition.stage});setMessage('Next stage prepared. Review your gear and confirm ready again.');}
+        catch(error){setMessage(error.message,true);}
+      },
+      'expedition-mode':async()=>{
+        try{await api('expedition-mode',{mode:button.dataset.expMode,stage:state.snapshot.expedition.stage});setMessage(soloSquadMission()?'Solo stage selected. Start when ready.':'Invite a teammate, then both confirm ready.');}
+        catch(error){setMessage(error.message,true);}
+      },
+      'expedition-save-exit':()=>saveExpeditionExit(),
       'expedition-movie':()=>playExpeditionDeparture(true),
       'expedition-skip':()=>{cancelAnimationFrame(state.transportFrame);drawExpeditionDeparture(1);},
       shop:()=>openEquipment("shop"),
@@ -1893,6 +1913,7 @@
       // Send the newest local position before judging action range. This keeps
       // a fast move-then-tap from being rejected using an older server position.
       if(state.local)await sync(true);
+      if(!state.snapshot)return;
       if(['expedition-interact','expedition-ferry'].includes(kind)){
         await api(kind);
         setMessage(kind==='expedition-ferry'?'Everyone aboard. Crossing to the far landing…':'Route objective complete.');
@@ -2014,12 +2035,30 @@
     else render();
   }
 
+  function recoverEndedExpedition(error){
+    if(!expeditionActive()||!/(room is closed|room expired|room not found|not a member)/i.test(String(error?.message)))return false;
+    const id=state.snapshot.expedition.id||'river-gate';
+    stopPolling();resetRoomState();close();
+    window.openRescueExpedition?.(id);
+    return true;
+  }
+
+  async function saveExpeditionExit(){
+    if(!expeditionActive())return;
+    const id=state.snapshot.expedition.id||'river-gate';
+    try{
+      if(state.snapshot.status==='complete')await api('claim');
+      stopPolling();clearPresentationInput();close();
+      window.openRescueExpedition?.(id);
+    }catch(error){setMessage(error.message,true);}
+  }
+
   async function leave(){
     const oldCode = state.code;
     if(expeditionActive()){
       const expeditionId=state.snapshot.expedition.id||'river-gate';
-      try{await api('leave',{code:oldCode});}
-      catch(error){setMessage(error.message,true);return;}
+      try{await api('leave',{code:oldCode,stage:state.snapshot.expedition.stage});}
+      catch(error){if(!recoverEndedExpedition(error))setMessage(error.message,true);return;}
       resetRoomState();
       close();
       window.openRescueExpedition?.(expeditionId);
@@ -2138,6 +2177,7 @@
       const node = $("squadConnection");
       if(node){ node.textContent = playerConnectionText(); node.classList.toggle("bad", remoteSnapshotPlayer()?.online === false); }
     }catch(error){
+      if(recoverEndedExpedition(error))return;
       state.connectionFailed = true;
       const node = $("squadConnection");
       if(node){ node.textContent = "Connection interrupted—reconnecting…"; node.classList.add("bad"); }
@@ -3443,7 +3483,8 @@
     async startExpedition({mode,code,route,replay,expeditionId='river-gate'}){
       if(state.snapshot){
         if(!expeditionActive()||state.code!==code)throw Error('Finish or leave the current squad first.');
-        open();
+        await api('status',{code});
+        open();startPolling();
         return;
       }
       const type=mode==='solo'?'expedition-solo':'expedition-squad';

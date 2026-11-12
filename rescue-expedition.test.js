@@ -119,7 +119,7 @@ test('River Gate checkpoints survive retries and mode switches, and both branche
     await escort(room,[host,guest]);
     await clearThreats(room);
     await finish(room,[host,guest]);
-    assert.equal(await S.expeditionStatus(guest),null,'teammate has separate captain progress');
+    assert.equal(await S.expeditionStatus(guest,'river-gate',true),null,'teammate has separate captain progress');
   });
 
   await scope.run(solo,async()=>{

@@ -28,6 +28,7 @@ const chapterMaps = require("../../chapter-maps");
 const combatFeel = require("../../combat-feel");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+const sessionTtlMs=session=>session?.expedition?30*24*60*60*1000:SESSION_TTL_MS;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
 const RESPAWN_DELAY_MS = 3000;
 const STARTING_LIVES = 1;
@@ -2938,7 +2939,7 @@ async function writePlayer(code, player){
 
 function ensureLiveSession(session){
   if(!session) throw new Error("Squad room not found.");
-  if(nowMs() - session.updatedAt > SESSION_TTL_MS) throw new Error("This squad room expired. Create a new one.");
+  if(nowMs() - session.updatedAt > sessionTtlMs(session)) throw new Error("This squad room expired. Create a new one.");
   if(session.status === "closed") throw new Error("This squad room is closed.");
 }
 
@@ -2997,23 +2998,51 @@ async function createSession(user, opts={}){
     await writeSession({...session,status:'closed'});
     throw Error('An expedition stage was opened on another device. Refresh Rescue Mode.');
   }
+  if(plan)await expeditionStore.remember(session,uid);
   return session;
 }
 
 async function readExpeditionRoom(code){
   const room=await readSession(code);
-  return room?.status!=='closed'&&nowMs()-Number(room?.updatedAt||0)<=SESSION_TTL_MS?room:null;
+  return room?.status!=='closed'&&nowMs()-Number(room?.updatedAt||0)<=sessionTtlMs(room)?room:null;
 }
 
-async function expeditionStatus(user,expeditionId='river-gate'){
+async function expeditionStatus(user,expeditionId='river-gate',ownOnly=false){
   if(!expedition.definition(expeditionId))throw Error('Choose an available rescue expedition.');
-  const uid=userIdOf(user),run=await expeditionStore.read(uid,expeditionId);
-  if(!run)return null;
-  const room=run.roomCode&&await readExpeditionRoom(run.roomCode);
-  return {...run,roomCode:room?.code||'',roomStatus:room?.status||''};
+  const uid=userIdOf(user),own=await expeditionStore.read(uid,expeditionId);
+  const reference=!ownOnly&&await expeditionStore.membership(uid,expeditionId);
+  if(reference&&reference.ownerId!==uid){
+    const shared=await expeditionStore.read(reference.ownerId,expeditionId);
+    const room=await readExpeditionRoom(reference.code);
+    const stillMember=!reference.left&&room?.memberIds.includes(uid)&&room.expedition?.runId===reference.runId&&shared?.roomCode===room.code;
+    const recorded=shared?.results.some(row=>row.team?.some(actor=>actor.userId===uid));
+    if(shared?.id===reference.runId&&(stillMember||recorded)){
+      return {...shared,shared:true,captainName:room? (await readPlayer(room.code,room.hostId)).name:'Your captain',
+        roomCode:stillMember?room.code:'',roomStatus:stillMember?room.status:'',report:expeditionReport(shared)};
+    }
+  }
+  if(!own)return null;
+  const room=own.roomCode&&await readExpeditionRoom(own.roomCode);
+  return {...own,roomCode:room?.code||'',roomStatus:room?.status||'',report:expeditionReport(own)};
 }
 
-async function joinSession(codeValue, user){
+function expeditionReport(run){
+  if(!run||run.stage!==4)return null;
+  const team=new Map();
+  for(const row of run.results)for(const actor of row.team||[])team.set(actor.userId,actor);
+  return {expeditionId:run.expeditionId||'river-gate',title:expedition.definition(run.expeditionId).title,route:run.route,
+    artworkComplete:run.results.every(row=>Array.isArray(row.team)),stages:run.results.length,rescued:run.results.at(-1)?.survivors||[],
+    captures:run.results.reduce((total,row)=>total+row.captures,0),kills:run.results.reduce((total,row)=>total+row.kills,0),
+    team:[...team.values()]};
+}
+
+async function joinSession(codeValue,user){
+  const room=await readSession(cleanCode(codeValue));
+  if(!room?.expedition)return joinSessionUnlocked(codeValue,user);
+  return expeditionStore.withRoomLock(room.code,()=>joinSessionUnlocked(codeValue,user));
+}
+
+async function joinSessionUnlocked(codeValue, user){
   const code = cleanCode(codeValue);
   const uid = userIdOf(user);
   const session = await readSession(code);
@@ -3065,7 +3094,9 @@ async function joinSession(codeValue, user){
     player.lastSeenAt = nowMs();
     await writePlayer(code, player);
   }
-  return readSession(code);
+  const joined=await readSession(code);
+  if(joined.expedition)await expeditionStore.remember(joined,uid);
+  return joined;
 }
 
 async function matchEntryVacant(entry){
@@ -3431,6 +3462,9 @@ async function advanceFerry(session,player,transit,at=nowMs()){
 
 async function buildSnapshot(session, viewerId){
   let players = await memberPlayers(session);
+  if(session.expedition&&session.status==='waiting')players=players.map(p=>({...p,
+    rescuedIds:[],securedCivilianIds:[],capturedIds:[],checkpointIds:[],civilianEscorts:{},civilianHealing:{},
+    tigerDamage:{},killSites:{},captureSites:{},lethalWoundedIds:[],expeditionFerryAt:0}));
   const transit=await ferryState(session);
   if(transit)players=await Promise.all(players.map(p=>advanceFerry(session,p,transit)));
   session = await maybeTransferDisconnectedLeader(session, players);
@@ -3450,13 +3484,14 @@ async function buildSnapshot(session, viewerId){
   const livingWorldEffect = activeLivingWorldMission(session);
   const report=['complete','failed'].includes(session.status)?buildMissionDebrief(session,players,derived,viewerId):null;
   const savedReport=viewerProfile.missionDebriefs.last;
+  const expeditionSummary=session.expedition&&session.status==='complete'&&session.expedition.stage===3?expeditionReport(await expeditionStore.read(session.hostId,session.expedition.id)):null;
   return {
     code:session.code,
     title:session.title,
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
-    expedition:session.expedition?{id:session.expedition.id||'river-gate',title:expedition.definition(session.expedition.id).title,
-      stage:session.expedition.stage,route:session.expedition.route,scene:mission.expeditionScene||null,
+    expedition:session.expedition?{runId:session.expedition.runId,id:session.expedition.id||'river-gate',title:expedition.definition(session.expedition.id).title,
+      stage:session.expedition.stage,route:session.expedition.route,scene:mission.expeditionScene||null,report:expeditionSummary,
       ferry:mission.ferry?{...mission.ferry,startedAt:transit?.at||players.find(p=>p.expeditionFerryAt)?.expeditionFerryAt||0,
         active:!!transit&&at-transit.at<mission.ferry.duration,
         completed:players.every(p=>p.expeditionFerryAt>0)}:null,
@@ -3482,7 +3517,7 @@ async function buildSnapshot(session, viewerId){
       return { userId:Number(userId), name:player?.name || `Player ${userId}`, reason };
     }),
     serverNow:at,
-    expiresAt:session.updatedAt + SESSION_TTL_MS,
+    expiresAt:session.updatedAt + sessionTtlMs(session),
     timeLeftMs:session.status === "active" ? Math.max(0, missionLimitMs(session) - (sessionClockNow(session, at) - session.startedAt)) : missionLimitMs(session),
     mission:{
       level:mission.level,
@@ -3791,8 +3826,15 @@ async function updateOwnPresence(session, user, patch={}){
   return writePlayer(session.code, player);
 }
 
-async function applyAction(session, user, action, payload={}){
-  if(['expedition-ferry','expedition-interact','rescue','deliver','ready','start','restart','continue','replay'].includes(action)){
+async function applyAction(session,user,action,payload={}){
+  if(session?.expedition&&['expedition-continue','expedition-mode','start','restart'].includes(action)){
+    return expeditionStore.withRoomLock(session.code,()=>applyActionUnlocked(session,user,action,payload));
+  }
+  return applyActionUnlocked(session,user,action,payload);
+}
+
+async function applyActionUnlocked(session, user, action, payload={}){
+  if(['expedition-continue','expedition-mode','expedition-ferry','expedition-interact','rescue','deliver','ready','start','restart','continue','replay'].includes(action)){
     session=await readSession(session.code);
     ensureLiveSession(session);
   }
@@ -3802,6 +3844,31 @@ async function applyAction(session, user, action, payload={}){
   let player = await readPlayer(session.code, uid, user, slot);
   syncEscortOwnership(session,player);
   const now = nowMs();
+  if(action==='expedition-continue'){
+    if(!session.expedition||session.hostId!==uid)throw Error('Only the expedition captain can continue.');
+    const expected=Number(payload.stage);
+    if(![1,2].includes(expected))throw Error('Choose Continue Expedition from a completed stage.');
+    if(session.expedition.stage===expected+1)return session;
+    if(session.expedition.stage!==expected||session.status!=='complete')throw Error('Finish this stage before continuing.');
+    await claimExpeditionStage(session);
+    await expeditionStore.advance(session);
+    session.expedition={...session.expedition,stage:expected+1};
+    session.status='waiting';session.startedAt=0;session.completedAt=0;session.readyVersion=1;session.readyRevision++;
+    session.pausedBy={};session.pausedAt=0;session.failureReason='';session.pendingDeployment='';
+    session.escortOwners={};session.escortOffer=null;session.expeditionBoardingAt=0;
+    session=await writeSession(session);
+    await Promise.all(session.memberIds.map(id=>expeditionStore.remember(session,id)));
+    return session;
+  }
+  if(action==='expedition-mode'){
+    if(!session.expedition||session.hostId!==uid||session.status!=='waiting')throw Error('The captain chooses Solo or Co-op at a stage checkpoint.');
+    if(Number(payload.stage)!==session.expedition.stage)throw Error('The squad changed stages. Review the current checkpoint.');
+    if(!['solo','squad'].includes(payload.mode))throw Error('Choose Solo or Co-op.');
+    if(payload.mode==='solo'&&session.memberIds.length!==1)throw Error('Your teammate must choose Leave Squad before switching to Solo.');
+    session.launchType=payload.mode==='solo'?'expedition-solo':'expedition-squad';
+    session.readyRevision++;
+    return writeSession(session);
+  }
   const transit=await ferryState(session);
   if(transit&&now-transit.at<missionDefinition(session).ferry.duration){
     throw Error('The ferry is crossing. Controls return at the far landing.');
@@ -4016,7 +4083,7 @@ async function applyAction(session, user, action, payload={}){
     session.survivalWave = 1;
     session.survivalWavesCleared = 0;
     session.survivalIntermissionUntil = 0;
-    await writeSession(session);
+    await writeSession(session.expedition ? {...session,status:"waiting"} : session);
     const mission = missionDefinition(session);
     const players = await memberPlayers(session);
     const completedCheckpointIndex = action === "restart"&&!session.expedition
@@ -4025,7 +4092,7 @@ async function applyAction(session, user, action, payload={}){
     const restartCheckpoint = completedCheckpointIndex >= 0 ? mission.checkpoints[completedCheckpointIndex] : null;
     session.escortOffer=null;
     if(!restartCheckpoint){session.escortOwners={};session.escortRevision=0;}
-    await writeSession(session);
+    await writeSession(session.expedition ? {...session,status:"waiting"} : session);
     for(const p of players){
       syncEscortOwnership(session,p);
       const def = ROLE_DEFS[p.role];
@@ -4082,6 +4149,9 @@ async function applyAction(session, user, action, payload={}){
       p.lastSeenAt = now;
       await writePlayer(session.code, p);
     }
+    // Publish the active expedition only after every soldier has been reset.
+    // Polling during a wipe restart must never simulate the old downed squad.
+    if(session.expedition)await writeSession(session);
     return session;
   }
   if(session.status !== "active") throw new Error("The co-op mission is not active.");
@@ -4350,6 +4420,11 @@ async function claimExpeditionStage(session){
   const mission=missionDefinition(session);
   return expeditionStore.save(session,{
     mode:expedition.isSolo(session.launchType)?'Solo':'Co-op',
+    team:await Promise.all(players.map(async p=>{
+      const profile=await readCoopProfile(p.userId);
+      return {userId:p.userId,name:p.name,appearance:await eliteStore.visual(p.userId).catch(()=>null),
+        uniformPalette:masteryRewards.uniformPalette(masteryRewards.identity(profile.missionDebriefs,'coop').uniform?.id)};
+    })),
     survivors:mission.civilians.filter(row=>derived.securedCivilianIds.includes(row.id)).map(row=>row.name),
     captures:derived.capturedIds.length,kills:derived.tigerKills,
     ferryUsed:!!mission.ferry&&players.every(p=>p.expeditionFerryAt>0),
@@ -4593,18 +4668,38 @@ async function claimReward(session, user){
   };
 }
 
-async function closeSession(session, user){
-  if(session.expedition){session=await readSession(session.code);ensureLiveSession(session);}
+async function closeSession(session,user,options={}){
+  if(!session?.expedition)return closeSessionUnlocked(session,user);
+  return expeditionStore.withRoomLock(session.code,()=>closeExpeditionSession(session,user,options));
+}
+
+async function closeExpeditionSession(previous,user,options){
+  const session=await readSession(previous.code),uid=userIdOf(user);
+  ensureLiveSession(session);
+  if(!session.memberIds.includes(uid))throw Error('You already left this expedition squad.');
+  const expected=Number(options.stage||previous.expedition.stage);
+  if(session.expedition.stage!==expected)throw Error('The squad advanced. Check the current stage before leaving.');
+  if(session.status==='complete'){
+    const saved=await claimExpeditionStage(session);
+    if(uid===session.hostId)await expeditionStore.release(uid,saved,session.code,session.expedition.stage);
+  }
+  await expeditionStore.remember(session,uid,true);
+  if(uid===session.hostId){
+    session.status='closed';
+  }else{
+    session.memberIds=session.memberIds.filter(id=>id!==uid);
+    session.departedIds=[...new Set([...session.departedIds,uid])].slice(0,2);
+    session.readyRevision++;
+    if(session.status==='active'){session.status='failed';session.failureReason='teammate_left';session.completedAt=nowMs();}
+    session.pausedBy={};session.pausedAt=0;
+  }
+  return writeSession(session);
+}
+
+async function closeSessionUnlocked(session, user){
   const uid = userIdOf(user);
   if(!session.memberIds.includes(uid)) throw new Error("You are not a member of this squad.");
-  if(session.expedition&&session.status==='complete'){
-    if(uid===session.hostId){
-      const saved=await claimExpeditionStage(session);
-      await expeditionStore.release(uid,saved,session.code);
-    }
-    return session;
-  }
-  if(session.memberIds.length === 1||session.expedition?.ownerId===uid){
+  if(session.memberIds.length === 1){
     session.status = "closed";
     return writeSession(session);
   }

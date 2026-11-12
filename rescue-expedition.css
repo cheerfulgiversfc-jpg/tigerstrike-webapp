@@ -50,3 +50,9 @@
 @media (max-width:640px) {
   .expeditionArena > #squadObjective { position:sticky; top:0; z-index:10065; padding:8px; border:1px solid #3a646d; border-radius:8px; background:#0d1b2af5; }
 }
+.expTeamReport { margin:12px 0; padding:14px; border:1px solid #427b75; border-radius:12px; background:linear-gradient(145deg,#163c3d,#102236); color:#eff7ff; }
+.expTeamReport h3 { margin:0 0 8px; }
+.expTeamPortraits { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; margin:12px 0; }
+.expTeamPortraits figure { margin:0; flex:0 1 150px; text-align:center; }
+.expTeamPortraits canvas { max-width:100%; height:auto; border-radius:10px; }
+.expTeamPortraits figcaption { font-size:13px; margin-top:5px; overflow-wrap:anywhere; }

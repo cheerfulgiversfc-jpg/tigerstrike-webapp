@@ -1,5 +1,5 @@
 const {randomUUID}=require('node:crypto');
-const {getState,compareAndSetState}=require('./metrics-store');
+const {getState,setState,compareAndSetState}=require('./metrics-store');
 const expedition=require('../../rescue-expedition');
 const water=require('../../water-terrain');
 const maps=require('../../chapter-maps');
@@ -23,10 +23,11 @@ async function prepare(uid,{expeditionId='river-gate',expeditionRoute,expedition
 }
 
 async function attach(uid,plan,roomCode){
-  return compareAndSetState(key(uid,plan.expeditionId),plan.previous,{...plan.run,roomCode});
+  return compareAndSetState(key(uid,plan.expeditionId),plan.previous,{...plan.run,roomCode,roomStage:plan.run.stage});
 }
 
-async function release(uid,saved,code){
+async function release(uid,saved,code,completedStage){
+  if(completedStage&&Number(saved.roomStage||completedStage)>completedStage)throw Error('The squad advanced to the next stage. Refresh the expedition.');
   if(saved.roomCode!==code)return;
   if(!await compareAndSetState(key(uid,saved.expeditionId),saved,{...saved,roomCode:''})){
     if((await read(uid,saved.expeditionId))?.roomCode===code)throw Error('Could not close the saved stage. Try again.');
@@ -40,7 +41,7 @@ async function save(session,result){
     if(current?.id!==runId)throw Error('This expedition run has been replaced.');
     if(current.results.some(row=>row.stage===stage&&row.roomCode===session.code))return current;
     if(current.stage!==stage||current.roomCode!==session.code)throw Error('This stage no longer owns the expedition checkpoint.');
-    const next={...current,stage:stage+1,results:[...current.results,{...result,stage,roomCode:session.code}]};
+    const next={...current,stage:stage+1,roomStage:stage,results:[...current.results,{...result,stage,roomCode:session.code}]};
     if(await compareAndSetState(key(ownerId,id),current,next))return next;
   }
   throw Error('The checkpoint is busy. Try saving again.');
@@ -160,4 +161,32 @@ function floodedMission(base,session){
     mapTruthLandmarks:[],mapTruthRequiredActionIds:[],fireZones:[]};
 }
 
-module.exports={read,prepare,attach,release,save,mission};
+async function advance(session){
+  const {ownerId,runId,id,stage}=session.expedition;
+  for(let attempt=0;attempt<4;attempt++){
+    const current=await read(ownerId,id);
+    if(current?.id!==runId||current.roomCode!==session.code||current.stage!==stage+1)throw Error('This expedition checkpoint moved. Reopen Rescue Mode.');
+    if(current.roomStage===stage+1)return current;
+    const next={...current,roomStage:stage+1};
+    if(await compareAndSetState(key(ownerId,id),current,next))return next;
+  }
+  throw Error('The checkpoint is busy. Try continuing again.');
+}
+
+const membershipKey=(uid,id)=>`rescue_expedition_member_${uid}_${id}`;
+const membership=(uid,id)=>getState(membershipKey(uid,id));
+async function remember(session,uid,left=false){
+  const {id='river-gate',ownerId,runId}=session.expedition;
+  return setState(membershipKey(uid,id),{code:session.code,ownerId,runId,left,expeditionId:id});
+}
+
+async function withRoomLock(code,operation){
+  const name=`rescue_expedition_transition_${code}`,previous=await getState(name);
+  if(Number(previous?.until)>Date.now())throw Error('Your squad is updating. Try again in a moment.');
+  const lease={token:randomUUID(),until:Date.now()+90000};
+  if(!await compareAndSetState(name,previous,lease))throw Error('Your squad is updating. Try again in a moment.');
+  try{return await operation();}
+  finally{await compareAndSetState(name,lease,{token:'',until:0});}
+}
+
+module.exports={read,prepare,attach,release,save,advance,membership,remember,withRoomLock,mission};
