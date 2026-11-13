@@ -404,7 +404,7 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(expeditionActive()){
-      if(versionLabel)versionLabel.textContent='Tiger Strike V16.8 · Rescue Mode';
+      if(versionLabel)versionLabel.textContent='Tiger Strike V17.0 · Rescue Mode';
       if(titleLabel)titleLabel.textContent=`🛟 ${state.snapshot.expedition.title||expedition.title}`;
       return;
     }
@@ -562,6 +562,13 @@
     }
   }
 
+  function squadDebriefHtml(snap){
+    if(!snap.debrief)return '';
+    if(!snap.expedition)return window.TigerMissionDebrief?.html(snap.debrief,state.profile?.missionDebriefs)||'';
+    const kills=(snap.tigers||[]).filter(t=>t.defeated&&!t.captured).length;
+    return `<section><h3>${esc(snap.mission.title)} · Stage report</h3><p>${snap.securedCivilianIds.length}/${snap.mission.rescueRequired} people safe · ${snap.capturedIds.length} live captures · ${kills} tiger kills</p><p>${snap.status==='complete'?(snap.expedition.stage===3?'Expedition complete. Your three-stage report is saved.':'Stage checkpoint saved. Continue the expedition or save and return later.'):'This attempt ended. Restart this stage to try again; earlier expedition checkpoints are kept.'}</p></section>`;
+  }
+
   function updateActiveHud(){
     const snap = state.snapshot;
     if(!snap) return;
@@ -569,7 +576,7 @@
     const seconds = Math.max(0, Math.ceil(Number(snap.timeLeftMs || 0) / 1000));
     const set = (id, text)=>{ const node=$(id); if(node) node.textContent=text; };
     const activeThreats = (snap.tigers || []).filter((t)=>!t.defeated).length;
-    set('squadBoarding',snap.expedition?.boardingMs>0?`Boarding · ${Math.ceil(snap.expedition.boardingMs/1000)}s · Hold the dock`:'');
+    set('squadBoarding',snap.expedition?.boardingMs>0?`Boarding · ${Math.ceil(snap.expedition.boardingMs/1000)}s · Hold the ${snap.expedition.helicopter?'landing zone':'dock'}`:'');
     const survival = !!snap.mission?.survival;
     const wave = Math.max(1, Number(snap.mission?.survivalWave || 1));
     const wavesCleared = Math.max(0, Number(snap.mission?.survivalWavesCleared || 0));
@@ -593,7 +600,7 @@
     const joystick = $("squadJoystick");
     if(joystick) joystick.classList.toggle("disabled", !!snap.paused);
     const resultActions = $("squadResultActions");
-    const debrief=$('squadDebrief');if(debrief){const html=snap.debrief?window.TigerMissionDebrief?.html(snap.debrief,state.profile?.missionDebriefs)||'':'';if(debrief.__renderedHtml!==html){debrief.innerHTML=html;debrief.__renderedHtml=html;}}
+    const debrief=$('squadDebrief');if(debrief){const html=squadDebriefHtml(snap);if(debrief.__renderedHtml!==html){debrief.innerHTML=html;debrief.__renderedHtml=html;}}
     const actionsHtml=completionActionsHtml();
     if(resultActions&&resultActions.__renderedHtml!==actionsHtml){
       resultActions.innerHTML=actionsHtml;
@@ -668,7 +675,7 @@
     }
     const remaining=state.snapshot.expedition?state.snapshot.checkpoints.filter(point=>point.manual&&!state.snapshot.checkpointCompletedIds.includes(point.id)):[];
     const site=remaining.find(point=>distance(state.local,point)<=point.r)||remaining[0];
-    if(rescue&&site){
+    if(rescue&&site&&(!site.requiresParty||state.snapshot.rescuedIds.length>=rescueRequired())){
       const meters=Math.round(distance(state.local,site));
       rescue.dataset.squadAction='expedition-interact';
       rescue.innerHTML=unavailable?unavailableLabel:`◆ ${esc(site.label)}<br><small>${meters<=site.r?'Tap to engage':meters+'m'}</small>`;
@@ -965,7 +972,7 @@
     return `<div class="squadPanel squadArenaPanel ${snap.expedition?'expeditionArena':''}">
       ${snap.expedition?`<details class="squadHowTo"><summary>Shop, inventory &amp; controls</summary>${equipmentButtonsHtml()}</details>`:equipmentButtonsHtml()}
       <div class="squadHud">
-        <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">${snap.boss?.boss ? `${esc(snap.boss.name || "Alpha")} ${Math.round(snap.boss.hp)} HP` : `${activeThreats} Story tigers`} • ${activeThreats} active</div></div>
+        <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">${snap.boss?.boss ? `${esc(snap.boss.name || "Alpha")} ${Math.round(snap.boss.hp)} HP` : `${activeThreats} ${snap.expedition?'tigers':'Story tigers'}`} • ${activeThreats} active</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">${survival ? "Survival" : (captureRequired() > 0 ? "Research" : "Civilians")}</div><div class="squadHudValue" id="squadCivHud">${survival ? `${survivalCleared} wave${survivalCleared === 1 ? "" : "s"} cleared` : (captureRequired() > 0 ? `${captureProgress()}/${captureRequired()} captured` : (required > 0 ? `${rescued}/${required} safe` : "No escort objective"))}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Mission</div><div class="squadHudValue" id="squadMissionHud">${statusText}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Field Lives</div><div class="squadHudValue" id="squadLivesHud">${esc(livesHudText())}</div></div>
@@ -989,11 +996,11 @@
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>${captureRequired() > 0 ? "🔬 Capture target" : "👤 Civilian"}</span><span>🐅 Tiger</span></div>
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} battlefield with a player-following camera"></canvas>
       ${snap.expedition?.report?`<section id="squadExpeditionReport">${window.TigerRescueExpeditionHub.reportHtml(snap.expedition.report)}</section>`:''}
-      <div id="squadDebrief">${snap.debrief?window.TigerMissionDebrief?.html(snap.debrief,state.profile?.missionDebriefs)||'':''}</div>
+      <div id="squadDebrief">${squadDebriefHtml(snap)}</div>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? (snap.expedition?"🛟 Expedition Stage Complete":"🏆 Squad Extracted!") : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : (snap.failureReason === "teammate_left" ? "🔄 Teammate Left" : "⏱️ Operation Failed"))}</div>
-        <div class="squadBannerText">${snap.status === "complete" && snap.expedition ? (snap.expedition.stage===3?`Evacuated by boat: ${esc(snap.civilians.filter(c=>c.secured).map(c=>c.name).join(", "))}.`:(snap.expedition.stage===2?esc(expedition.definition(snap.expedition.id).routes[snap.expedition.route].checkpointResult||expedition.definition(snap.expedition.id).routes[snap.expedition.route].result):"The captain can save and choose how to play the next stage.")) : snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `${snap.memberCount > 1 ? "Both players cleared" : "You cleared"} ${esc(selectedOperation().title)}. Every participating player can claim one personal reward.`}` : (snap.failureReason === "squad_wipe" ? `${snap.memberCount > 1 ? "Both soldiers used their field life" : "Your soldier used the field life"} and went down. The squad leader can restart this mission.` : (snap.failureReason === "teammate_left" ? "Your teammate left during the mission. The squad code is still yours. Invite them back or add another player, then restart together." : (snap.failureReason==="required_capture_lost"?"The marked tiger was killed. Restart and use Rubber rounds, then Capture.":`Time expired. The squad leader can restart ${esc(missionName())}.`)))}</div>
-        ${snap.status==='complete'&&snap.expedition?.boat?`<div class="squadTransportMovie"><canvas id="squadExpeditionBoat" width="560" height="232" aria-label="Rescue boat carrying the survivors downriver"></canvas><div class="squadRow"><button class="squadBtn" data-squad-command="expedition-movie">Watch again</button><button class="squadBtn" data-squad-command="expedition-skip">Skip departure</button></div></div>`:''}
+        <div class="squadBannerText">${snap.status === "complete" && snap.expedition ? (snap.expedition.stage===3?`Evacuated by ${snap.expedition.helicopter?'helicopter':'boat'}: ${esc(snap.civilians.filter(c=>c.secured).map(c=>c.name).join(", "))}.`:(snap.expedition.stage===2?esc(expedition.definition(snap.expedition.id).routes[snap.expedition.route].checkpointResult||expedition.definition(snap.expedition.id).routes[snap.expedition.route].result):"The captain can save and choose how to play the next stage.")) : snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `${snap.memberCount > 1 ? "Both players cleared" : "You cleared"} ${esc(selectedOperation().title)}. Every participating player can claim one personal reward.`}` : (snap.failureReason === "squad_wipe" ? `${snap.memberCount > 1 ? "Both soldiers used their field life" : "Your soldier used the field life"} and went down. The squad leader can restart this mission.` : (snap.failureReason === "teammate_left" ? "Your teammate left during the mission. The squad code is still yours. Invite them back or add another player, then restart together." : (snap.failureReason==="required_capture_lost"?"The marked tiger was killed. Restart and use Rubber rounds, then Capture.":`Time expired. The squad leader can restart ${esc(missionName())}.`)))}</div>
+        ${snap.status==='complete'&&(snap.expedition?.boat||snap.expedition?.helicopter)?`<div class="squadTransportMovie"><canvas id="squadExpeditionBoat" width="560" height="232" aria-label="${snap.expedition.helicopter?'Rescue helicopter boarding and flying survivors home':'Rescue boat carrying the survivors downriver'}"></canvas><div class="squadRow"><button class="squadBtn" data-squad-command="expedition-movie">Watch again</button><button class="squadBtn" data-squad-command="expedition-skip">Skip departure</button></div></div>`:''}
         ${!snap.expedition && snap.status === "complete" && (snap.capturedIds || []).length ? `<div class="squadTransportMovie"><div class="squadSmall">🚛 Wildlife Recovery • ${(snap.capturedIds || []).length} cage${(snap.capturedIds || []).length===1?"":"s"}</div><canvas id="squadTransportCanvas" width="520" height="210" aria-label="Co-op wildlife transport movie"></canvas><button type="button" class="squadBtn" data-squad-command="transport-skip">Skip Movie</button></div>` : ""}
         <section id="squadLaunchFeedback" hidden></section><div class="squadResultActions" id="squadResultActions">${completionActionsHtml()}</div>
       </div>
@@ -1256,7 +1263,7 @@
       body.dataset.squadMode = state.snapshot ? "waiting" : "landing";
       body.innerHTML = lobbyHtml();
     }
-    const debrief=$('squadDebrief');if(debrief&&state.snapshot?.debrief)debrief.__renderedHtml=window.TigerMissionDebrief?.html(state.snapshot.debrief,state.profile?.missionDebriefs)||'';
+    const debrief=$('squadDebrief');if(debrief&&state.snapshot?.debrief)debrief.__renderedHtml=squadDebriefHtml(state.snapshot);
     window.TigerRescueExpeditionHub?.mountReport($('squadExpeditionReport'),state.snapshot?.expedition?.report);
     bindCommandButtons();
     bindMoveButtons();
@@ -2581,10 +2588,67 @@
     if(visible(shelter.x,shelter.y,250))ctx.fillText(powered?'POWERED RESCUE SHELTER':'VILLAGE SHELTER',shelter.x+shelter.w/2,shelter.y-45);
   }
 
+  function drawMountainSOS(ctx,snap,visible){
+    const scene=snap.expedition.scene,home=scene.shelter;
+    if(visible(home.x,home.y,250)){
+      drawStoryBuilding(ctx,home.x,home.y,home.w,home.h,'#536b67');
+      ctx.fillStyle='#d1fae5';ctx.fillRect(home.x+home.w/2-15,home.y+28,30,7);ctx.fillRect(home.x+home.w/2-4,home.y+17,8,29);
+      drawMissionBanner(ctx,home.x+home.w/2,home.y-16,'MOUNTAIN MEDICAL SHELTER','#a7f3d0','#143f36');
+    }
+    if(snap.expedition.stage===1){
+      const beacon=snap.checkpoints.find(p=>p.id==='ms_signal');
+      if(beacon&&visible(beacon.x,beacon.y,180))window.TigerStrikeBattlefieldRenderer.drawRescueDevice(ctx,beacon,{kind:'flare',active:true,now:Date.now(),scale:1.4});
+    }
+    const heli=snap.expedition.helicopter;
+    if(heli&&snap.status!=='complete'&&visible(heli.x,heli.y,450)){
+      const boarding=snap.expedition.boardingMs>0;
+      const progress=boarding?clamp(1-snap.expedition.boardingMs/8000,0,1):0;
+      const approach=boarding?1-clamp(progress/.25,0,1):1;
+      drawRescueHelicopter(ctx,heli.x+130*approach,heli.y-170*approach,1.3);
+      if(boarding){
+        const actors=[...snap.civilians.filter(c=>c.secured).map(c=>({entity:c,civilian:true})),...snap.players.map(p=>({entity:p}))];
+        actors.forEach((actor,i)=>{
+          const walk=clamp((progress-.25)/.45-i*.12,0,1);if(walk>=1)return;
+          ctx.save();ctx.translate(heli.x-135+walk*135,heli.y+75-walk*50+i*6);ctx.scale(.65,.65);
+          if(actor.civilian)window.TigerStrikeBattlefieldRenderer.drawCivilian(ctx,{...actor.entity,x:0,y:0,secured:false,following:true},{now:Date.now()});
+          else drawStorySoldier(ctx,actor.entity,{...actor.entity,x:0,y:0,face:0,moving:true},{x:0,y:0},actor.entity.userId===viewerId());
+          ctx.restore();
+        });
+      }
+    }
+  }
+
+  function drawMountainDeparture(ctx,canvas,snap,progress){
+    const heli=snap.expedition.helicopter,renderer=window.TigerStrikeBattlefieldRenderer;
+    const view={x:heli.x-canvas.width*.5,y:heli.y-canvas.height*.65,w:canvas.width,h:canvas.height};
+    ctx.save();ctx.translate(-view.x,-view.y);
+    const scene=snap.expedition.scene;
+    renderer.drawStoryMapFoundation(ctx,{level:21,worldW:snap.world.width,worldH:snap.world.height,view,
+      waterZones:snap.waterZones,useMissionWater:true,trails:scene.path,mountain:scene,
+      clearZones:[{...snap.extraction,r:230,objective:true}],now:Date.now(),routesEnabled:false,fieldsEnabled:false});
+    const home=scene.shelter;renderer.drawMapHouse(ctx,home.x,home.y,home.w,home.h,{roof:'#536b67'});
+    renderer.drawBattlefieldFinish(ctx,view,{now:Date.now(),mission:snap.mission});
+    const lift=clamp((progress-.45)/.55,0,1),x=heli.x+lift*canvas.width*.85,y=heli.y-lift*canvas.height*.65;
+    drawRescueHelicopter(ctx,x,y,1.25-lift*.35);
+    const actors=[...snap.civilians.filter(c=>c.secured).map(c=>({entity:c,civilian:true})),...snap.players.map(p=>({entity:p}))];
+    actors.forEach((actor,i)=>{
+      const walk=clamp(progress/.30-i*.075,0,1);ctx.save();
+      ctx.translate(walk<1?heli.x-125+walk*125:x-32+i*12,walk<1?heli.y+63-walk*45:y+9);
+      ctx.scale(walk<1?.55:.29,.55*(walk<1?1:.53));
+      const entity={...actor.entity,x:0,y:0,secured:false,moving:walk<1,face:0};
+      if(actor.civilian)renderer.drawCivilian(ctx,entity,{now:Date.now()});
+      else renderer.drawSoldier(ctx,entity,{now:Date.now(),uniformPalette:window.TigerEliteCatalog?.palettes[entity.eliteAppearance?.soldier]||window.TigerMasteryRewards?.uniformPalette(entity.masteryIdentity?.uniform?.id)});
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
   function drawExpeditionDeparture(progress){
     const canvas=$('squadExpeditionBoat'),snap=state.snapshot;
     const boat=snap?.expedition?.boat,river=snap?.waterZones?.[0];
-    if(!canvas||!boat||!river)return;
+    if(!canvas)return;
+    if(snap?.expedition?.helicopter){drawMountainDeparture(canvas.getContext('2d'),canvas,snap,progress);return;}
+    if(!boat||!river)return;
     const renderer=window.TigerStrikeBattlefieldRenderer;
     const x=boat.x+(boat.endX-boat.x)*progress;
     const y=window.TigerWaterTerrain.banks(river,x).center;
@@ -2723,7 +2787,7 @@
     const alphaHunt = snap.launchType === "alpha-hunt";
     const stormExtraction = snap.launchType === "storm-extraction";
     const endlessSurvival = snap.launchType === "endless-survival";
-    const storyLevel = snap.expedition?Number(snap.mission?.level||1):["monsoon-solo","monsoon-rescue"].includes(snap.launchType)?24:snap.launchType === "shared-story" ? Math.max(1,Number(snap.storyMissionLevel||snap.mission?.level||1)) : 0;
+    const storyLevel = snap.expedition?(snap.expedition.id==='mountain-sos'?21:Number(snap.mission?.level||1)):["monsoon-solo","monsoon-rescue"].includes(snap.launchType)?24:snap.launchType === "shared-story" ? Math.max(1,Number(snap.storyMissionLevel||snap.mission?.level||1)) : 0;
     const bloodChapter = storyLevel >= 11 && storyLevel <= 20;
     const deepJungleChapter = storyLevel >= 21 && storyLevel <= 30;
     const abandonedVillageChapter = storyLevel >= 31 && storyLevel <= 40;
@@ -2806,7 +2870,7 @@
     }
     if(sharedStoryFoundation){
       const family=window.TigerStrikeBattlefieldRenderer.storyFamilyForLevel(storyLevel);
-      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,useMissionWater:!!snap.expedition,clearZones:sceneryClearZones,now:Date.now(),weather:stormExtraction?'storm':String(snap.mission?.weatherFx||'clear'),tigers:snap.tigers,routesEnabled:snap.routeVersion===1,fieldsEnabled:snap.fieldVersion===1});
+      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,useMissionWater:!!snap.expedition,trails:snap.expedition?.scene?.kind==='mountain'?snap.expedition.scene.path:null,mountain:snap.expedition?.scene?.kind==='mountain'?snap.expedition.scene:null,clearZones:sceneryClearZones,now:Date.now(),weather:stormExtraction?'storm':String(snap.mission?.weatherFx||'clear'),tigers:snap.tigers,routesEnabled:snap.routeVersion===1,fieldsEnabled:snap.fieldVersion===1});
       // Chapter color is owned by the shared foundation in both play modes.
       // Shared foundation textures the ground before roads and buildings.
       // Water was drawn beneath the foundation's roads, bridges and scenery.
@@ -2868,6 +2932,7 @@
       const ringX=worldW*.55,ringY=worldH*.51;
       if(visible(ringX,ringY,360)){ctx.fillStyle="rgba(127,29,29,.18)";ctx.beginPath();ctx.arc(ringX,ringY,255,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(251,146,60,.72)";ctx.lineWidth=8;ctx.setLineDash([22,16]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(28,16,26,.92)";roundRect(ctx,ringX-154,ringY-58,308,48,12);ctx.fill();ctx.strokeStyle="#fb923c";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#ffedd5";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText(`SURVIVAL WAVE ${Math.max(1,Number(snap.mission?.survivalWave||1))}`,ringX,ringY-27);}
     }
+    if(!snap.expedition){
     if(storyLevel === 6){
       const grass=[[.16,.18,1.1],[.39,.35,1.3],[.64,.20,1.05],[.76,.61,1.25],[.46,.72,1.1],[.88,.38,.95]];
       for(const [xp,yp,size] of grass){const x=worldW*xp,y=worldH*yp;if(visible(x,y,100))drawTallGrassPatch(ctx,x,y,size);}
@@ -3074,7 +3139,9 @@
       const boss=(snap.tigers||[]).find((row)=>row.id==="s100_ancient_tiger")||snap.boss||{x:worldW*.59,y:worldH*.54};if(visible(boss.x,boss.y,640)){for(const [dx,dy,size] of [[-320,-155,1.45],[310,-140,1.4],[-265,240,1.28],[285,230,1.32]])drawAncientRuin(ctx,boss.x+dx,boss.y+dy,size,"ANCIENT TEMPLE");ctx.fillStyle="rgba(113,63,18,.40)";ctx.beginPath();ctx.arc(boss.x,boss.y,455,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#facc15";ctx.lineWidth=16;ctx.setLineDash([30,16]);ctx.stroke();ctx.setLineDash([]);}drawMissionBanner(ctx,boss.x,boss.y-35,"THE ANCIENT TIGER","#fef08a","#422006");
     }
 
-    if(snap.expedition?.scene)drawFloodedVillage(ctx,snap,visible);
+    }
+    if(snap.expedition?.scene?.kind==='mountain')drawMountainSOS(ctx,snap,visible);
+    else if(snap.expedition?.scene)drawFloodedVillage(ctx,snap,visible);
     for(const fire of (snap.fireZones || [])){
       if(!visible(fire.x,fire.y,Number(fire.r||180)+80)) continue;
       const pulse=.78+Math.sin(Number(snap.serverNow||Date.now())/190+String(fire.id||"").length)*.14;
@@ -3356,9 +3423,10 @@
     if(snap.fieldVersion===1)window.TigerFieldOperations?.draw(ctx,{level:snap.storyMissionLevel,world:snap.world,view,state:{...localSnapshotPlayer()?.fieldOps,towerUntil:snap.fieldTowerUntil},lead:snap.fieldLead,tigers:snap.tigers,now:Number(snap.fieldNow||0)+(snap.paused?0:Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now()))))});
     const inView=(point,pad=220)=>window.TigerSmoothPlay?.visible?window.TigerSmoothPlay.visible(point,view,pad):true;
     const visibleTigers=(snap.tigers||[snap.boss]).filter(t=>t&&inView(t,t.carcass?480:220));
+    const helicopterBoarding=!!snap.expedition?.helicopter&&snap.expedition.boardingMs>0;
     const aboard=!!snap.expedition?.ferry?.active;
     for(const civ of snap.civilians||[]){
-      if(aboard&&civ.following)continue;
+      if((aboard&&civ.following)||(helicopterBoarding&&civ.secured))continue;
       const arrival=window.TigerCivilianRescue?.arrivalFrame(civ.rescueArrival,now);
       if(inView(arrival&&!arrival.done?arrival:civ))drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id),arrival);
       else state.civilianDraw?.delete(`${snap.code}:${snap.startedAt}:${civ.id}`);
@@ -3369,7 +3437,7 @@
     for(const tiger of snap.tigers||[])if(!visibleTigers.includes(tiger))state.walkVisual.delete(`tiger:${tiger.id}`);
     if(aboard)drawExpeditionFerry(ctx,snap,now);
     for(const p of (snap.players||[])){
-      if(aboard)continue;
+      if(aboard||helicopterBoarding)continue;
       const mine=Number(p.userId)===viewerId(),source=mine&&state.local?state.local:p;
       const remote=mine ? null : (state.remoteDraw.get(p.userId) || squadMotion.accept(null, p, performance.now(), snap.world));
       const draw=mine ? { x:Number(source.x), y:Number(source.y) } : { x:Number(remote.drawX), y:Number(remote.drawY) };

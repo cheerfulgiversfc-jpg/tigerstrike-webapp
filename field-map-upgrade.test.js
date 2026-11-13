@@ -37,7 +37,7 @@ test("all three field modes share the premium world scale and phone collision la
 });
 
 test("V11.4 is cache-busted for Telegram clients", () => {
-  assert(game.includes('const TS_BUILD = "5293"'));
+  assert(game.includes('const TS_BUILD = "5294"'));
   assert(html.includes("V13.0"));
-  assert(html.includes("game.js?v=5293-expedition-squads"));
+  assert(html.includes("game.js?v=5294-mountain-sos"));
 });

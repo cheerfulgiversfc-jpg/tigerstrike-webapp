@@ -11,7 +11,7 @@ const html=fs.readFileSync("index.html","utf8");
 test("V11.4 keeps one reusable premium battlefield renderer",()=>{
   assert.equal(renderer.VERSION,"10.22");
   for(const name of ["drawSoldier","drawCivilian","drawTiger","drawBattlefieldFinish"])assert.equal(typeof renderer[name],"function");
-  assert(html.includes('shared-battlefield-renderer.js?v=5291-rescue-expeditions'));
+  assert(html.includes('shared-battlefield-renderer.js?v=5294-mountain-sos'));
   assert(html.indexOf("shared-battlefield-renderer.js")<html.indexOf("squad-coop.js"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawSoldier"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawCivilian"));
@@ -24,7 +24,7 @@ test("Shared Story selects the same four Solo map families by chapter",()=>{
     "forest","suburbs","forest","downtown","suburbs","industrial","forest","downtown","suburbs","industrial",
   ]);
   assert.equal(typeof renderer.drawStoryMapFoundation,"function");
-  assert(coop.includes("drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,useMissionWater:!!snap.expedition,clearZones:sceneryClearZones,now:"));
+  assert(coop.includes("drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,useMissionWater:!!snap.expedition,trails:snap.expedition?.scene?.kind==='mountain'?snap.expedition.scene.path:null,mountain:snap.expedition?.scene?.kind==='mountain'?snap.expedition.scene:null,clearZones:sceneryClearZones,now:"));
   assert(coop.includes("if(!sharedStoryFoundation)drawCoopWaterZones()"));
   assert(source.includes('if(family==="forest")'));
   assert(source.includes('else if(family==="suburbs")'));

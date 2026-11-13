@@ -2253,8 +2253,8 @@ const LIVING_WORLD_PATROL_DEFS = Object.freeze({
     Object.freeze({ id:"living-amara-stalker-2", name:"Haven Forest Prowler", type:"Stalker", hpMax:310, baseX:730, baseY:730, rangeX:158, rangeY:126, speed:.77, phase:3.6, boss:false }),
   ]),
 });
-const ALL_COOP_TIGERS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []), ...Object.values(LIVING_WORLD_PATROL_DEFS).flat(), ...POST_CAMPAIGN_TIGERS, ...POST_CAMPAIGN_GOVERNMENT, Object.freeze({ ...POST_CAMPAIGN_TIGERS[0], id:"crisis_escaped_alpha", hpMax:1800 })]);
-const ALL_COOP_CIVILIANS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []), ...POST_CAMPAIGN_CIVILIANS, ...[1,2,3,4].map(i=>({id:`fv_civ_${i}`})), ...[1,2,3].map(i=>({id:`exp_civ_${i}`}))]);
+const ALL_COOP_TIGERS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []), ...Object.values(LIVING_WORLD_PATROL_DEFS).flat(), ...POST_CAMPAIGN_TIGERS, ...POST_CAMPAIGN_GOVERNMENT, ...[1,2,3].map(i=>({id:`ms_tiger_${i}`,hpMax:145})), Object.freeze({ ...POST_CAMPAIGN_TIGERS[0], id:"crisis_escaped_alpha", hpMax:1800 })]);
+const ALL_COOP_CIVILIANS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []), ...POST_CAMPAIGN_CIVILIANS, ...[1,2,3,4].map(i=>({id:`fv_civ_${i}`})), ...[1,2,3].map(i=>({id:`exp_civ_${i}`})), ...[1,2,3,4].map(i=>({id:`ms_civ_${i}`}))]);
 const ALL_COOP_CHECKPOINTS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.checkpoints || []));
 
 function normalizeLaunchType(value){
@@ -3363,7 +3363,7 @@ async function maybeFinishSession(session, players){
     derived.extractionReadyIds.length===session.memberIds.length;
   const canExtract=derived.objectivesReady&&squadAtExtraction;
   if(session.expedition?.stage===3){
-    const canBoard=squadAtExtraction&&derived.securedCivilianIds.length>=missionDefinition(session).rescueRequired;
+    const canBoard=squadAtExtraction&&derived.securedCivilianIds.length>=missionDefinition(session).rescueRequired&&(session.expedition.id!=='mountain-sos'||derived.objectivesReady);
     if(!canBoard&&session.expeditionBoardingAt){
       return writeSession({...session,expeditionBoardingAt:0});
     }
@@ -3388,7 +3388,7 @@ async function maybeFinishSession(session, players){
 function missionSceneWater(mission,session){
   if(session.expedition){
     const {route,stage}=session.expedition;
-    if(session.expedition.id==='flooded-village')return mission.waterZones;
+    if(['flooded-village','mountain-sos'].includes(session.expedition.id))return mission.waterZones;
     const bridgeOpen=route==='bridge'&&(stage>1||session.expeditionBridgeOpen);
     return bridgeOpen?mission.waterZones:mission.waterZones.map(zone=>({...zone,bridges:[]}));
   }
@@ -3495,7 +3495,7 @@ async function buildSnapshot(session, viewerId){
       ferry:mission.ferry?{...mission.ferry,startedAt:transit?.at||players.find(p=>p.expeditionFerryAt)?.expeditionFerryAt||0,
         active:!!transit&&at-transit.at<mission.ferry.duration,
         completed:players.every(p=>p.expeditionFerryAt>0)}:null,
-      boat:mission.boat,boardingMs:session.expeditionBoardingAt&&session.status==='active'?Math.max(0,expedition.holdMs-(at-session.expeditionBoardingAt)):0}:null,
+      helicopter:mission.helicopter||null,boat:mission.boat,boardingMs:session.expeditionBoardingAt&&session.status==='active'?Math.max(0,expedition.holdMs-(at-session.expeditionBoardingAt)):0}:null,
     ...(rescueEvent.isEvent(session.launchType)?{eventSchedule:await rescueSchedule.read()}:{}),
     postCampaignOperation:session.postCampaignOperation,
     crisisVote:session.crisisVote,
@@ -3894,10 +3894,16 @@ async function applyActionUnlocked(session, user, action, payload={}){
     const site=remaining.find(point=>distance(player,point)<=point.r)||remaining[0];
     if(!site)return session;
     if(distance(player,site)>site.r)throw Error('Move into the marked objective circle first.');
-    if(['exp_triage','fv_stabilize'].includes(site.id))for(const civilian of mission.civilians)player.civilianHealing[civilian.id]=45;
+    if((site.requires||[]).some(id=>!completed.has(id)))throw Error('Trace the distress beacon before repairing the crossing.');
+    if(site.requiresParty){
+      const derived=sessionDerived(session,players,now);
+      const party=civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds);
+      if(derived.rescuedIds.length!==mission.rescueRequired||party.some(c=>!c.secured&&(!c.following||distance(c,site)>site.r+70)))throw Error('Bring the medic and all three hikers into the medical shelter for treatment.');
+    }
+    if(['exp_triage','fv_stabilize','ms_treatment'].includes(site.id))for(const civilian of mission.civilians)player.civilianHealing[civilian.id]=45;
     if(!player.checkpointIds.includes(site.id))player.checkpointIds.push(site.id);
     await writePlayer(session.code,player);
-    if(site.id==='exp_bridge_open'&&!session.expeditionBridgeOpen)return writeSession({...session,expeditionBridgeOpen:true});
+    if(['exp_bridge_open','ms_forest_bridge','ms_ridge_bridge'].includes(site.id)&&!session.expeditionBridgeOpen)return writeSession({...session,expeditionBridgeOpen:true});
     return session;
   }
   if(action==='ready'){

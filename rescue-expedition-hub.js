@@ -43,7 +43,7 @@
         ${run?.report?reportHtml(run.report):''}
         ${summary&&!choosing?`<details ${completed?'open':''}><summary>${completed?'Expedition debrief':'Saved stage results'}</summary><ul>${summary}</ul>
           ${run.stage>=3?`<p>${escape(completed?route?.result:route?.checkpointResult||route?.result)}</p>`:''}
-          ${completed?`<p><b>Evacuated by boat:</b> ${escape(run.results.at(-1).survivors.join(', '))}.</p>`:''}</details>`:''}
+          ${completed?`<p><b>Evacuated by ${selected.transport==='helicopter'?'helicopter':'boat'}:</b> ${escape(run.results.at(-1).survivors.join(', '))}.</p>`:''}</details>`:''}
         ${choosing?`<fieldset><legend>Choose a route</legend>${Object.entries(selected.routes).map(([id,option])=>`<label class="expRoute"><input type="radio" name="expeditionRoute" value="${id}" ${replay&&run?.route!==id?'checked':''}><span><b>${escape(option.name)}</b><small>${escape(option.choice)}</small></span></label>`).join('')}</fieldset>`:''}
         <div class="expActions">
           ${run?.roomCode&&!replay?`<button class="primary" data-exp-play="resume">${run.roomStatus==='complete'?'Open stage results':'Return to your stage'}</button>`

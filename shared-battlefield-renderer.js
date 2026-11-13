@@ -658,6 +658,20 @@
     ctx.restore();return sites;
   }
 
+  function drawMountainRock(ctx,x,y,size=1,options={}){
+    const opacity=sceneryOpacity({x:x-105*size,y:y-140*size,w:210*size,h:180*size},options.clearZones);
+    if(!opacity)return;
+    ctx.save();ctx.globalAlpha*=opacity;ctx.translate(x,y);ctx.scale(size,size);
+    ctx.fillStyle='rgba(2,6,23,.24)';ctx.beginPath();ctx.ellipse(18,36,110,28,0,0,Math.PI*2);ctx.fill();
+    const face=ctx.createLinearGradient(-100,-125,90,40);face.addColorStop(0,'#bbc5bb');face.addColorStop(.4,'#74867b');face.addColorStop(1,'#354c45');
+    ctx.fillStyle=face;ctx.beginPath();ctx.moveTo(-104,32);ctx.lineTo(-55,-46);ctx.lineTo(-18,-38);ctx.lineTo(22,-136);ctx.lineTo(62,-72);ctx.lineTo(100,30);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#d9e4df';ctx.beginPath();ctx.moveTo(-5,-83);ctx.lineTo(22,-136);ctx.lineTo(48,-92);ctx.lineTo(28,-99);ctx.lineTo(14,-79);ctx.lineTo(10,-94);ctx.closePath();ctx.fill();
+    ctx.fillStyle='rgba(15,23,42,.24)';ctx.beginPath();ctx.moveTo(22,-130);ctx.lineTo(14,-3);ctx.lineTo(100,30);ctx.lineTo(62,-72);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(214,228,220,.35)';ctx.lineWidth=2;
+    for(let i=0;i<4;i++){ctx.beginPath();ctx.moveTo(-70+i*9,-16+i*14);ctx.lineTo(-20+i*8,-32+i*18);ctx.lineTo(18+i*11,-8+i*16);ctx.stroke();}
+    ctx.fillStyle='#47765a';ctx.beginPath();ctx.ellipse(-47,25,42,11,-.18,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+
   function drawStoryMapFoundation(ctx,options={}){
     options={...options,clearZones:[...(options.clearZones||[]),...(routes?.shelters(options.routesEnabled===false?0:options.level,{width:options.worldW,height:options.worldH})||[]).map(s=>({...s,r:120,objective:true})),...(fields?.fixtures(options.fieldsEnabled===false?0:options.level,{width:options.worldW,height:options.worldH})||[]).map(s=>({...s,r:100,objective:true}))]};
     const chapterMap=Number(options.level)>0?chapterMaps?.forMission(options.level):null;
@@ -687,7 +701,7 @@
     };
 
     const palettes={forest:["#17492e","#0f2f20"],suburbs:["#276641","#174b31"],downtown:["#26394a","#172534"],industrial:["#4a463d","#292b2d"]};
-    const colors=chapterMap?.palette||palettes[family]||palettes.forest,g=ctx.createLinearGradient(0,0,0,worldH);g.addColorStop(0,colors[0]);g.addColorStop(1,colors[1]);ctx.fillStyle=g;ctx.fillRect(view.x,view.y,view.w,view.h);
+    const colors=options.mountain?['#426f56','#234c40']:chapterMap?.palette||palettes[family]||palettes.forest,g=ctx.createLinearGradient(0,0,0,worldH);g.addColorStop(0,colors[0]);g.addColorStop(1,colors[1]);ctx.fillStyle=g;ctx.fillRect(view.x,view.y,view.w,view.h);
     const tile=96,startX=Math.floor(view.x/tile)*tile,startY=Math.floor(view.y/tile)*tile;for(let y=startY;y<view.y+view.h+tile;y+=tile)for(let x=startX;x<view.x+view.w+tile;x+=tile){ctx.fillStyle=(Math.floor(x/tile)+Math.floor(y/tile))%2?"rgba(255,255,255,.025)":"rgba(2,6,23,.035)";ctx.fillRect(x,y,tile,tile);}
     drawGroundTexture(ctx,view,{family,heavy:options.heavy});
     // Ground clues belong below water, roads and scenery; never paint a paw
@@ -696,7 +710,11 @@
     for(const zone of options.waterZones||[])drawMapWater(ctx,zone,{view,heavy:options.heavy,now:options.now});
     drawRainPuddles(ctx,view,{weather:options.weather,now:options.now,waterZones:options.waterZones,blockedRects:options.blockedRects});
 
-    if(family==="forest"){
+    if(options.trails?.length){
+      path(options.trails.map(p=>[p.x,p.y]),66,'#8b7960','#4b5949',true);
+      for(let i=0;i<175;i++){const x=50+random(i,23)*(worldW-100),y=55+random(i,61)*(worldH-110);tree(x,y,.85+random(i,91)*.48);}
+      for(const peak of options.mountain?.peaks||[])if(visible(peak.x,peak.y,220)&&!wet(peak.x,peak.y,160)&&!onRoad(peak.x,peak.y,130))drawMountainRock(ctx,peak.x,peak.y,1.35,{clearZones:options.clearZones});
+    }else if(family==="forest"){
       // A permanent north/south track connects the river bridge to both banks.
       path([[worldW*.5,0],[worldW*.5,worldH]],72,"#665038","rgba(31,41,30,.68)",true);
       path([[0,worldH*.18],[worldW*.25,worldH*.29],[worldW*.49,worldH*.23],[worldW*.75,worldH*.35],[worldW,worldH*.28]],72,"#665038","rgba(31,41,30,.68)",true);
@@ -820,5 +838,5 @@
     ctx.restore();
   }
 
-  return Object.freeze({VERSION,drawRescueDevice,drawCaptureCageFinish,drawCommanderBanner,drawWildlifeRifle,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
+  return Object.freeze({VERSION,drawMountainRock,drawRescueDevice,drawCaptureCageFinish,drawCommanderBanner,drawWildlifeRifle,drawMedDrone,drawSoldierPortrait,drawVehicle,drawCaptureCage,sceneryOpacity,routeBlockers,drawCollisionBoundary,drawObjectiveBeacon,storyFamilyForLevel,drawGroundTexture,drawMapTree,drawMapHouse,drawMapWaterSurface,drawMapWater,drawWaterBridges,drawRainPuddles,drawMapLighting,territorySites,drawTerritoryClues,drawStoryMapFoundation,drawSoldier,drawCivilian,tigerVisualState,drawTiger,drawBattlefieldFinish});
 });

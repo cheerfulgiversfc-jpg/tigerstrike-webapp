@@ -17,9 +17,18 @@
         shelter:{name:'Restore the village shelter',choice:'Restore shelter power. Use the longer bridge route and stabilize the injured before evacuation.',checkpointResult:'The injured villagers reached the restored shelter. Treatment is available before the final evacuation.',result:'The restored shelter stabilized all four injured villagers before evacuation.'},
       },
     },
+    'mountain-sos':{
+      id:'mountain-sos',title:'Mountain SOS',transport:'helicopter',
+      description:'Follow a mountain distress signal, bring a medical team to three stranded hikers, then defend their helicopter evacuation. Choose a longer forest trail or a shorter, more dangerous ridge crossing.',
+      stages:['Find the missing hikers','Bring supplies through','Hold the landing zone'],
+      routes:{
+        forest:{checkpointResult:'The forest footbridge is repaired. The medic and three hikers reached the shelter and received treatment. Next, defend their helicopter evacuation.',name:'Safer forest trail',choice:'Repair the forest footbridge. Take a longer marked trail with fewer tiger patrols.',result:'The repaired forest footbridge opened the longer rescue trail. The medical team treated all three hikers before their helicopter evacuation.'},
+        ridge:{checkpointResult:'The ridge crossing is repaired and its extra patrol cleared. The medic and three hikers reached the shelter and received treatment. Next, defend their helicopter evacuation.',name:'Faster ridge crossing',choice:'Repair the ridge crossing. Take a shorter trail with an extra tiger patrol in the escort stage.',result:'The repaired ridge crossing shortened the escort. The squad cleared its additional patrol and treated all three hikers before helicopter evacuation.'},
+      },
+    },
   };
   function definition(id='river-gate'){return Object.hasOwn(adventures,id)?adventures[id]:null;}
-  const checkpointIds=['exp_clinic_power','exp_bridge_open','exp_triage','exp_crossing','fv_boat_repair','fv_shelter_power','fv_home_west','fv_home_east','fv_stabilize'];
+  const checkpointIds=['exp_clinic_power','exp_bridge_open','exp_triage','exp_crossing','fv_boat_repair','fv_shelter_power','fv_home_west','fv_home_east','fv_stabilize','ms_signal','ms_forest_bridge','ms_ridge_bridge','ms_crossing','ms_treatment'];
   const holdMs=8000;
   const isExpedition=type=>types.includes(type);
   const isSolo=type=>type===types[0];

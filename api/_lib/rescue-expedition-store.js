@@ -48,6 +48,7 @@ async function save(session,result){
 }
 
 function mission(base,session){
+  if(session.expedition.id==='mountain-sos')return mountainMission(base,session);
   if(session.expedition.id==='flooded-village')return floodedMission(base,session);
   const {stage,route}=session.expedition;
   const solo=expedition.isSolo(session.launchType);
@@ -158,6 +159,52 @@ function floodedMission(base,session){
     expeditionScene:{floodStage:stage,homes:floodedHomes,shelter:shelterBuilding,
       shelterPowered:route==='shelter'&&stage>1,preparationBoat:boatRoute&&stage===1?{x:landingX,y:landing.center}:null,
       helicopter:stage===1?{x:spawn.x-60,y:spawn.y-75}:null},
+    mapTruthLandmarks:[],mapTruthRequiredActionIds:[],fireZones:[]};
+}
+
+function mountainMission(base,session){
+  const {stage,route}=session.expedition,solo=expedition.isSolo(session.launchType);
+  const adventure=expedition.definition('mountain-sos'),forest=route==='forest';
+  const world=maps.forMission(51).world;
+  const river={...maps.forMission(51).waterZones[0],y:1500,ry:90,bridges:[],label:'Mountain meltwater river'};
+  const bridgeX=forest?1800:3020,b=water.banks(river,bridgeX);
+  if(stage>1||session.expeditionBridgeOpen)river.bridges=[{x:bridgeX-58,y:b.top-22,w:116,h:b.bottom-b.top+44}];
+  const shelter={x:forest?2460:3300,y:b.bottom+275,r:105,label:'Mountain medical shelter'};
+  const landing={x:4050,y:2200,r:110};
+  const start=stage===1?{x:forest?880:2240,y:720}:stage===2?{x:forest?1300:2680,y:b.top-285}:{x:shelter.x+180,y:shelter.y+110};
+  const signal={id:'ms_signal',x:forest?1050:2480,y:820,r:100,manual:true,label:'Trace the hikers’ distress beacon'};
+  const repair={id:forest?'ms_forest_bridge':'ms_ridge_bridge',x:bridgeX,y:b.top-85,r:95,manual:true,requires:['ms_signal'],label:forest?'Repair the forest footbridge':'Repair the ridge crossing'};
+  const treatment={id:'ms_treatment',...shelter,r:180,manual:true,requiresParty:true,label:'Treat the hikers with the medical team'};
+  const crossing={id:'ms_crossing',x:bridgeX,y:b.bottom+80,r:125,label:'Escort the medical team across the repaired bridge'};
+  const checkpoints=stage===1?[signal,repair]:stage===2?[crossing,treatment]:[];
+  const civilians=['Medic Rowan','Hiker Imani','Hiker Leo','Hiker June'].map((name,i)=>({
+    id:`ms_civ_${i+1}`,name,look:i===0?'medic':'field',injured:stage===2&&i>0,
+    x:stage===3?shelter.x+170+(i%2)*55:start.x+85+(i%2)*55,
+    y:stage===3?shelter.y+40+Math.floor(i/2)*55:start.y+50+Math.floor(i/2)*55,
+  }));
+  const path=stage===1?[start,signal,repair]:stage===2
+    ? [start,{x:bridgeX,y:b.top-125},crossing,...(forest?[{x:2000,y:shelter.y+160}]:[]),shelter]
+    : [start,{x:3570,y:2100},landing];
+  const count=(solo?1:2)+(stage===2&&!forest?1:0);
+  const tigers=Array.from({length:count},(_,i)=>({...base.tigers[i%base.tigers.length],id:`ms_tiger_${i+1}`,name:'Mountain trail tiger',type:'Standard',boss:false,hpMax:solo?100:145,
+    baseX:stage===3?3830+i*160:stage===1?bridgeX+180+i*150:bridgeX+180+i*200,
+    baseY:stage===3?2030+i*70:stage===1?b.top-240:b.bottom+185+i*50}));
+  return {...base,level:51,title:`Stage ${stage} · ${adventure.stages[stage-1]}`,chapterName:adventure.title,
+    world,waterZones:[river],spawns:[start,{x:start.x+48,y:start.y+30}],
+    checkpoints,checkpointsBeforeRescue:stage===1,
+    rescueHouse:stage===3?{x:landing.x-145,y:landing.y,r:100,label:'Helicopter boarding point'}:shelter,
+    extraction:stage===1?{x:bridgeX-175,y:b.top-85,r:95}:stage===2?{x:shelter.x+170,y:shelter.y,r:95}:landing,
+    helicopter:stage===3?{x:landing.x,y:landing.y-65,endX:4650,endY:1650}:null,boat:null,ferry:null,
+    objective:stage===1?'Trace the distress beacon, repair your chosen crossing, clear the patrol and regroup at extraction.'
+      :stage===2?`Rescue the medical team and all three hikers, use the marked ${forest?'forest footbridge':'ridge crossing'}, treat everyone at the medical shelter, then deliver them and extract.`
+      :'Bring the medic and all three hikers to the helicopter boarding point. Clear the threats and hold the landing zone for 8 seconds while everyone boards.',
+    civilians:stage===1?[]:civilians,rescueRequired:stage===1?0:4,tigers,captureRequired:0,captureTargetIds:[],
+    timeLimitMs:18*60000,playerCount:solo?1:2,tigerDamageMultiplier:solo?.55:.75,
+    extractionType:stage===3?'helicopter':'ground',weatherFx:'clear',
+    expeditionScene:{kind:'mountain',path,bridgeX,shelter:{x:shelter.x-80,y:shelter.y-145,w:160,h:90},
+      homes:[],helicopter:stage===3?{x:landing.x,y:landing.y-65}:null,
+      peaks:[{x:550,y:440},{x:1560,y:370},{x:3500,y:400},{x:4430,y:1050},{x:600,y:2090}],
+      routeLabel:forest?'FOREST TRAIL · FEWER PATROLS':'RIDGE CROSSING · EXTRA PATROL'},
     mapTruthLandmarks:[],mapTruthRequiredActionIds:[],fireZones:[]};
 }
 
