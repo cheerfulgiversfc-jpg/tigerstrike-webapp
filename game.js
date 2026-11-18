@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5295";
+const TS_BUILD = "5296";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -57356,7 +57356,7 @@ function smoothedDrawPoint(entity, targetX, targetY, stiffness=0.38){
     entity.__drawY = targetY;
     return { x:targetX, y:targetY };
   }
-  const blend = clamp(stiffness * (dt / 16.7), 0.14, 0.68);
+  const blend = 1 - Math.pow(1 - clamp(stiffness,0,1), dt / (1000/60));
   entity.__drawX += dx * blend;
   entity.__drawY += dy * blend;
   return { x:entity.__drawX, y:entity.__drawY };
@@ -58845,10 +58845,10 @@ function drawSoldierModelOnContext(ctx,entity,x,y,opts={}){
   if(!ctx || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
   const renderer=globalThis.TigerStrikeBattlefieldRenderer;
   if(!renderer?.drawSoldier) return;
-  const blend=clamp(Number(opts.blend??premiumGaitBlend(entity,opts.topSpeed||2.8)),0,1);
+  const blend=clamp(Number(opts.gait?.blend??opts.blend??premiumGaitBlend(entity,opts.topSpeed||2.8)),0,1);
   // Adapt only presentation: never write position, velocity, equipment or aim state.
   return renderer.drawSoldier(ctx,{...entity,x,y,face:opts.face??entity.face,role:opts.role||entity.role},{
-    blend,phase:(Number(entity.step)||0)*3.25+Number(opts.phase||0),
+    blend,phase:opts.gait?.phase??((Number(entity.step)||0)*3.25+Number(opts.phase||0)),facing:opts.gait?.facing,
     scale:opts.scale||1,mine:true,showMarker:opts.role==="player",
     eliteAppearance:opts.role==='player'?window.TigerWildlifeTranq.presentation(window.TigerEliteArmory?.appearance()||{},{survival:S.mode==='Survival',tranq:equippedWeapon().type==='tranq'||Date.now()<Number(S._wildlifeTranqPoseUntil||0),ammoMode:selectedAmmoModeForWeapon(equippedWeapon())}):undefined,uniformPalette:opts.uniformPalette,shotKick:opts.shotKick,swimming:typeof fieldSwimmingAt==='function'&&fieldSwimmingAt(x,y),
     reaction:typeof soloCombatReactions==='function'?soloCombatReactions()?.pose('soldier',opts.role==='player'?'solo':`support:${entity.id}`,Date.now(),combatComfortSettings())||0:0
@@ -59656,7 +59656,8 @@ function drawTigerVisibilityFailsafe(t){
 function drawSoldier(){
   if(playerBoardedForExtraction(S)) return;
   const now = Date.now();
-  const step = S.me.step || 0;
+  const gait=globalThis.TigerSoldierMotion?.track(S.me,{x:S.me.x,y:S.me.y,face:S.me.face},performance.now());
+  const step = gait?.phase ?? S.me.step ?? 0;
   const rollStart = Number.isFinite(S.rollAnimStart) ? S.rollAnimStart : 0;
   const rollUntil = Number.isFinite(S.rollAnimUntil) ? S.rollAnimUntil : 0;
   const rolling = rollUntil > now && rollUntil > rollStart;
@@ -59674,7 +59675,7 @@ function drawSoldier(){
     px = fromX + ((toX - fromX) * rollProgress);
     py = fromY + ((toY - fromY) * rollProgress);
   }
-  const moveBlend = animMoveBlend(S.me, 3.0);
+  const moveBlend = gait?.blend ?? animMoveBlend(S.me, 3.0);
   if(!rolling){
     const smooth = smoothedDrawPoint(S.me, px, py, 0.44 + (moveBlend * 0.12));
     px = smooth.x;
@@ -59685,7 +59686,7 @@ function drawSoldier(){
     S.me.__drawAt = performance.now ? performance.now() : Date.now();
   }
   const bobAmp = 0.55 + (1.05 * moveBlend);
-  const bob = rolling ? 0 : (Math.sin(step) * (1.15 * bobAmp)) + (Math.sin(step * 2.2) * (0.30 * bobAmp));
+  const bob = rolling || gait ? 0 : (Math.sin(step) * (1.15 * bobAmp)) + (Math.sin(step * 2.2) * (0.30 * bobAmp));
   const x = px;
   const y = py + bob;
   drawMotionAfterImages(S.me, x, y, {
@@ -59728,7 +59729,7 @@ function drawSoldier(){
     ctx.restore();
   }
   drawWaterRipple(x, y, 18, 0.56);
-  drawGroundedFootContacts(S.me, x, y, { footGap:7.2, footY:17.5, footW:7, alphaMul:1.05 });
+  drawGroundedFootContacts(gait?{...S.me,step}:S.me, x, y, { stepMul:gait?1:1.7, footGap:7.2, footY:17.5, footW:7, alphaMul:1.05 });
   drawPremiumFootstepDust(S.me, x, y, moveBlend, rolling ? "rgba(125,211,252,.42)" : "rgba(191,219,254,.30)");
   if(meHitFlashAlpha > 0){
     ctx.save();
@@ -59912,6 +59913,7 @@ function drawSoldier(){
   safeCanvasLayer("drawRealisticSoldierModel.player", ()=>drawRealisticSoldierModel(S.me, x, y, {
     uniformPalette:palette.masteryUniform || {body:palette.armorOuter,light:palette.arm,dark:palette.shoulder,vest:palette.armorInner,helmet:palette.helmet,trim:palette.trim},
     blend:rolling ? 1 : moveBlend,
+    gait:gait?{...gait,facing:S.inBattle?undefined:gait.facing}:undefined,
     topSpeed:3.0,
     face:ang,
     phase:0.15,

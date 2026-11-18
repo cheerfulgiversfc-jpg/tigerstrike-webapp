@@ -404,7 +404,7 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(expeditionActive()){
-      if(versionLabel)versionLabel.textContent='Tiger Strike V17.1 · Rescue Mode';
+      if(versionLabel)versionLabel.textContent='Tiger Strike V17.1.1 · Rescue Mode';
       if(titleLabel)titleLabel.textContent=`🛟 ${state.snapshot.expedition.title||expedition.title}`;
       return;
     }
@@ -2721,13 +2721,15 @@
     const aimTarget=recentShot&&(state.snapshot?.tigers||[]).find(t=>String(t.id)===String(recentShot.targetId)&&!t.defeated&&Number(t.hp)>0);
     const aimFace=aimTarget?Math.atan2(aimTarget.y-draw.y,aimTarget.x-draw.x):null;
     const body=cloth?.body||"#64734b";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=aimFace??impactPose?.face??Number(source.face||0);
-    const key=String(p.userId);const prior=state.walkVisual.get(key)||{x:Number(draw.x),y:Number(draw.y),phase:0};const moved=Math.hypot(Number(draw.x)-prior.x,Number(draw.y)-prior.y);const walking=moved>.18&&!p.downed;prior.phase=walking?prior.phase+Math.min(1.1,moved*.24):prior.phase*.88;prior.x=Number(draw.x);prior.y=Number(draw.y);state.walkVisual.set(key,prior);
+    const key=String(p.userId),point={x:Number(draw.x),y:Number(draw.y),face};
+    const prior=window.TigerSoldierMotion?.sample(state.walkVisual.get(key),point,performance.now())||{...point,phase:0,blend:0};
+    const walking=prior.blend>.04&&!p.downed;state.walkVisual.set(key,prior);
     const stride=walking?Math.sin(prior.phase)*7:0;const bob=walking?Math.abs(Math.sin(prior.phase))*2:0;const lookX=Math.cos(face)*1.5,lookY=Math.sin(face)*.7;
     if(window.TigerStrikeBattlefieldRenderer?.drawSoldier){
       const renderNow=Number(state.snapshot?.serverNow||Date.now())+Math.min(1000,Math.max(0,performance.now()-Number(state.snapshotReceivedAt||performance.now())));
       const shotAge=renderNow-Number(p.lastAttackAt||0);
       const shotKick=impactPose?.kick??(shotAge>=0&&shotAge<140?Math.sin(shotAge/140*Math.PI):0);
-      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,eliteAppearance:window.TigerWildlifeTranq?.presentation(p.eliteAppearance||{},{survival:!!state.snapshot?.mission?.survival,tranq:p.lastHitKind==='tranq'&&shotAge>=0&&shotAge<900,ammoMode:p.ammoMode})||p.eliteAppearance,x:draw.x,y:draw.y,face,role:p.role},{walking,phase:prior.phase,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow,reaction:reactionPresentation?.pose('soldier',String(p.userId),Date.now(),window.TigerCombatFeel?.settings())||0});
+      const drawn=window.TigerStrikeBattlefieldRenderer.drawSoldier(ctx,{...p,eliteAppearance:window.TigerWildlifeTranq?.presentation(p.eliteAppearance||{},{survival:!!state.snapshot?.mission?.survival,tranq:p.lastHitKind==='tranq'&&shotAge>=0&&shotAge<900,ammoMode:p.ammoMode})||p.eliteAppearance,x:draw.x,y:draw.y,face,role:p.role},{walking,blend:p.downed?0:prior.blend,phase:prior.phase,facing:aimTarget||impactPose?.face!=null?undefined:prior.facing,mine,uniformPalette:cloth,shotKick,swimming:coopSwimmingAt(draw.x,draw.y),now:renderNow,reaction:reactionPresentation?.pose('soldier',String(p.userId),Date.now(),window.TigerCombatFeel?.settings())||0});
       const recovery=respawnSeconds(p),downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=drawn.accent;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,drawn.labelY);
       drawMasteryIdentity(ctx,p,draw.x,drawn.labelY-16);
       ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-28,drawn.barY,56,8,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-27,drawn.barY+1,54*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),6,3);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,drawn.barY+22);

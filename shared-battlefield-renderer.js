@@ -104,7 +104,7 @@
     if(options.swimming&&!entity.downed)return drawSwimming(ctx,entity,options,drawSoldier);
     const x=Number(entity.x)||0,y=Number(entity.y)||0,face=Number(entity.face)||0;
     const blend=clamp(options.blend??(options.walking?1:0),0,1),phase=Number(options.phase)||0;
-    const downed=!!entity.downed,facing=Math.cos(face)<0?-1:1;
+    const downed=!!entity.downed,facing=options.facing===-1?-1:options.facing===1?1:Math.cos(face)<0?-1:1;
     const reaction=downed?0:clamp(options.reaction,0,1);
     const mine=!!options.mine,accent=downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");
     const elite=entity.eliteAppearance||options.eliteAppearance||{};
