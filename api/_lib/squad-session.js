@@ -1,5 +1,7 @@
 const expedition=require('../../rescue-expedition');
 const expeditionStore=require('./rescue-expedition-store');
+const expeditionMastery=require('../../expedition-mastery');
+const expeditionMasteryStore=require('./expedition-mastery-store');
 const rescueSchedule=require('./rescue-event-schedule');
 const rescueEvent=require('../../live-rescue-event');
 const rescueProfileScope=require('./rescue-profile-scope');
@@ -2596,6 +2598,8 @@ function normalizeSession(raw){
     livingWorldMission:normalizeLivingWorldMission(raw.livingWorldMission),
     expedition:expedition.isExpedition(launchType)&&raw.expedition?.ownerId===hostId&&Object.hasOwn(expedition.definition(raw.expedition.id)?.routes||{},raw.expedition.route)&&[1,2,3].includes(raw.expedition.stage)?raw.expedition:null,
     expeditionBridgeOpen:raw.expeditionBridgeOpen===true,
+    expeditionMetricsVersion:raw.expeditionMetricsVersion===1?1:0,
+    expeditionPriorKills:Math.max(0,Number(raw.expeditionPriorKills)||0),
     expeditionBoardingAt:Math.max(0,Number(raw.expeditionBoardingAt)||0),
     postCampaignOperation,
     crisisVote:normalizeCrisisVote(raw.crisisVote,sessionLike),
@@ -3010,6 +3014,7 @@ async function readExpeditionRoom(code){
 async function expeditionStatus(user,expeditionId='river-gate',ownOnly=false){
   if(!expedition.definition(expeditionId))throw Error('Choose an available rescue expedition.');
   const uid=userIdOf(user),own=await expeditionStore.read(uid,expeditionId);
+  if(own)await require('./expedition-mastery-store').creditRun(own);
   const reference=!ownOnly&&await expeditionStore.membership(uid,expeditionId);
   if(reference&&reference.ownerId!==uid){
     const shared=await expeditionStore.read(reference.ownerId,expeditionId);
@@ -3017,6 +3022,7 @@ async function expeditionStatus(user,expeditionId='river-gate',ownOnly=false){
     const stillMember=!reference.left&&room?.memberIds.includes(uid)&&room.expedition?.runId===reference.runId&&shared?.roomCode===room.code;
     const recorded=shared?.results.some(row=>row.team?.some(actor=>actor.userId===uid));
     if(shared?.id===reference.runId&&(stillMember||recorded)){
+      await require('./expedition-mastery-store').creditRun(shared);
       return {...shared,shared:true,captainName:room? (await readPlayer(room.code,room.hostId)).name:'Your captain',
         roomCode:stillMember?room.code:'',roomStatus:stillMember?room.status:'',report:expeditionReport(shared)};
     }
@@ -3475,7 +3481,8 @@ async function buildSnapshot(session, viewerId){
   const profileIds=[...new Set([userIdOf(viewerId),session.hostId,...players.map(player=>player.userId)])];
   const profiles=new Map(await Promise.all(profileIds.map(async id=>[id,await readCoopProfile(id)])));
   const viewerProfile=profiles.get(userIdOf(viewerId)),leaderProfile=profiles.get(session.hostId);
-  const eliteIdentities=new Map(await Promise.all(players.map(async p=>[p.userId,await eliteStore.visual(p.userId)])));
+  const expeditionBooks=new Map(session.expedition?await Promise.all(players.map(async p=>[p.userId,await expeditionMasteryStore.read(p.userId)])):[]);
+  const eliteIdentities=new Map(await Promise.all(players.map(async p=>{const base=await eliteStore.visual(p.userId),uniform=expeditionMastery.identity(expeditionBooks.get(p.userId));return [p.userId,session.expedition&&uniform?{...base,expeditionUniform:uniform}:base];})));
   let partnerStyles={};if(players.length===2)try{partnerStyles=await require('./rescue-partner-store').styles(players[0].userId,players[1].userId);}catch{}
   const markers=await readyMarkers(session,players);
   const masteryIdentities=new Map(players.map(player=>[player.userId,masteryRewards.identity(profiles.get(player.userId).missionDebriefs,'coop')]));
@@ -3491,7 +3498,7 @@ async function buildSnapshot(session, viewerId){
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
     expedition:session.expedition?{runId:session.expedition.runId,id:session.expedition.id||'river-gate',title:expedition.definition(session.expedition.id).title,
-      stage:session.expedition.stage,route:session.expedition.route,scene:mission.expeditionScene||null,report:expeditionSummary,
+      stage:session.expedition.stage,route:session.expedition.route,reward:expeditionMastery.summary(expeditionBooks.get(userIdOf(viewerId)),session.expedition.id),scene:mission.expeditionScene||null,report:expeditionSummary,
       ferry:mission.ferry?{...mission.ferry,startedAt:transit?.at||players.find(p=>p.expeditionFerryAt)?.expeditionFerryAt||0,
         active:!!transit&&at-transit.at<mission.ferry.duration,
         completed:players.every(p=>p.expeditionFerryAt>0)}:null,
@@ -4030,6 +4037,7 @@ async function applyActionUnlocked(session, user, action, payload={}){
       return writeSession(session);
     }
     session.pendingDeployment='';
+    if(session.expedition){session.expeditionMetricsVersion=action==='restart'?Number(session.expeditionMetricsVersion||0):1;session.expeditionPriorKills=action==='restart'?Number(session.expeditionPriorKills||0)+sessionDerived(session,await memberPlayers(session),now).tigerKills:0;}
     if(action==='restart'){session.missionElapsedMs=Number(session.missionElapsedMs||0)+Math.max(0,Number(session.completedAt||now)-session.startedAt);session.missionRestarts=Number(session.missionRestarts||0)+1;}
     else{session.missionElapsedMs=0;session.missionWipes=0;session.missionRestarts=0;session.debriefSurvivalKills=0;}
     if(action!=='restart')session.debriefVersion=1;
@@ -4424,18 +4432,23 @@ async function claimExpeditionStage(session){
   const players=await memberPlayers(session);
   const derived=sessionDerived(session,players);
   const mission=missionDefinition(session);
-  return expeditionStore.save(session,{
+  const saved=await expeditionStore.save(session,{
+    recordVersion:session.expeditionMetricsVersion===1?1:0,rescueRequired:mission.rescueRequired,
+    durationMs:session.debriefVersion&&session.completedAt>=session.startedAt?Number(session.missionElapsedMs||0)+session.completedAt-session.startedAt:null,
+    wipes:session.debriefVersion?session.missionWipes:null,
     mode:expedition.isSolo(session.launchType)?'Solo':'Co-op',
     team:await Promise.all(players.map(async p=>{
       const profile=await readCoopProfile(p.userId);
-      return {userId:p.userId,name:p.name,appearance:await eliteStore.visual(p.userId).catch(()=>null),
+      return {userId:p.userId,name:p.name,appearance:await require('./expedition-mastery-store').appearance(p.userId,await eliteStore.visual(p.userId).catch(()=>({}))),
         uniformPalette:masteryRewards.uniformPalette(masteryRewards.identity(profile.missionDebriefs,'coop').uniform?.id)};
     })),
     survivors:mission.civilians.filter(row=>derived.securedCivilianIds.includes(row.id)).map(row=>row.name),
-    captures:derived.capturedIds.length,kills:derived.tigerKills,
+    captures:derived.capturedIds.length,kills:derived.tigerKills+Number(session.expeditionPriorKills||0),
     ferryUsed:!!mission.ferry&&players.every(p=>p.expeditionFerryAt>0),
     stabilized:civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds).filter(c=>c.hp===100&&mission.civilians.find(source=>source.id===c.id)?.injured).length,
   });
+  await require('./expedition-mastery-store').creditRun(saved);
+  return saved;
 }
 
 async function claimReward(session, user){

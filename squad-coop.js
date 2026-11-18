@@ -404,7 +404,7 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(expeditionActive()){
-      if(versionLabel)versionLabel.textContent='Tiger Strike V17.0 · Rescue Mode';
+      if(versionLabel)versionLabel.textContent='Tiger Strike V17.1 · Rescue Mode';
       if(titleLabel)titleLabel.textContent=`🛟 ${state.snapshot.expedition.title||expedition.title}`;
       return;
     }
@@ -545,7 +545,7 @@
     const count = $("squadMemberCount");
     if(count) count.textContent = `${snapshot.memberCount}/${soloSquadMission()?1:2} players in squad • ${(snapshot.players||[]).filter(p=>p.online).length} online`;
     const roster = $("squadRoster");
-    if(roster){roster.innerHTML = rosterHtml();window.TigerEliteArmory?.renderPortraits(roster);}
+    if(roster){roster.innerHTML = rosterHtml();window.TigerEliteArmory?.renderPortraits(roster);mountExpeditionPortraits(roster);}
     const readyPanel=$('squadReadyPanel');if(readyPanel){const html=readyPanelHtml();if(readyPanel.__html!==html){readyPanel.innerHTML=html;readyPanel.__html=html;bindCommandButtons();}}
     const mine = localSnapshotPlayer();
     document.querySelectorAll("#liveSquadOverlay [data-squad-role]").forEach((button)=>{
@@ -706,6 +706,14 @@
     return state.roles.find((role)=>role.key === key)?.label || String(key || "Tracker");
   }
 
+  function mountExpeditionPortraits(root){
+    if(!root)return;
+    (root.querySelectorAll?.('[data-exp-player]')||[]).forEach(canvas=>{
+      const player=state.snapshot?.players.find(p=>String(p.userId)===canvas.dataset.expPlayer);
+      if(player)window.TigerStrikeBattlefieldRenderer?.drawSoldierPortrait(canvas.getContext('2d'),player.eliteAppearance||{});
+    });
+  }
+
   function rosterHtml(){
     const snapshot = state.snapshot;
     const players = snapshot?.players || [];
@@ -718,11 +726,11 @@
       const respawn = respawnSeconds(player);
       const status = player.downed ? (respawn > 0 ? `RESPAWNING IN ${respawn}s` : "DOWNED — needs revive") : (player.online ? `HP ${Math.round(player.hp)}/${Math.round(player.maxHp)}` : "Reconnecting…");
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
-        ${player.eliteAppearance?.soldier?`<canvas class="squadElitePortrait" width="256" height="256" data-elite-portrait="${esc(player.eliteAppearance.soldier)}" aria-label="${esc(window.TigerEliteCatalog?.items[player.eliteAppearance.soldier]?.name||'Soldier')} portrait"></canvas>`:''}
+        ${player.eliteAppearance?.expeditionUniform?`<canvas class="squadElitePortrait" width="150" height="165" data-exp-player="${player.userId}" aria-label="${esc(player.eliteAppearance.expeditionUniform.name)} portrait"></canvas>`:player.eliteAppearance?.soldier?`<canvas class="squadElitePortrait" width="256" height="256" data-elite-portrait="${esc(player.eliteAppearance.soldier)}" aria-label="${esc(window.TigerEliteCatalog?.items[player.eliteAppearance.soldier]?.name||'Soldier')} portrait"></canvas>`:''}
         ${player.eliteAppearance?.soldier==='crimson_commander'?'<canvas class="eliteCommanderBanner" width="1200" height="220" data-elite-banner="crimson_commander" aria-label="Equipped Crimson Commander profile banner"></canvas>':''}
         <div class="squadMemberName">${Number(player.userId) === Number(state.snapshot?.hostId) ? "👑 " : ""}${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(window.TigerMasteryRewards?.identityText(player.masteryIdentity)||'No mastery identity equipped')}</div>
-        <div class="squadMemberMeta">Uniform: ${esc(window.TigerEliteCatalog?.items[player.eliteAppearance?.soldier]?.name||player.masteryIdentity?.uniform?.name||'Default')}</div>
+        <div class="squadMemberMeta">Uniform: ${esc(player.eliteAppearance?.expeditionUniform?.name||window.TigerEliteCatalog?.items[player.eliteAppearance?.soldier]?.name||player.masteryIdentity?.uniform?.name||'Default')}</div>
         ${player.eliteAppearance?.equipment==='rescue_equipment'?'<div class="squadMemberMeta">Rescue Equipment finish equipped</div>':''}
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}${snapshot.status==='waiting'&&snapshot.readyVersion===1?player.ready?' • READY':' • Not ready':''}</div>
         <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Escorting ${(state.snapshot?.civilians||[]).filter(c=>c.following&&Number(c.followingUserId)===Number(player.userId)).length} • Revives ${Math.round(player.revives || 0)}</div>
@@ -995,7 +1003,7 @@
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>${captureRequired() > 0 ? "🔬 Capture target" : "👤 Civilian"}</span><span>🐅 Tiger</span></div>
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} battlefield with a player-following camera"></canvas>
-      ${snap.expedition?.report?`<section id="squadExpeditionReport">${window.TigerRescueExpeditionHub.reportHtml(snap.expedition.report)}</section>`:''}
+      ${snap.expedition?.report?`<section id="squadExpeditionReport">${window.TigerRescueExpeditionHub.reportHtml(snap.expedition.report,snap.expedition.reward)}</section>`:''}
       <div id="squadDebrief">${squadDebriefHtml(snap)}</div>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? (snap.expedition?"🛟 Expedition Stage Complete":"🏆 Squad Extracted!") : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : (snap.failureReason === "teammate_left" ? "🔄 Teammate Left" : "⏱️ Operation Failed"))}</div>
@@ -1269,7 +1277,7 @@
     bindMoveButtons();
     window.TigerTouchLayout?.applyCoop();
     bindLobbyInput();
-    window.TigerEliteArmory?.renderPortraits(document);
+    window.TigerEliteArmory?.renderPortraits(document);mountExpeditionPortraits(body);
     window.TigerCommanderCelebration?.mount($('squadResultBanner'),{confirmed:state.snapshot?.status==='complete',runKey:`${state.snapshot?.code}:${state.snapshot?.startedAt}`,animate:state.commanderVictoryRun===`${state.snapshot?.code}:${state.snapshot?.startedAt}`,players:state.snapshot?.players||[]});
     window.TigerPlayerHub?.mountFirstFeedback($('squadLaunchFeedback'),{eligible:sharedStoryActive()&&Number(state.snapshot?.storyMissionLevel)===1&&state.snapshot?.status==='complete'&&localSnapshotPlayer()?.rewardClaimed&&window.TigerMasteryRewards?.progress(state.profile?.missionDebriefs,'coop').clears===1,open:onSaved=>window.openPlayerReport?.('feedback',{onSaved})});
     if(state.snapshot?.status === "active"){

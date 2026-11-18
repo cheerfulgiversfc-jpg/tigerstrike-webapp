@@ -56,3 +56,12 @@
 .expTeamPortraits figure { margin:0; flex:0 1 150px; text-align:center; }
 .expTeamPortraits canvas { max-width:100%; height:auto; border-radius:10px; }
 .expTeamPortraits figcaption { font-size:13px; margin-top:5px; overflow-wrap:anywhere; }
+
+.expRewards { margin:14px 0; padding:12px; border:1px solid #496e78; border-radius:12px; background:#112a35; }
+.expRewards > summary { cursor:pointer; font-weight:800; min-height:44px; }
+.expOutfit { display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin:10px 0; }
+.expOutfit canvas { flex:0 0 150px; border-radius:10px; }
+.expOutfit > div { flex:1 1 170px; }
+.expRecord { padding:10px 0; border-top:1px solid #365764; }
+.expRecord small { display:block; color:#d1e3e8; margin-top:5px; }
+.expRouteMaster { border-color:#edcc83; background:linear-gradient(145deg,#24534b,#183b53); box-shadow:inset 0 0 0 2px #edcc8330; }

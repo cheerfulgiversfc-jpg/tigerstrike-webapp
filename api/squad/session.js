@@ -179,7 +179,15 @@ module.exports = async function handler(req, res){
     const requestRoom=action!=='create'&&body.code?await readSession(cleanCode(body.code)):null;
     const rescueType=['create','quick-match'].includes(action)?String(body.launchType||'').trim().toLowerCase():requestRoom?.launchType;
     return await require('../_lib/rescue-profile-scope').run(rescueType,async()=>{
-    if(action==='expedition-status')return json(res,200,{ok:true,expedition:await expeditionStatus(user,body.expeditionId,body.own===true)});
+    if(action==='expedition-status'){
+      const run=await expeditionStatus(user,body.expeditionId,body.own===true);
+      return json(res,200,{ok:true,expedition:run,mastery:await require('../_lib/expedition-mastery-store').read(userIdOf(user))});
+    }
+    if(action==='expedition-outfit'){
+      if(typeof body.itemId!=='string'||body.itemId&&!expedition.definition(body.itemId))throw Error('Choose an available expedition outfit.');
+      const mastery=await require('../_lib/expedition-mastery-store').equip(userIdOf(user),body.itemId);
+      return json(res,200,{ok:true,mastery});
+    }
     if(action === 'hq-profile')return json(res,200,{ok:true,...await readPersonalHq(user,cleanCode(body?.code))});
     if(action === "profile"){
       return json(res, 200, { ok:true, profile:await readCoopProfile(user), profileScope:require('../_lib/rescue-profile-scope').suffix(), gearCatalog:COOP_GEAR_CATALOG });

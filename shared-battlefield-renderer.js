@@ -108,10 +108,10 @@
     const reaction=downed?0:clamp(options.reaction,0,1);
     const mine=!!options.mine,accent=downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");
     const elite=entity.eliteAppearance||options.eliteAppearance||{};
-    const role=String(entity.role||"support"),cloth=globalThis.TigerEliteCatalog?.palettes[elite.soldier]||options.uniformPalette||NPC_UNIFORMS[role]||{};
+    const role=String(entity.role||"support"),cloth=elite.expeditionUniform?.palette||globalThis.TigerEliteCatalog?.palettes[elite.soldier]||options.uniformPalette||NPC_UNIFORMS[role]||{};
     const body=cloth.body||"#456b48",light=cloth.light||"#83a66b",dark=cloth.dark||"#263d32";
     const vest=cloth.vest||"#293e3a",helmet=cloth.helmet||"#567b49",trim=cloth.trim||"#c6d49b";
-    const tailoring=elite.soldier==='crimson_commander'?'commander':elite.soldier==='midnight'?'night':elite.soldier==='recruit_uniform'?'rescue':SOLDIER_TAILORING[body]||"ranger";
+    const tailoring=elite.expeditionUniform?.palette?.tailoring||(elite.soldier==='crimson_commander'?'commander':elite.soldier==='midnight'?'night':elite.soldier==='recruit_uniform'?'rescue':SOLDIER_TAILORING[body]||"ranger");
     const stride=Math.sin(phase)*5.4*blend,lift=Math.max(0,Math.cos(phase))*2.5*blend;
     const bob=Math.abs(Math.cos(phase))*1.1*blend,scale=clamp(options.scale??1,.25,4);
     const box=(x,y,w,h,color,r=2)=>{ctx.fillStyle=color;rounded(ctx,x,y,w,h,r);ctx.fill();};
@@ -147,6 +147,7 @@
     }
     box(-12,10,24,4,"#17232a");box(-2,10,4,4,trim,1);
     box(10,8,4,10,dark);box(-14,5,4,8,vest);
+    if(elite.expeditionUniform?.patch){box(-12,-10,6,7,trim,1);line(ctx,dark,1,[[-11,-8],[-9,-10],[-7,-8],[-9,-6],[-11,-8]]);}
     // Each earned outfit keeps its identity with a distinct cut or field attachment.
     if(tailoring==="rescue"||tailoring==="river"){
       for(const px of [-9,6])box(px,-11,3,21,trim,1);

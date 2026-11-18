@@ -593,7 +593,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
   assert(html.includes("living-world.js?v=5288-rescue-partners"));
-  assert(html.includes("V17.0 (Mountain SOS)"));
+  assert(html.includes("V17.1 (Expedition Mastery & Rescue Rewards)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
