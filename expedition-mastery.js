@@ -17,6 +17,7 @@
     const old=state.runs[run.id]||{expeditionId:run.expeditionId,route:run.route,stages:{}};
     if(old.expeditionId!==run.expeditionId||old.route!==run.route)throw Error('Expedition receipt does not match its recorded run.');
     for(const r of stages)if(!old.stages[r.stage])old.stages[r.stage]={mode:r.mode,roomCode:r.roomCode,
+      survivorNames:Array.isArray(r.survivors)?r.survivors.map(name=>String(name).slice(0,80)):null,
       survivors:Array.isArray(r.survivors)?r.survivors.length:0,captures:Number(r.captures)||0,kills:Number(r.kills)||0,
       metrics:r.recordVersion===1,durationMs:Number.isFinite(r.durationMs)&&r.durationMs>=0?r.durationMs:null,
       wipes:Number.isFinite(r.wipes)&&r.wipes>=0?r.wipes:null,rescueRequired:Number.isFinite(r.rescueRequired)?r.rescueRequired:null};

@@ -1,0 +1,14 @@
+#rescueCommandDialog{width:min(1000px,calc(100% - 20px));max-height:90dvh;box-sizing:border-box;overflow:auto;padding:18px;border:1px solid #568078;border-radius:16px;background:#0d222c;color:#eff7ff;font:15px system-ui}
+#rescueCommandDialog::backdrop{background:#030911d9}
+#rescueCommandDialog header{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:-18px;background:#0d222cf5;z-index:2;padding:10px 0}
+#rescueCommandDialog h2{margin:0}#rescueCommandDialog p{line-height:1.5}
+#rescueCommandDialog button,#rescueCommandDialog select{min-height:44px;padding:10px 14px;border:1px solid #648e91;border-radius:10px;background:#1b414b;color:#f0ffff;font:700 14px system-ui;cursor:pointer}
+#rescueCommandDialog button:focus-visible,#rescueCommandDialog select:focus-visible{outline:3px solid #8af3dd;outline-offset:2px}
+#rescueCommandDialog nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+#rescueCommandDialog nav button[aria-pressed=true]{background:#2e695e;border-color:#9cebd2}
+#rescueCommandDialog canvas{box-sizing:border-box;display:block;width:100%;height:auto;border-radius:12px;border:1px solid #537d76}
+#rescueCommandDialog article{padding:12px;margin:10px 0;border:1px solid #42656f;border-radius:10px;background:#112e38}
+#rescueCommandDialog article h4{margin:0}#rescueCommandDialog .commandNote{font-size:13px;color:#b8d5da}
+#rescueCommandDialog [hidden]{display:none!important}
+#rescueCommandDialog [role=status]{min-height:24px;color:#b1eddb}
+@media(max-width:640px){#rescueCommandDialog{padding:12px}#rescueCommandDialog header{top:-12px}#rescueCommandDialog h2{font-size:20px}#rescueCommandDialog nav button{flex:1 1 100px}#rescueCommandDialog header button{max-width:145px}}

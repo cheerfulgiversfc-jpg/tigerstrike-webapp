@@ -23,12 +23,14 @@
     dialog.setAttribute('aria-labelledby','rescueExpeditionTitle');
     dialog.innerHTML=`<header><div><small>🛟 RESCUE MODE</small><h2 id="rescueExpeditionTitle">${escape(selected.title)}</h2></div><button class="ghost" data-exp-close autofocus>Back</button></header>
       <nav class="expAdventures" aria-label="Rescue expeditions">${Object.values(expedition.adventures).map(adventure=>`<button class="ghost" data-exp-select="${adventure.id}" aria-pressed="${adventure.id===selected.id}">${escape(adventure.title)}</button>`).join('')}</nav>
+      <div style="padding:10px 14px 0"><button class="ghost" data-rescue-command>Visit Rescue Command</button></div>
       <div class="expBody" aria-live="polite">Loading your expedition checkpoint…</div>`;
     document.body.append(dialog);
     dialog.querySelector('[data-exp-close]').onclick=()=>dialog.close();
     dialog.addEventListener('close',()=>{dialog.remove();onClose?.();},{once:true});
     const body=dialog.querySelector('.expBody');
     dialog.showModal();
+    dialog.querySelector('[data-rescue-command]').onclick=()=>window.TigerRescueCommand?.open({book:recordBook,load:async()=>{const result=await status(selected.id,own);recordBook=result.mastery||{};return recordBook;}});
 
     function show(run,replay=false){
       if(!dialog.open)return;
