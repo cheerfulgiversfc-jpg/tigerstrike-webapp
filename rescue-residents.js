@@ -51,5 +51,28 @@
   const c=bootstrap(book).center,runMode=r=>{const values=[...new Set(Object.values(book.runs?.[r.runId]?.stages||{}).map(s=>s.mode))];return values.length>1?'Mixed':values[0]||r.mode;},withMode=r=>({...r,mode:runMode(r)}),filter=r=>scope==='All'||r.mode===scope;
   return {sequence:c.sequence,people:Object.values(c.people).map(withMode).filter(filter),tigers:Object.values(c.tigers).map(withMode).filter(filter),journal:Object.values(c.journal).map(e=>({...e,mode:runMode(c.people[e.residentId]||c.tigers[e.residentId]||e)})).filter(filter).sort((a,b)=>b.sequence-a.sequence)};
  }
- const api={empty,bootstrap,advance,release,view};if(typeof module==='object'&&module.exports)module.exports=api;else root.TigerRescueResidents=api;
+ const TITLES={'river-gate':'Blackout at River Gate','flooded-village':'Flooded Village','mountain-sos':'Mountain SOS'};
+ const ROUTE_LINES={
+  'river-gate':{clinic:'Our rescue used the clinic route.',bridge:'Our rescue used the reopened bridge route.'},
+  'flooded-village':{boat:'Our rescue used the repaired rescue boat.',shelter:'Our rescue used the shelter route.'},
+  'mountain-sos':{forest:'Our rescue followed the forest trail.',ridge:'Our rescue followed the ridge crossing.'}
+ };
+ function conversation(book,id,topic='rescue'){
+  const c=bootstrap(book).center,p=Object.hasOwn(c.people,id)?c.people[id]:null;
+  if(!p)throw Error('Choose a survivor recorded in your rescue center.');
+  if(!['rescue','recovery'].includes(topic))throw Error('Choose a conversation topic.');
+  const route=ROUTE_LINES[p.expeditionId]?.[p.route];
+  const line=topic==='rescue'?`I made it here after ${TITLES[p.expeditionId]}. ${route||'Thank you for helping with our evacuation.'}`:
+   p.status==='recovered'?'The medical team has finished my recovery. Thank you for getting me to safety.':"The medical team is still looking after me. There is no rush to return; I will be safe here while you help on other expeditions.";
+  return {resident:{...p},topic,line,origin:TITLES[p.expeditionId],legacy:JSON.parse(p.id)[2].startsWith('legacy-')};
+ }
+ function journalReplay(book,eventId,scope='All'){
+  const data=view(book,scope),entry=data.journal.find(e=>e.id===eventId);if(!entry)return null;
+  const resident=[...data.people,...data.tigers].find(r=>r.id===entry.residentId);if(!resident)return null;
+  if(entry.type==='release'&&resident.kind==='tiger'&&resident.status==='released')return {kind:'release',resident};
+  if(entry.type==='recovery')return {kind:resident.kind==='person'?'care-person':'care-tiger',resident};
+  if(entry.type==='arrival')return {kind:resident.kind==='person'?'arrival-person':'arrival-tiger',resident};
+  return null;
+ }
+ const api={empty,bootstrap,advance,release,view,conversation,journalReplay};if(typeof module==='object'&&module.exports)module.exports=api;else root.TigerRescueResidents=api;
 })(globalThis);

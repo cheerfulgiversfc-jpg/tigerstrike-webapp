@@ -28,5 +28,5 @@ test('all center areas and arrival phases use production art, finite geometry, a
 test('Rescue Mode exposes the center with signed status loading and ordered cache-busted dependencies',()=>{
  const page=fs.readFileSync('index.html','utf8'),hub=fs.readFileSync('rescue-expedition-hub.js','utf8');
  assert(page.indexOf('./expedition-mastery.js')<page.indexOf('./rescue-command.js'));assert(page.indexOf('./rescue-command.js')<page.indexOf('./rescue-expedition-hub.js'));
- assert(page.includes('rescue-command.css?v=5298'));assert(hub.includes('data-rescue-command'));assert(hub.includes('TigerRescueCommand?.open'));assert(hub.includes('initData:tg()?.initData'));assert(hub.includes('recordBook=result.mastery||{}'));
+ assert(page.includes('rescue-command.css?v=5299'));assert(hub.includes('data-rescue-command'));assert(hub.includes('TigerRescueCommand?.open'));assert(hub.includes('initData:tg()?.initData'));assert(hub.includes('recordBook=result.mastery||{}'));
 });

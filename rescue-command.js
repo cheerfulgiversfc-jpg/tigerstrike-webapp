@@ -41,9 +41,10 @@
     for(let x=652;x<896;x+=21){c.beginPath();c.moveTo(x,250);c.lineTo(x,274);c.stroke();}
     text(c,'WILDLIFE RECOVERY',772,298,13);
     if(data.level>=3)R.drawMapHouse(c,660,360,185,85,{roof:'#8c6946',roofRise:30});
-    const replay=arrival&&elapsed<12000,progress=Math.min(1,Math.max(0,elapsed/12000));
-    const basePatients=replay?(arrival.evacuees||[]):data.residents?.people||[],baseAnimals=replay?(arrival.tigers||[]):(data.residents?.tigers||[]).filter(t=>t.status!=='released');
-    const carePatient=scene?.kind==='care-person'?scene.resident:area==='medical'?basePatients.find(p=>p.status==='recovering'):null,careTiger=scene?.kind==='care-tiger'?scene.resident:area==='wildlife'?baseAnimals.find(t=>t.status==='recovering'):null;
+    const arrivalData=arrival||(scene?.kind==='arrival-person'?{evacuees:[scene.resident],tigers:[]}:scene?.kind==='arrival-tiger'?{evacuees:[],tigers:[scene.resident]}:null);
+    const replay=arrivalData&&elapsed<12000,progress=Math.min(1,Math.max(0,elapsed/12000));
+    const basePatients=replay?(arrivalData.evacuees||[]):data.residents?.people||[],baseAnimals=replay?(arrivalData.tigers||[]):(data.residents?.tigers||[]).filter(t=>t.status!=='released');
+    const carePatient=['care-person','talk-person'].includes(scene?.kind)?scene.resident:area==='medical'?basePatients.find(p=>p.status==='recovering'):null,careTiger=scene?.kind==='care-tiger'?scene.resident:area==='wildlife'?baseAnimals.find(t=>t.status==='recovering'):null;
     const patients=carePatient?[carePatient,...basePatients.filter(p=>p.id!==carePatient.id)]:basePatients,animals=careTiger?[careTiger,...baseAnimals.filter(t=>t.id!==careTiger.id)]:baseAnimals;
     const civilians=patients.length,tigers=animals.length;
     for(let i=0;i<Math.min(4,civilians);i++){
@@ -54,7 +55,7 @@
       R.drawCivilian(c,{x:340+i*50+(1-p)*100,y:300+(1-p)*155,face:-1.9,look:patient?.look||(i%2?'scout':'field'),child:patient?.child},
         {now,scale:.7,walking:moving,phase:now/170,celebration:replay&&progress>.7?.55:0});
       if(!replay&&patient)text(c,patient.name.slice(0,18),340+i*50,334,7);
-      if(carePatient&&i===0){R.drawCivilian(c,{x:315,y:300,look:'doctor',face:0},{now,scale:.7,caring:!reduced});carePulse(c,340,300,now,reduced);}
+      if(carePatient&&i===0&&scene?.kind!=='talk-person'){R.drawCivilian(c,{x:315,y:300,look:'doctor',face:0},{now,scale:.7,caring:!reduced});carePulse(c,340,300,now,reduced);}
     }
     R.drawCivilian(c,{x:242,y:298,look:'doctor',face:0},{now,scale:.75});
     for(let i=0;i<Math.min(2,replay&&progress<.5?0:tigers);i++){const tiger=careTiger&&i===0?careTiger:animals[i];
@@ -62,7 +63,7 @@
       if(!replay&&tiger)text(c,tiger.name.slice(0,18),720+i*95,245,8);
       if(careTiger&&i===0){R.drawCivilian(c,{x:700,y:225,look:'doctor',face:0},{now,scale:.55,caring:!reduced});carePulse(c,720,205,now,reduced);}
     }
-    R.drawSoldier(c,{x:555,y:354,face:-2,eliteAppearance:data.identity?{expeditionUniform:data.identity}:{}},{now,scale:.8,lowerWeapon:true,showMarker:false});
+    R.drawSoldier(c,{x:scene?.kind==='talk-person'?295:555,y:scene?.kind==='talk-person'?300:354,face:scene?.kind==='talk-person'?0:-2,eliteAppearance:data.identity?{expeditionUniform:data.identity}:{}},{now,scale:.8,lowerWeapon:true,showMarker:false});
     if(replay){const x=progress<.25?-90+progress*2400:progress>.75?510+(progress-.75)*2400:510;
       R.drawVehicle(c,{type:'truck',x,y:522,angle:0},{now,scale:.8,moving:progress<.25||progress>.75});
       if(animals.length>0&&progress<.5)R.drawCaptureCage(c,x-28,492,.48,{now,tiger:animals[0]});
@@ -70,7 +71,7 @@
     R.drawMapLighting(c,{x:0,y:0,w:1000,h:650});
     c.restore();
     box(c,220,12,560,47,'#0c2830e8',10);text(c,data.name.toUpperCase(),500,43,20);
-    const caption=scene?`Care replay · ${scene.resident.name} · ${scene.resident.status==='recovering'?'Recovery checks':'Care completed'}`:replay?(progress<.25?'Rescue transport arriving':progress<.75?'Survivors welcomed • Wildlife recovery handover':'Transport departing • Rescue recorded'):
+    const caption=scene?.kind==='talk-person'?`Talking with ${scene.resident.name}`:scene&&!replay?`Care replay · ${scene.resident.name} · ${scene.resident.status==='recovering'?'Recovery checks':'Care completed'}`:replay?(progress<.25?'Rescue transport arriving':progress<.75?(civilians?(tigers?'Survivors welcomed • Wildlife recovery handover':'Survivor welcomed to medical care'):'Wildlife recovery handover'):'Transport departing • Rescue recorded'):
       area==='medical'?'MEDICAL SHELTER · People brought home safely':area==='wildlife'?'PROTECTED HABITATS · Live captures supported this center':'YOUR EXPEDITION RESCUES · One shared home';
     box(c,70,583,860,45,'#0c2830eb',10);text(c,caption,500,611,16);
     c.restore();
@@ -106,22 +107,34 @@
     const canvas=el('canvas');canvas.width=1000;canvas.height=650;canvas.setAttribute('aria-label','Detailed expedition rescue center with medical shelter and protected wildlife habitat');
     const nav=el('nav');nav.setAttribute('aria-label','Rescue center areas');
     const summary=el('p'),growth=el('p'),details=el('div'),skip=el('button','Skip arrival scene');skip.hidden=true;skip.className='commandSkip';header.insertBefore(skip,close);
+    const talk=el('section');talk.className='commandConversation';talk.hidden=true;talk.setAttribute('aria-label','Survivor conversation');
     const note=el('p','This is your personal expedition center. Each Co-op participant keeps the same rescue provenance with separate care and release records. Recovery needs one later completed expedition stage for people and two for tigers. Watching or skipping scenes does not advance care. Older capture totals without saved identities remain history only. Story sanctuary records and mission supplies are unchanged.');note.className='commandNote';
-    d.append(header,intro,label,refresh,status,nav,canvas,summary,growth,details,note);doc.body.append(d);d.showModal();
-    let scope='All',area='overview',data=model(book),scene=null,limit=12,busy=false,arrival=null,started=0,frame=0,closed=false,ticket=0,last=0;
+    d.append(header,intro,label,refresh,status,nav,canvas,talk,summary,growth,details,note);doc.body.append(d);d.showModal();
+    let scope='All',area='overview',data=model(book),scene=null,conversation=null,limit=12,busy=false,arrival=null,started=0,frame=0,closed=false,ticket=0,last=0;
     const reduced=()=>globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches===true;
-    const stop=()=>{arrival=null;scene=null;skip.hidden=true;paint(performance.now());};
-    function playScene(kind,resident){arrival=null;scene={kind,resident};area=kind==='care-person'?'medical':kind==='care-tiger'?'wildlife':'overview';for(const b of nav.children)b.setAttribute('aria-pressed',String(b.dataset.area===area));started=performance.now();skip.textContent='Skip scene';skip.hidden=false;status.textContent=kind==='release'?'Replaying the saved wildlife release. Skip does not undo the release.':'Medical care replay. Recovery advances only through completed expedition stages.';paint(started);canvas.scrollIntoView({block:'center'});}
+    const stop=()=>{endTalk();arrival=null;scene=null;skip.hidden=true;paint(performance.now());};
+    function playScene(kind,resident){endTalk();arrival=null;scene={kind,resident};area=kind==='care-person'?'medical':kind==='care-tiger'?'wildlife':'overview';for(const b of nav.children)b.setAttribute('aria-pressed',String(b.dataset.area===area));started=performance.now();skip.textContent='Skip scene';skip.hidden=false;status.textContent=kind==='release'?'Replaying the saved wildlife release. Skip does not undo the release.':kind.startsWith('arrival-')?'Arrival replay from this resident’s saved rescue. No rewards or care are added.':'Medical care replay. Recovery advances only through completed expedition stages.';paint(started);canvas.scrollIntoView({block:'center'});}
+    function endTalk(){conversation=null;talk.hidden=true;talk.replaceChildren();if(scene?.kind==='talk-person')scene=null;}
+    function showTalk(id,topic='rescue',scroll=true){
+      const response=residents.conversation(book,id,topic),p=response.resident;conversation={id,topic};arrival=null;scene={kind:'talk-person',resident:p};area='medical';skip.hidden=true;
+      talk.hidden=false;talk.replaceChildren();const h=el('h3','Talk with '+p.name),origin=el('p',response.origin+' · '+(data.residents.people.find(r=>r.id===id)?.mode||p.mode)),portrait=el('canvas');portrait.width=190;portrait.height=170;portrait.className='commandPortrait';portrait.setAttribute('aria-label','Detailed portrait of '+p.name);
+      const quote=el('blockquote',response.line);quote.setAttribute('aria-live','polite');talk.append(h,origin,portrait,quote);
+      const ctx=portrait.getContext('2d');ctx.fillStyle='#183b40';ctx.fillRect(0,0,190,170);R.drawCivilian(ctx,{...p,x:95,y:98,face:0},{scale:2.4,now:0});
+      for(const [next,label]of [['rescue','Tell me about your rescue'],['recovery','How are you feeling?']]){const b=el('button',label);b.setAttribute('aria-pressed',String(next===topic));b.onclick=()=>showTalk(id,next,false);talk.append(b);}
+      const done=el('button','End conversation');done.onclick=()=>{endTalk();paint(performance.now());status.textContent='Conversation ended. Your rescue records are unchanged.';};talk.append(done);
+      status.textContent='Talking with '+p.name+'. Conversations do not change care, rewards or supplies.';for(const b of nav.children)b.setAttribute('aria-pressed',String(b.dataset.area===area));paint(performance.now());if(scroll)talk.scrollIntoView({block:'center'});
+    }
     function paint(now){draw(canvas.getContext('2d'),data,{now,area,arrival,scene,elapsed:now-started,reduced:reduced()});}
-    function loop(now){if(closed)return;if((arrival||scene)&&now-started>=12000){arrival=null;scene=null;skip.hidden=true;status.textContent='Scene complete. Saved records are unchanged by playback.';}
+    function loop(now){if(closed)return;if((arrival||scene&&scene.kind!=='talk-person')&&now-started>=12000){arrival=null;scene=null;skip.hidden=true;status.textContent='Scene complete. Saved records are unchanged by playback.';}
       if(!doc.hidden&&now-last>=(reduced()?250:50)){paint(now);last=now;}frame=requestAnimationFrame(loop);}
     function render(){data=model(book,scope);summary.textContent=`${data.clears} completed expeditions · ${data.rescued} people evacuated · ${data.captures} live captures · ${scope} records`;
       growth.textContent=`${data.name} · ${data.total} account expedition clears. `+(data.next===null?'All center facilities unlocked.':`${data.next-data.total} more completed run(s) to the next center upgrade.`);
+      if(conversation){if(data.residents.people.some(p=>p.id===conversation.id))showTalk(conversation.id,conversation.topic,false);else endTalk();}
       details.replaceChildren();mountResidents();details.append(el('h3','Your rescue history'));
       if(!data.records.length)details.append(el('p','No completed three-stage expeditions in this view yet. Finish a run in Rescue Mode; incomplete stage credits remain in expedition rewards.'));
       for(const row of data.records.slice(-20).reverse()){
         const card=el('article');card.append(el('h4',row.title),el('p',`${row.mode} · Route: ${globalThis.TigerRescueExpedition?.definition(row.expeditionId)?.routes[row.route]?.name||row.route} · ${row.rescued} final evacuees · ${row.captures} live captures`),el('p',row.names===null?'Names were not saved in this older receipt.':row.names.length?`Brought home: ${row.names.join(', ')}.`:'No final evacuees recorded.'));
-        const watch=el('button','Watch arrival · '+row.title);watch.onclick=()=>{area='overview';render();scene=null;arrival=row;skip.textContent='Skip arrival scene';started=performance.now();skip.hidden=false;status.textContent='Replaying your recorded rescue outcome. Skip is always available.';paint(started);canvas.scrollIntoView({block:'center'});};card.append(watch);details.append(card);
+        const watch=el('button','Watch arrival · '+row.title);watch.onclick=()=>{endTalk();area='overview';render();scene=null;arrival=row;skip.textContent='Skip arrival scene';started=performance.now();skip.hidden=false;status.textContent='Replaying your recorded rescue outcome. Skip is always available.';paint(started);canvas.scrollIntoView({block:'center'});};card.append(watch);details.append(card);
       }
       for(const button of nav.children)button.setAttribute('aria-pressed',String(button.dataset.area===area));paint(performance.now());
     }
@@ -132,6 +145,7 @@
       for(const resident of list.slice(0,limit)){
         const card=el('article'),origin=titles[resident.expeditionId],stateLabel=resident.status==='release-ready'?'Ready for wildlife release':resident.status==='recovered'?'Recovered safely':resident.status==='released'?'Released to protected habitat':`Recovering · ${resident.care}/${resident.needed} later expedition stages completed`;
         card.append(el('h4',resident.name),el('p',`${resident.kind==='tiger'?resident.type:'Civilian'} · ${origin} · Stage ${resident.stage} · ${resident.mode}`),el('p',stateLabel),el('small',`Rescue ${resident.runId.slice(0,8)} · Field tag ${JSON.parse(resident.id)[2]}`));
+        if(resident.kind==='person'){const chat=el('button','Talk with '+resident.name);chat.onclick=()=>showTalk(resident.id);card.append(chat);}
         if(resident.status!=='released'){const care=el('button','Watch care · '+resident.name);care.onclick=()=>playScene(resident.kind==='tiger'?'care-tiger':'care-person',resident);card.append(care);}
         if(resident.kind==='tiger'){
           const action=el('button',resident.status==='released'?'Watch release · '+resident.name:resident.status==='release-ready'?'Release to protected habitat · '+resident.name:'Release locked · Finish recovery');
@@ -147,7 +161,10 @@
       }
       if(list.length>limit){const more=el('button','Show more residents');more.onclick=()=>{limit+=12;render();};details.append(more);}
       const journal=el('details'),caption=el('summary','Rescue journal · arrivals, care and releases');journal.append(caption);
-      for(const entry of data.residents.journal.slice(0,limit*3))journal.append(el('p',`${entry.type==='arrival'?'Arrived':entry.type==='recovery'?'Recovery completed':'Released to protected habitat'} · ${entry.name} · ${titles[entry.expeditionId]} · ${entry.mode}`));
+      for(const entry of data.residents.journal.slice(0,limit*3)){
+        const row=el('article');row.append(el('p',`${entry.type==='arrival'?'Arrived':entry.type==='recovery'?'Recovery completed':'Released to protected habitat'} · ${entry.name} · ${titles[entry.expeditionId]} · ${entry.mode}`));
+        const replay=residents.journalReplay(book,entry.id,scope);if(replay){const b=el('button',`Replay ${entry.type==='arrival'?'arrival':entry.type==='recovery'?'care':'release'} · ${entry.name}`);b.onclick=()=>playScene(replay.kind,replay.resident);row.append(b);}journal.append(row);
+      }
       details.append(journal);
     }
     for(const [id,name]of [['overview','Center overview'],['medical','Medical shelter'],['wildlife','Wildlife habitats']]){const b=el('button',name);b.dataset.area=id;b.onclick=()=>{area=id;stop();render();};nav.append(b);}

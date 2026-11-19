@@ -43,3 +43,24 @@ test('care and protected-habitat releases render the production actors with bala
  for(const kind of ['care-person','care-tiger','release'])for(const elapsed of [0,3000,6000,11999])for(const reduced of [true,false]){C.draw(c,data,{scene:{kind,resident:kind==='care-person'?data.residents.people[0]:data.residents.tigers[0]},elapsed,now:elapsed,reduced});assert.equal(depth,0);}
  assert.equal(JSON.stringify(data),before);
 });
+test('survivor conversations use recorded routes and recovery, reject unknown residents and never advance care',()=>{
+ const a=run('conversation'),book=M.credit(null,a,987001),id=R.view(book).people[0].id,before=JSON.stringify(book);
+ assert.match(R.conversation(book,id).line,/Blackout at River Gate.*clinic/);
+ assert.match(R.conversation(book,id,'recovery').line,/still looking after/);
+ for(let i=0;i<10;i++)R.conversation(book,id,i%2?'rescue':'recovery');assert.equal(JSON.stringify(book),before);
+ const later=M.credit(book,{...run('conversation-next'),results:run('conversation-next').results.slice(0,1)},987001);
+ assert.match(R.conversation(later,id,'recovery').line,/finished my recovery/);
+ assert.throws(()=>R.conversation(book,'missing'),/recorded/);assert.throws(()=>R.conversation(book,id,'grant-rewards'),/topic/);
+ const routes=[['flooded-village','boat',/repaired rescue boat/],['flooded-village','shelter',/shelter route/],['mountain-sos','forest',/forest trail/],['mountain-sos','ridge',/ridge crossing/],['river-gate','bridge',/bridge route/]];
+ for(const [expeditionId,route,expected]of routes){const b=M.credit(null,{...a,id:expeditionId+route,expeditionId,route},987001);assert.match(R.conversation(b,R.view(b).people[0].id).line,expected);}
+ const unknown=M.credit(null,{...a,id:'unknown-route',route:'legacy-unrecorded'},987001);assert(!R.conversation(unknown,R.view(unknown).people[0].id).line.includes('clinic'));
+});
+test('journal replays require a real event and resident, respect mode scope and leave release and care receipts untouched',()=>{
+ let b=M.credit(null,run('journal'),987001);const first=R.view(b).tigers[0];b=R.release(b,first.id);const before=JSON.stringify(b),events=R.view(b).journal;
+ for(const event of events){const replay=R.journalReplay(b,event.id,'Co-op');assert(replay);assert.equal(replay.resident.id,event.residentId);assert.equal(R.journalReplay(b,event.id,'Solo'),null);}
+ assert.equal(R.journalReplay(b,'invented-event'),null);assert.equal(JSON.stringify(b),before);
+ assert(events.some(e=>R.journalReplay(b,e.id)?.kind==='release'));assert(events.some(e=>R.journalReplay(b,e.id)?.kind==='care-tiger'));
+ const data=C.model(b);let depth=0;const c=new Proxy({}, {get:(_o,k)=>k==='measureText'?s=>({width:String(s).length*5}):/create.*Gradient/.test(k)?()=>({addColorStop(){}}):(...args)=>{if(k==='save')depth++;if(k==='restore')depth--;assert(depth>=0);for(const arg of args)if(typeof arg==='number')assert(Number.isFinite(arg));},set:()=>true});
+ for(const scene of [...events.map(e=>R.journalReplay(b,e.id)),{kind:'talk-person',resident:data.residents.people[0]}])for(const elapsed of [0,4000,8000]){C.draw(c,data,{scene,elapsed,now:elapsed});assert.equal(depth,0);}
+ assert.equal(JSON.stringify(b),before);
+});

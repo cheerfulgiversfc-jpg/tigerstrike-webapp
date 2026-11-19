@@ -404,7 +404,7 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(expeditionActive()){
-      if(versionLabel)versionLabel.textContent='Tiger Strike V17.3 · Rescue Mode';
+      if(versionLabel)versionLabel.textContent='Tiger Strike V17.3.1 · Rescue Mode';
       if(titleLabel)titleLabel.textContent=`🛟 ${state.snapshot.expedition.title||expedition.title}`;
       return;
     }
