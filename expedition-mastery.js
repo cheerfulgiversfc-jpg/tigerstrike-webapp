@@ -1,5 +1,6 @@
 (function(root){
   'use strict';
+  const residents=typeof module==='object'&&module.exports?require('./rescue-residents'):root.TigerRescueResidents;
   const CATALOG={
     'river-gate':{id:'river-gate',name:'River Gate Rescuer',tailoring:'river',body:'#258d86',light:'#8de0c5',dark:'#173f43',vest:'#294c53',helmet:'#347c74',trim:'#f6c878'},
     'flooded-village':{id:'flooded-village',name:'Floodplain Lifeguard',tailoring:'rescue',body:'#dc783b',light:'#ffd495',dark:'#384f65',vest:'#254f70',helmet:'#de8242',trim:'#b6eef4'},
@@ -9,20 +10,23 @@
   function empty(){return {version:1,runs:{},uniform:''};}
   function validRun(run){return !!CATALOG[run?.expeditionId]&&typeof run?.id==='string'&&run.id.length<=80&&typeof run.route==='string'&&Array.isArray(run.results);}
   function credit(raw,run,uid){
-    const state=JSON.parse(JSON.stringify(raw||empty()));
+    const state=residents.bootstrap(raw||empty());
     if(!validRun(run))return state;
     state.runs=state.runs||{};
     const stages=run.results.filter(r=>[1,2,3].includes(r.stage)&&['Solo','Co-op'].includes(r.mode)&&r.team?.some(p=>Number(p.userId)===Number(uid)));
     if(!stages.length)return state;
     const old=state.runs[run.id]||{expeditionId:run.expeditionId,route:run.route,stages:{}};
     if(old.expeditionId!==run.expeditionId||old.route!==run.route)throw Error('Expedition receipt does not match its recorded run.');
-    for(const r of stages)if(!old.stages[r.stage])old.stages[r.stage]={mode:r.mode,roomCode:r.roomCode,
+    const added=[];
+    for(const r of stages)if(!old.stages[r.stage]){added.push(r.stage);old.stages[r.stage]={mode:r.mode,roomCode:r.roomCode,
+      capturedTigers:Array.isArray(r.capturedTigers)?r.capturedTigers.slice(0,100).map(t=>({id:String(t.id).slice(0,100),name:String(t.name||t.type||'Rescued tiger').slice(0,100),type:String(t.type||'Standard').slice(0,80),boss:t.boss===true})):null,
+      evacuees:Array.isArray(r.evacuees)?r.evacuees.slice(0,100).map(p=>({id:String(p.id).slice(0,100),name:String(p.name||'Rescued civilian').slice(0,100),look:String(p.look||'field').slice(0,40),child:p.child===true})):null,
       survivorNames:Array.isArray(r.survivors)?r.survivors.map(name=>String(name).slice(0,80)):null,
       survivors:Array.isArray(r.survivors)?r.survivors.length:0,captures:Number(r.captures)||0,kills:Number(r.kills)||0,
       metrics:r.recordVersion===1,durationMs:Number.isFinite(r.durationMs)&&r.durationMs>=0?r.durationMs:null,
-      wipes:Number.isFinite(r.wipes)&&r.wipes>=0?r.wipes:null,rescueRequired:Number.isFinite(r.rescueRequired)?r.rescueRequired:null};
+      wipes:Number.isFinite(r.wipes)&&r.wipes>=0?r.wipes:null,rescueRequired:Number.isFinite(r.rescueRequired)?r.rescueRequired:null};}
     state.runs[run.id]=old;
-    return state;
+    return residents.advance(state,run.id,added);
   }
   function complete(row){return [1,2,3].every(s=>row.stages?.[s]);}
   function mode(row){const values=new Set(Object.values(row.stages||{}).map(s=>s.mode));return values.size===1?[...values][0]:'Mixed';}

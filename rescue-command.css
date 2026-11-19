@@ -12,3 +12,11 @@
 #rescueCommandDialog [hidden]{display:none!important}
 #rescueCommandDialog [role=status]{min-height:24px;color:#b1eddb}
 @media(max-width:640px){#rescueCommandDialog{padding:12px}#rescueCommandDialog header{top:-12px}#rescueCommandDialog h2{font-size:20px}#rescueCommandDialog nav button{flex:1 1 100px}#rescueCommandDialog header button{max-width:145px}}
+
+#rescueCommandDialog article small{display:block;overflow-wrap:anywhere;color:#b8d5da;margin:8px 0}
+#rescueCommandDialog article button{margin:6px 8px 4px 0;max-width:100%;white-space:normal}
+#rescueCommandDialog button:disabled{opacity:.55;cursor:default}
+
+#rescueCommandDialog header{flex-wrap:wrap}#rescueCommandDialog header h2{flex:1}
+#rescueCommandDialog header .commandSkip{order:3}
+@media(max-width:640px){#rescueCommandDialog header .commandSkip{flex:1 0 100%;max-width:100%}}

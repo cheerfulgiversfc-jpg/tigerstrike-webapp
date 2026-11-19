@@ -30,7 +30,7 @@
     dialog.addEventListener('close',()=>{dialog.remove();onClose?.();},{once:true});
     const body=dialog.querySelector('.expBody');
     dialog.showModal();
-    dialog.querySelector('[data-rescue-command]').onclick=()=>window.TigerRescueCommand?.open({book:recordBook,load:async()=>{const result=await status(selected.id,own);recordBook=result.mastery||{};return recordBook;}});
+    dialog.querySelector('[data-rescue-command]').onclick=()=>window.TigerRescueCommand?.open({book:recordBook,release:async residentId=>{const response=await fetch('/api/squad/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg()?.initData,action:'expedition-release',residentId}),signal:AbortSignal.timeout(10000)});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Release could not be saved.');recordBook=result.mastery;return recordBook;},load:async()=>{const result=await status(selected.id,own);recordBook=result.mastery||{};return recordBook;}});
 
     function show(run,replay=false){
       if(!dialog.open)return;

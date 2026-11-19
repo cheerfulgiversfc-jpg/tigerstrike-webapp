@@ -4443,6 +4443,8 @@ async function claimExpeditionStage(session){
         uniformPalette:masteryRewards.uniformPalette(masteryRewards.identity(profile.missionDebriefs,'coop').uniform?.id)};
     })),
     survivors:mission.civilians.filter(row=>derived.securedCivilianIds.includes(row.id)).map(row=>row.name),
+    capturedTigers:mission.tigers.filter(t=>derived.capturedIds.includes(t.id)).map(t=>({id:t.id,name:t.name||t.alias||t.type,type:t.type,boss:!!t.boss})),
+    evacuees:mission.civilians.filter(c=>derived.securedCivilianIds.includes(c.id)).map(c=>({id:c.id,name:c.name,look:c.look,child:c.child===true})),
     captures:derived.capturedIds.length,kills:derived.tigerKills+Number(session.expeditionPriorKills||0),
     ferryUsed:!!mission.ferry&&players.every(p=>p.expeditionFerryAt>0),
     stabilized:civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds).filter(c=>c.hp===100&&mission.civilians.find(source=>source.id===c.id)?.injured).length,

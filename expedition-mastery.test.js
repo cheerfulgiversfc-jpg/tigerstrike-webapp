@@ -66,6 +66,10 @@ test('a real squad grants guest credit before captain replay, archives attire an
     assert.equal(model.earned(await store.read(guest.id),'river-gate'),stage===3);
     if(stage<3)room=await S.applyAction(await S.readSession(room.code),host,'expedition-continue',{stage});
   }
+  const residents=require('./rescue-residents').view(await store.read(guest.id));
+  assert.equal(residents.people.length,3,'final-stage real evacuees become individual residents once');
+  assert(residents.tigers.length>=3,'actual derived captures retain individual tiger records');
+  assert(residents.tigers.some(t=>t.status==='release-ready'),'later real stage clears advance early capture recovery');
   await store.equip(guest.id,'river-gate');
   const snapshot=await S.buildSnapshot(await S.readSession(room.code),guest.id);
   assert.equal(snapshot.players.find(p=>p.userId===guest.id).eliteAppearance.expeditionUniform.name,'River Gate Rescuer');

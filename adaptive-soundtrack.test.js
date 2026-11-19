@@ -63,8 +63,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
 });
 
 test("V11.4 cache key forces Telegram to load Living Sanctuary", () => {
-  assert(game.includes('const TS_BUILD = "5297"'));
-  assert(html.includes("game.js?v=5297-rescue-command"));
+  assert(game.includes('const TS_BUILD = "5298"'));
+  assert(html.includes("game.js?v=5298-wildlife-recovery"));
   assert(html.includes("tutorial.js?v=5288-rescue-partners"));
 });
 

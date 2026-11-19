@@ -1,7 +1,8 @@
 const {getState,compareAndSetState}=require('./metrics-store');
 const mastery=require('../../expedition-mastery');
+const residents=require('../../rescue-residents');
 const key=uid=>`expedition_mastery_v1_${Number(uid)}`;
-const read=async uid=>(await getState(key(uid)))||mastery.empty();
+const read=async uid=>residents.bootstrap((await getState(key(uid)))||mastery.empty());
 async function mutate(uid,fn){
   for(let retry=0;retry<12;retry++){
     const previous=await getState(key(uid)),next=fn(previous||mastery.empty());
@@ -20,4 +21,5 @@ async function appearance(uid,base){
   const identity=mastery.identity(await read(uid));
   return identity?{...base,expeditionUniform:identity}:base;
 }
-module.exports={read,creditRun,equip,appearance};
+const release=(uid,id)=>mutate(uid,state=>residents.release(state,id));
+module.exports={read,creditRun,equip,appearance,release};

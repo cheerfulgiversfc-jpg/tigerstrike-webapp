@@ -282,10 +282,10 @@
     // Civilian sleeves, natural arm swing and hands use the soldier's detail level.
     for(const side of [-1,1]){
       const wave=injured&&side<0?0:cheer;
-      const elbow=side*(12+Math.abs(stride)*.12),handY=5+side*stride*.35-wave*35;
-      line(ctx,"rgba(27,40,44,.55)",5.8,[[side*9,-10],[elbow,-2-wave*16],[side*12,handY]]);
-      line(ctx,shirt,4.5,[[side*9,-10],[elbow,-2-wave*16],[side*12,handY]]);
-      ellipse(ctx,side*12,handY+1,2.5,3,skin);
+      const caring=options.caring&&side>0,elbow=side*(caring?17:12+Math.abs(stride)*.12),handX=caring?24:side*12,handY=caring?-6+Math.sin(now/350)*2:5+side*stride*.35-wave*35;
+      line(ctx,"rgba(27,40,44,.55)",5.8,[[side*9,-10],[elbow,-2-wave*16],[handX,handY]]);
+      line(ctx,shirt,4.5,[[side*9,-10],[elbow,-2-wave*16],[handX,handY]]);
+      ellipse(ctx,handX,handY+1,2.5,3,skin);
     }
     if(look==="medic"||look==="doctor"){
       box(-8,-12,16,24,shirt,2);line(ctx,"#a0b4a6",1,[[-5,-11],[0,-5],[5,-11]]);
@@ -822,12 +822,13 @@
     ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
     ellipse(ctx,3,25,41,8,'rgba(3,16,22,.3)');
     ctx.fillStyle='#334f55';rounded(ctx,-37,16,76,9,2);ctx.fill();
-    drawTiger(ctx,{x:0,y:3,face:0,hp:1,hpMax:100,captured:true,id:'transport-cage'},{now:options.now,scale:.53,phase:0,showState:false});
+    if(!options.empty)drawTiger(ctx,{...options.tiger,x:0,y:3,face:0,hp:1,hpMax:100,captured:true,id:options.tiger?.id||'transport-cage'},{now:options.now,scale:.53,phase:0,showState:false});
     ctx.strokeStyle='#bad0c8';ctx.lineWidth=2;ctx.strokeRect(-38,-27,76,49);
     for(let x=-30;x<38;x+=10)line(ctx,'#91b0b0',2,[[x,-25],[x,21]]);
     line(ctx,'#d1ddd1',2,[[-38,-8],[38,-8]]);line(ctx,'#728e90',3,[[-38,-28],[38,-28]]);
     ctx.fillStyle='#e3cf92';rounded(ctx,28,-5,7,9,1);ctx.fill();
-    ctx.fillStyle='#dfebdb';rounded(ctx,-22,-34,44,9,1);ctx.fill();ctx.fillStyle='#285448';ctx.font='bold 6px system-ui';ctx.textAlign='center';ctx.fillText('LIVE • SECURED',0,-27);
+    ctx.fillStyle='#dfebdb';rounded(ctx,-22,-34,44,9,1);ctx.fill();ctx.fillStyle='#285448';ctx.font='bold 6px system-ui';ctx.textAlign='center';ctx.fillText(options.empty?'GATE OPEN':'LIVE • SECURED',0,-27);
+    if(options.openGate){line(ctx,'#d1ddd1',2,[[38,-27],[57,-20],[57,28],[38,22]]);}
     drawCaptureCageFinish(ctx,{width:76,height:49,livery:options.livery});
     ctx.restore();
   }
