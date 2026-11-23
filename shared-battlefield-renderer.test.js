@@ -24,7 +24,7 @@ test("Shared Story selects the same four Solo map families by chapter",()=>{
     "forest","suburbs","forest","downtown","suburbs","industrial","forest","downtown","suburbs","industrial",
   ]);
   assert.equal(typeof renderer.drawStoryMapFoundation,"function");
-  assert(coop.includes("drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,useMissionWater:!!snap.expedition,trails:snap.expedition?.scene?.kind==='mountain'?snap.expedition.scene.path:null,mountain:snap.expedition?.scene?.kind==='mountain'?snap.expedition.scene:null,clearZones:sceneryClearZones,now:"));
+  assert(coop.includes("drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view,waterZones:snap.waterZones,useMissionWater:!!snap.expedition,trails:['mountain','corridor'].includes(snap.expedition?.scene?.kind)?snap.expedition.scene.path:null,mountain:snap.expedition?.scene?.kind==='mountain'?snap.expedition.scene:null,clearZones:sceneryClearZones,now:"));
   assert(coop.includes("if(!sharedStoryFoundation)drawCoopWaterZones()"));
   assert(source.includes('if(family==="forest")'));
   assert(source.includes('else if(family==="suburbs")'));

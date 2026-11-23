@@ -4,14 +4,14 @@
 })(globalThis,function(M,R){
   const residents=typeof module==='object'&&module.exports?require('./rescue-residents'):globalThis.TigerRescueResidents;
   'use strict';
-  const titles={'river-gate':'Blackout at River Gate','flooded-village':'Flooded Village','mountain-sos':'Mountain SOS'};
+  const titles={'wildlife-corridor':'Wildlife Corridor','river-gate':'Blackout at River Gate','flooded-village':'Flooded Village','mountain-sos':'Mountain SOS'};
   const count=n=>Math.max(0,Math.floor(Number(n)||0));
   function model(book={},scope='All'){
     if(!['All',...M.modes].includes(scope))throw Error('Choose All, Solo, Co-op or Mixed records.');
     const rows=Object.entries(book.runs||{}).filter(([,r])=>titles[r.expeditionId]&&M.complete(r));
     const records=rows.filter(([,r])=>scope==='All'||M.mode(r)===scope).map(([id,r])=>({id,title:titles[r.expeditionId],expeditionId:r.expeditionId,route:r.route,mode:M.mode(r),
-      rescued:count(r.stages[3].survivors),names:Array.isArray(r.stages[3].survivorNames)?r.stages[3].survivorNames.map(n=>String(n).slice(0,80)):null,
-      captures:Object.values(r.stages).reduce((n,s)=>n+count(s.captures),0),tigers:Object.values(r.stages).flatMap(s=>s.capturedTigers||[]),evacuees:r.stages[3].evacuees||(r.stages[3].survivorNames||[]).map(name=>({name,look:'field'}))}));
+      rescued:count(r.stages[r.expeditionId==='wildlife-corridor'?1:3].survivors),names:Array.isArray(r.stages[r.expeditionId==='wildlife-corridor'?1:3].survivorNames)?r.stages[r.expeditionId==='wildlife-corridor'?1:3].survivorNames.map(n=>String(n).slice(0,80)):null,
+      captures:Object.values(r.stages).reduce((n,s)=>n+count(s.captures),0),tigers:Object.values(r.stages).flatMap(s=>s.capturedTigers||[]),evacuees:r.stages[r.expeditionId==='wildlife-corridor'?1:3].evacuees||(r.stages[r.expeditionId==='wildlife-corridor'?1:3].survivorNames||[]).map(name=>({name,look:'field'}))}));
     const total=rows.length,level=total>=6?3:total>=3?2:total>=1?1:0;
     return {residents:residents.view(book,scope),scope,records,clears:records.length,rescued:records.reduce((n,r)=>n+r.rescued,0),captures:records.reduce((n,r)=>n+r.captures,0),level,total,
       name:['Rescue outpost','Medical shelter','Wildlife recovery center','Regional rescue center'][level],
@@ -131,7 +131,7 @@
       growth.textContent=`${data.name} · ${data.total} account expedition clears. `+(data.next===null?'All center facilities unlocked.':`${data.next-data.total} more completed run(s) to the next center upgrade.`);
       if(conversation){if(data.residents.people.some(p=>p.id===conversation.id))showTalk(conversation.id,conversation.topic,false);else endTalk();}
       details.replaceChildren();mountResidents();details.append(el('h3','Your rescue history'));
-      if(!data.records.length)details.append(el('p','No completed three-stage expeditions in this view yet. Finish a run in Rescue Mode; incomplete stage credits remain in expedition rewards.'));
+      if(!data.records.length)details.append(el('p','No completed expeditions in this view yet. Finish a run in Rescue Mode; incomplete stage credits remain in expedition rewards.'));
       for(const row of data.records.slice(-20).reverse()){
         const card=el('article');card.append(el('h4',row.title),el('p',`${row.mode} · Route: ${globalThis.TigerRescueExpedition?.definition(row.expeditionId)?.routes[row.route]?.name||row.route} · ${row.rescued} final evacuees · ${row.captures} live captures`),el('p',row.names===null?'Names were not saved in this older receipt.':row.names.length?`Brought home: ${row.names.join(', ')}.`:'No final evacuees recorded.'));
         const watch=el('button','Watch arrival · '+row.title);watch.onclick=()=>{endTalk();area='overview';render();scene=null;arrival=row;skip.textContent='Skip arrival scene';started=performance.now();skip.hidden=false;status.textContent='Replaying your recorded rescue outcome. Skip is always available.';paint(started);canvas.scrollIntoView({block:'center'});};card.append(watch);details.append(card);

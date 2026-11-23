@@ -44,6 +44,7 @@
       return point(nearest(fresh,player),'Capture alive: Rubber then Tranq');
     }
     if(tigers.length)return point(nearest(tigers,player),'Clear tiger threat');
+    if(snap.expedition?.convoy&&!snap.expedition.convoy.arrived)return point({...snap.expedition.convoy,label:'Conservation convoy'},'Escort the convoy');
     return point(snap.extraction,'Reach extraction');
   }
   function civilianStatus(civilian={},viewerId=0){

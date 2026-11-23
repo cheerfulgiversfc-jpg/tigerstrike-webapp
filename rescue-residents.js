@@ -1,6 +1,6 @@
 (function(root){
  'use strict';
- const EXPEDITIONS=['river-gate','flooded-village','mountain-sos'];
+ const EXPEDITIONS=['river-gate','flooded-village','mountain-sos','wildlife-corridor'];
  const clone=x=>JSON.parse(JSON.stringify(x||{}));
  const clean=x=>String(x??'').slice(0,100);
  const key=(run,stage,id)=>JSON.stringify([run,stage,clean(id)]);
@@ -9,9 +9,9 @@
  function admit(c,runId,row,stage,mode){
   const source={runId,expeditionId:row.expeditionId,route:row.route,stage,mode,admitted:c.sequence};
   const receipt=row.stages[stage];
-  if(stage===3){
+  if(stage===(row.expeditionId==='wildlife-corridor'?1:3)){
    const people=Array.isArray(receipt.evacuees)?receipt.evacuees:Array.isArray(receipt.survivorNames)?receipt.survivorNames.map((name,i)=>({id:'legacy-'+i,name})):[];
-   for(const p of people){const id=key(runId,3,p.id);if(!p.name||c.people[id])continue;const resident={...source,id,kind:'person',name:clean(p.name),look:clean(p.look||'field'),child:p.child===true,care:0,needed:1,status:'recovering'};c.people[id]=resident;event(c,'arrive:'+id,'arrival',resident);}
+   for(const p of people){const id=key(runId,stage,p.id);if(!p.name||c.people[id])continue;const resident={...source,id,kind:'person',name:clean(p.name),look:clean(p.look||'field'),child:p.child===true,care:0,needed:1,status:'recovering'};c.people[id]=resident;event(c,'arrive:'+id,'arrival',resident);}
   }
   // Counts without recorded tiger identities never create invented animals.
   for(const t of Array.isArray(receipt.capturedTigers)?receipt.capturedTigers:[]){
@@ -51,8 +51,9 @@
   const c=bootstrap(book).center,runMode=r=>{const values=[...new Set(Object.values(book.runs?.[r.runId]?.stages||{}).map(s=>s.mode))];return values.length>1?'Mixed':values[0]||r.mode;},withMode=r=>({...r,mode:runMode(r)}),filter=r=>scope==='All'||r.mode===scope;
   return {sequence:c.sequence,people:Object.values(c.people).map(withMode).filter(filter),tigers:Object.values(c.tigers).map(withMode).filter(filter),journal:Object.values(c.journal).map(e=>({...e,mode:runMode(c.people[e.residentId]||c.tigers[e.residentId]||e)})).filter(filter).sort((a,b)=>b.sequence-a.sequence)};
  }
- const TITLES={'river-gate':'Blackout at River Gate','flooded-village':'Flooded Village','mountain-sos':'Mountain SOS'};
+ const TITLES={'wildlife-corridor':'Wildlife Corridor','river-gate':'Blackout at River Gate','flooded-village':'Flooded Village','mountain-sos':'Mountain SOS'};
  const ROUTE_LINES={
+  'wildlife-corridor':{bridge:'Our rescue used the direct convoy bridge.',forest:'Our rescue used the longer forest trail.'},
   'river-gate':{clinic:'Our rescue used the clinic route.',bridge:'Our rescue used the reopened bridge route.'},
   'flooded-village':{boat:'Our rescue used the repaired rescue boat.',shelter:'Our rescue used the shelter route.'},
   'mountain-sos':{forest:'Our rescue followed the forest trail.',ridge:'Our rescue followed the ridge crossing.'}

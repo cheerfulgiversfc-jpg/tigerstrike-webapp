@@ -3,12 +3,12 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="tiger-build" content="5299">
+  <meta name="tiger-build" content="5300">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V17.3.1 (Survivor Conversations &amp; Rescue Journal)</title>
+  <title>Tiger Strike 🐅 — V17.4 (Wildlife Corridor)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="./squad-coop.css?v=5288-rescue-partners">
   <link rel="stylesheet" href="./touch-layout.css?v=5288-rescue-partners">
@@ -2605,8 +2605,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V17.3.1</span> <span class="tag">Survivor Conversations &amp; Rescue Journal</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V17.4</span> <span class="tag">Wildlife Corridor</span></div>
       <div class="sub">
+        V17.4 — Wildlife Corridor: Rescue Mode adds one complete convoy-escort stage for Solo or two-player Co-op. Repair the shorter direct bridge with an extra patrol, or clear a longer forest trail with fewer threats. A server-controlled conservation truck follows the chosen visible route, stopping for nearby live tigers, missing escorts, pauses or disconnected squad members. Rescue Ranger Amara and Driver Luis to the reserve shelter, deliver the convoy, then regroup at extraction. The stage uses existing field lives, fresh ready checks after a squad-wipe restart, saved convoy progress for reconnection and separate personal completion and rescue records. Cargo animals are already rescued wildlife and never count as new player captures. This release has no unfinished playable stage buttons or advertised outfit/cash bonus. Story missions and the three existing expeditions remain unchanged. Physical two-phone Telegram validation remains outstanding.<br>
         V17.3.1 — Survivor Conversations &amp; Rescue Journal: Named evacuees in Rescue Command now have short conversations about their saved expedition route and current recovery status, with detailed portraits using the shared civilian artwork. Each recorded journal arrival, recovery or release has its own replay button. Conversations and replays grant no care, supplies or rewards. Individual tigers, care, protected-habitat releases and separate personal Co-op records remain active. Care advances through completed expedition stages, with no daily chores or absence penalties. Older unnamed captures remain historical totals. Physical two-phone Telegram validation remains outstanding.<br>
         V17.3 — Rescue Stories &amp; Wildlife Recovery: Expedition stages now save individual captured tiger identities and final evacuees. Rescue Command keeps permanent personal residents and a journal, with separate Solo, Co-op and Mixed provenance. People recover after one later completed expedition stage and tigers after two; viewing care never grants progress. Medical staff visibly care for residents using the shared production artwork. Eligible tigers can be released once to a protected river forest or mountain forest, with a skippable, replayable departure scene. Server-verified release receipts survive retries and reopening. Old capture totals without identities stay historical; known older civilian names retain credit and begin care from this update. Growth, Story sanctuary, supplies, purchases and difficulty are unchanged. Physical two-phone Telegram validation remains outstanding.<br>
         V17.2 — Expedition Rescue Command: Visit Rescue Command from Rescue Mode for a detailed medical shelter and protected wildlife habitat using the production artwork. Confirmed three-stage expedition receipts support account center growth at 1, 3 and 6 clears; Solo, Co-op and Mixed histories can be viewed separately. Final evacuees are counted once per run, with names shown only when saved. Recorded captures support representative habitat artwork, not a second resident inventory. Choose a recorded expedition to watch a skippable arrival replay. Visiting and replaying grant no items, supplies or rewards and do not modify the existing sanctuary. Physical two-phone Telegram validation remains outstanding.<br>
@@ -2911,7 +2912,7 @@
           <button class="tab" id="mStory" onclick="openBaseHqModePreview('Story')"><strong>📖 Story</strong><small>Campaign missions</small></button>
           <button class="tab" id="mArcade" onclick="openBaseHqModePreview('Arcade')"><strong>🕹️ Arcade</strong><small>Timed score runs</small></button>
           <button class="tab" id="mSurvival" onclick="openBaseHqModePreview('Survival')"><strong>🔥 Survival</strong><small>Fight rising waves</small></button>
-          <button class="tab" onclick="openRescueExpedition()"><strong>🛟 Rescue Mode</strong><small>Three rescue expeditions</small></button>
+          <button class="tab" onclick="openRescueExpedition()"><strong>🛟 Rescue Mode</strong><small>Three expeditions + convoy escort</small></button>
         </div>
       </div>
       <div class="missionHubGroup">
@@ -3732,7 +3733,7 @@
   <script src="./sanctuary.js?v=5288-rescue-partners"></script>
   <script src="./player-experience.js?v=5288-rescue-partners"></script>
   <script src="./battlefield-awareness.js?v=5288-rescue-partners"></script>
-  <script src="./field-radio.js?v=5292-flooded-village"></script>
+  <script src="./field-radio.js?v=5300-wildlife-corridor"></script>
   <script src="./civilian-rescue.js?v=5288-rescue-partners"></script>
   <script src="./rescue-tools.js?v=5288-rescue-partners"></script>
   <script src="./escort-teamwork.js?v=5288-rescue-partners"></script>
@@ -3760,13 +3761,14 @@
   <script src="./result-cards.js?v=5288-rescue-partners"></script>
   <script src="./player-launch.js?v=5288-rescue-partners"></script>
   <link rel="stylesheet" href="./rescue-expedition.css?v=5295">
-  <script src="./rescue-expedition.js?v=5294"></script>
-  <script src="./rescue-residents.js?v=5299"></script>
-  <script src="./expedition-mastery.js?v=5298"></script>
+  <script src="./wildlife-corridor.js?v=5300"></script>
+  <script src="./rescue-expedition.js?v=5300"></script>
+  <script src="./rescue-residents.js?v=5300"></script>
+  <script src="./expedition-mastery.js?v=5300"></script>
   <link rel="stylesheet" href="./rescue-command.css?v=5299">
-  <script src="./rescue-command.js?v=5299"></script>
-  <script src="./rescue-expedition-hub.js?v=5298"></script>
-  <script src="./game.js?v=5299-rescue-journal"></script>
+  <script src="./rescue-command.js?v=5300"></script>
+  <script src="./rescue-expedition-hub.js?v=5300"></script>
+  <script src="./game.js?v=5300-wildlife-corridor"></script>
   <script src="./story-cinematics.js?v=5288-rescue-partners"></script>
   <script src="./field-systems.js?v=5288-rescue-partners"></script>
   <script src="./tutorial.js?v=5288-rescue-partners"></script>
@@ -3775,7 +3777,7 @@
   <script src="./elite-armory.js?v=5288-rescue-partners"></script>
   <link rel="stylesheet" href="./waiting-practice.css?v=5288-rescue-partners">
   <script src="./waiting-practice.js?v=5288-rescue-partners"></script>
-  <script src="./squad-coop.js?v=5299-rescue-journal"></script>
+  <script src="./squad-coop.js?v=5300-wildlife-corridor"></script>
   <script src="./extraction-qa.js?v=5288-rescue-partners"></script>
 <script>
 (() => {

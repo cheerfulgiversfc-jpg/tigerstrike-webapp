@@ -35,17 +35,18 @@
     function show(run,replay=false){
       if(!dialog.open)return;
       const choosing=!run||replay;
-      const completed=run?.stage===4;
+      const completed=run?.stage===selected.stages.length+1;
       const route=selected.routes[run?.route];
       const summary=run?.results?.map(row=>`<li><b>${escape(selected.stages[row.stage-1])}</b> · ${escape(row.mode)}${row.stage>1?` · ${row.survivors.length} survivors safe`:''} · ${row.captures} live captures</li>`).join('')||'';
       body.innerHTML=`
         ${run?.shared?`<p>Team expedition · Captain ${escape(run.captainName)}</p>`:''}
         ${choosing?`<p>${escape(selected.description)}</p>`:`<p><b>Chosen route:</b> ${escape(route?.name)}.</p>`}
         <ol class="expStages">${selected.stages.map((stage,i)=>`<li class="${!choosing&&i+1===run?.stage?'current':''}">${escape(stage)}${!choosing&&i+1<(run?.stage||1)?' ✓':''}</li>`).join('')}</ol>
+        ${selected.pilot?'<p>Complete one playable stage. Additional stages are not available in this release.</p>':''}
         ${run?.report?reportHtml(run.report,window.TigerExpeditionMastery?.summary(recordBook,selected.id)):''}
         ${summary&&!choosing?`<details ${completed?'open':''}><summary>${completed?'Expedition debrief':'Saved stage results'}</summary><ul>${summary}</ul>
           ${run.stage>=3?`<p>${escape(completed?route?.result:route?.checkpointResult||route?.result)}</p>`:''}
-          ${completed?`<p><b>Evacuated by ${selected.transport==='helicopter'?'helicopter':'boat'}:</b> ${escape(run.results.at(-1).survivors.join(', '))}.</p>`:''}</details>`:''}
+          ${completed?`<p><b>${selected.transport==='ground'?'Delivered to the reserve':`Evacuated by ${selected.transport==='helicopter'?'helicopter':'boat'}`}:</b> ${escape(run.results.at(-1).survivors.join(', '))}.</p>`:''}</details>`:''}
         ${choosing?`<fieldset><legend>Choose a route</legend>${Object.entries(selected.routes).map(([id,option])=>`<label class="expRoute"><input type="radio" name="expeditionRoute" value="${id}" ${replay&&run?.route!==id?'checked':''}><span><b>${escape(option.name)}</b><small>${escape(option.choice)}</small></span></label>`).join('')}</fieldset>`:''}
         <div class="expActions">
           ${run?.roomCode&&!replay?`<button class="primary" data-exp-play="resume">${run.roomStatus==='complete'?'Open stage results':'Return to your stage'}</button>`
@@ -113,6 +114,7 @@
   function rewardsHtml(book,id,open=false){
     const model=window.TigerExpeditionMastery;if(!model)return '';
     const reward=model.summary(book,id),item=reward.uniform,adventure=expedition.definition(id);
+    if(!item)return `<section class="expRewards"><h3>Wildlife Corridor stage records</h3><p>One fully playable convoy stage. Completing it saves each participating soldier’s stage credit and the actual rescued workers and live captures. No outfit or cash bonus is advertised for this first release.</p>${reward.modes.map(row=>`<p>${escape(row.mode)} · ${row.clears} completed escorts · Routes ${row.routes.length}/2</p>`).join('')}</section>`;
     const modes=reward.modes.map(row=>`<div class="expRecord"><b>${escape(row.mode)}</b> · ${row.clears} complete runs
       <small>Routes completed: ${row.routes.length}/2 · Fastest: ${row.bestMs===null?'Not recorded':`${Math.floor(row.bestMs/60000)}:${String(Math.floor(row.bestMs/1000)%60).padStart(2,'0')}`}</small>
       ${row.medals.length?`<small>🏅 ${escape(row.medals.join(' · '))}</small>`:''}</div>`).join('');

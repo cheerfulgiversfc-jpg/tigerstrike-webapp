@@ -14,7 +14,7 @@ async function prepare(uid,{expeditionId='river-gate',expeditionRoute,expedition
   const room=previous?.roomCode&&await readRoom(previous.roomCode);
   if(room&&room.status!=='closed')throw Error('Resume or leave your current expedition stage first.');
   let run=previous;
-  if(!run||run.stage===4){
+  if(!run||run.stage>adventure.stages.length){
     if(run&&!expeditionReplay)throw Error('Choose Replay to start a new expedition.');
     if(!Object.hasOwn(adventure.routes,expeditionRoute))throw Error('Choose a route for this expedition first.');
     run={id:randomUUID(),expeditionId:adventure.id,route:expeditionRoute,stage:1,results:[]};
@@ -48,6 +48,7 @@ async function save(session,result){
 }
 
 function mission(base,session){
+  if(session.expedition.id==='wildlife-corridor')return corridorMission(base,session);
   if(session.expedition.id==='mountain-sos')return mountainMission(base,session);
   if(session.expedition.id==='flooded-village')return floodedMission(base,session);
   const {stage,route}=session.expedition;
@@ -93,6 +94,28 @@ function mission(base,session){
     objective,civilians:stage===1?[]:survivors,rescueRequired:stage===1?0:survivors.length,
     tigers:threats,timeLimitMs:12*60000,captureRequired:0,captureTargetIds:[],playerCount:solo?1:2,
     tigerDamageMultiplier:solo?.65:.85,extractionType:stage===3?'boat':'ground',
+    mapTruthLandmarks:[],mapTruthRequiredActionIds:[],fireZones:[]};
+}
+
+function corridorMission(base,session){
+  const solo=expedition.isSolo(session.launchType),bridge=session.expedition.route==='bridge';
+  const world=maps.forMission(1).world,river={...maps.forMission(1).waterZones[0],y:1770,ry:92,bridges:[]};
+  const crossing=bridge?2400:3850,bank=water.banks(river,crossing);
+  if(!bridge||session.expeditionBridgeOpen)river.bridges=[{x:crossing-70,y:bank.top-25,w:140,h:bank.bottom-bank.top+50}];
+  const start={x:1450,y:900},finish={x:3300,y:2350};
+  const path=bridge?[start,{x:2400,y:900},{x:2400,y:bank.top-110},{x:2400,y:bank.bottom+110},finish]:[start,{x:1800,y:800},{x:3850,y:800},{x:3850,y:bank.top-110},{x:3850,y:bank.bottom+110},finish];
+  const site={id:bridge?'wc_bridge_repair':'wc_forest_clear',x:bridge?2400:1800,y:bridge?bank.top-100:800,r:115,manual:true,label:bridge?'Repair the convoy bridge':'Clear the forest trail'};
+  const shelter={x:finish.x-180,y:finish.y+110,r:115,label:'Conservation worker shelter'};
+  const workers=[{id:'wc_worker_1',name:'Ranger Amara',look:'scout',x:2180,y:bridge?1100:1010},{id:'wc_worker_2',name:'Driver Luis',look:'driver',x:bridge?2570:3580,y:bridge?bank.bottom+160:bank.top-240}];
+  const positions=bridge?[[2520,bank.top-330],[2660,bank.bottom+240],[3020,2220]]:[[3440,1100],[3620,bank.bottom+220]];
+  const tigers=positions.slice(0,(solo?1:2)+(bridge?1:0)).map(([x,y],i)=>({...base.tigers[0],id:`wc_tiger_${i+1}`,name:'Corridor patrol tiger',type:'Standard',boss:false,hpMax:solo?100:140,baseX:x,baseY:y}));
+  return {...base,level:1,title:'Wildlife Corridor · Protect the passage',chapterName:'Conservation passage',world,waterZones:[river],
+    spawns:[{x:start.x-110,y:start.y+80},{x:start.x-60,y:start.y+110}],rescueHouse:shelter,extraction:{x:finish.x+120,y:finish.y+80,r:115},
+    convoy:{path,finish,speed:130},checkpoints:[site],checkpointsBeforeRescue:false,civilians:workers,rescueRequired:2,tigers,
+    captureRequired:0,captureTargetIds:[],timeLimitMs:22*60000,playerCount:solo?1:2,tigerDamageMultiplier:solo?.55:.75,
+    objective:`${site.label}. Cargo is previously rescued wildlife; it grants no personal capture credit. Keep a soldier within 450m of the conservation truck, clear nearby threats, rescue both workers to the shelter, then regroup at the reserve.`,
+    extractionType:'ground',boat:null,ferry:null,helicopter:null,weatherFx:'clear',
+    expeditionScene:{kind:'corridor',path,bridgeX:crossing,bridgeReady:!bridge||session.expeditionBridgeOpen,routeLabel:bridge?'DIRECT BRIDGE · EXTRA PATROL':'FOREST TRAIL · LONGER ESCORT',shelter:{x:shelter.x-85,y:shelter.y-165,w:170,h:95},homes:[]},
     mapTruthLandmarks:[],mapTruthRequiredActionIds:[],fireZones:[]};
 }
 

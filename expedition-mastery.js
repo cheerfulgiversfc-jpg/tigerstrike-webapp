@@ -8,7 +8,7 @@
   };
   const modes=['Solo','Co-op','Mixed'];
   function empty(){return {version:1,runs:{},uniform:''};}
-  function validRun(run){return !!CATALOG[run?.expeditionId]&&typeof run?.id==='string'&&run.id.length<=80&&typeof run.route==='string'&&Array.isArray(run.results);}
+  function validRun(run){return (!!CATALOG[run?.expeditionId]||run?.expeditionId==='wildlife-corridor')&&typeof run?.id==='string'&&run.id.length<=80&&typeof run.route==='string'&&Array.isArray(run.results);}
   function credit(raw,run,uid){
     const state=residents.bootstrap(raw||empty());
     if(!validRun(run))return state;
@@ -28,9 +28,9 @@
     state.runs[run.id]=old;
     return residents.advance(state,run.id,added);
   }
-  function complete(row){return [1,2,3].every(s=>row.stages?.[s]);}
+  function complete(row){return (row.expeditionId==='wildlife-corridor'?[1]:[1,2,3]).every(s=>row.stages?.[s]);}
   function mode(row){const values=new Set(Object.values(row.stages||{}).map(s=>s.mode));return values.size===1?[...values][0]:'Mixed';}
-  function earned(state,id){return Object.values(state?.runs||{}).some(r=>r.expeditionId===id&&complete(r));}
+  function earned(state,id){return !!CATALOG[id]&&Object.values(state?.runs||{}).some(r=>r.expeditionId===id&&complete(r));}
   function mastered(state,id){return new Set(Object.values(state?.runs||{}).filter(r=>r.expeditionId===id&&complete(r)).map(r=>r.route)).size>=2;}
   function equip(state,id){if(id&&!earned(state,id))throw Error('Complete all three stages of one expedition run to earn this outfit.');return {...(state||empty()),uniform:id||''};}
   function identity(state){const item=CATALOG[state?.uniform];return item&&earned(state,item.id)?{id:item.id,name:item.name,palette:item,patch:mastered(state,item.id)}:null;}
