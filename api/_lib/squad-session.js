@@ -2991,7 +2991,7 @@ async function createSession(user, opts={}){
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
     readyVersion:plan||opts.readyCheck===true?1:0,readyRevision:1,
-    expedition:plan?{id:plan.expeditionId,runId:plan.run.id,ownerId:uid,stage:plan.run.stage,route:plan.run.route}:null,
+    expedition:plan?{id:plan.expeditionId,runId:plan.run.id,ownerId:uid,stage:plan.run.stage,route:plan.run.route,cargo:plan.run.cargo||null,safeWorkers:plan.run.results.find(r=>r.stage===1)?.evacuees||[]}:null,
     postCampaignOperation,
     crisisVote:postCampaignSession({launchType})?normalizeCrisisVote(null,{launchType,memberIds:[uid],hostId:uid,postCampaignOperation}):null,
     livingWorldMission:launchType === "shared-story" && storyMissionLevel <= livingWorld.PILOT_MAX_MISSION
@@ -3039,7 +3039,7 @@ function expeditionReport(run){
   const team=new Map();
   for(const row of run.results)for(const actor of row.team||[])team.set(actor.userId,actor);
   return {expeditionId:run.expeditionId||'river-gate',title:expedition.definition(run.expeditionId).title,route:run.route,
-    artworkComplete:run.results.every(row=>Array.isArray(row.team)),stages:run.results.length,rescued:run.results.at(-1)?.survivors||[],
+    artworkComplete:run.results.every(row=>Array.isArray(row.team)),stages:run.results.length,rescued:[...new Set(run.results.flatMap(r=>r.survivors||[]))],cargoReleased:run.results.flatMap(r=>r.cargoReleased||[]),
     captures:run.results.reduce((total,row)=>total+row.captures,0),kills:run.results.reduce((total,row)=>total+row.kills,0),
     team:[...team.values()]};
 }
@@ -3371,8 +3371,8 @@ async function maybeFinishSession(session, players){
     derived.extractionReadyIds.length===session.memberIds.length;
   const convoy=await convoyState(session,players,derived,now);
   const canExtract=derived.objectivesReady&&squadAtExtraction&&(!convoy||convoy.arrived);
-  if(session.expedition&&expedition.isFinal(session.expedition.id,session.expedition.stage)&&session.expedition.id!=='wildlife-corridor'){
-    const canBoard=squadAtExtraction&&derived.securedCivilianIds.length>=missionDefinition(session).rescueRequired&&(session.expedition.id!=='mountain-sos'||derived.objectivesReady);
+  if(session.expedition&&expedition.isFinal(session.expedition.id,session.expedition.stage)){
+    const canBoard=squadAtExtraction&&derived.securedCivilianIds.length>=missionDefinition(session).rescueRequired&&(!['mountain-sos','wildlife-corridor'].includes(session.expedition.id)||derived.objectivesReady);
     if(!canBoard&&session.expeditionBoardingAt){
       return writeSession({...session,expeditionBoardingAt:0});
     }
@@ -3470,7 +3470,7 @@ async function advanceFerry(session,player,transit,at=nowMs()){
 }
 
 async function convoyState(session,players,derived,now){
-  if(session.expedition?.id!=='wildlife-corridor')return null;
+  if(session.expedition?.id!=='wildlife-corridor'||session.expedition.stage!==1)return null;
   const mission=missionDefinition(session),key=`corridor_convoy_${session.code}_${session.corridorAttempt||'waiting'}`;
   for(let attempt=0;attempt<8;attempt++){
     const before=await getState(key),next=corridor.step(before,{attempt:session.corridorAttempt||'waiting',now,path:mission.convoy.path,players,tigers:derived.tigers,routeReady:derived.checkpointsReady,active:session.status==='active',paused:sessionPaused(session)});
@@ -3513,7 +3513,7 @@ async function buildSnapshot(session, viewerId){
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
     expedition:session.expedition?{runId:session.expedition.runId,id:session.expedition.id||'river-gate',title:expedition.definition(session.expedition.id).title,
-      stage:session.expedition.stage,stageCount:expedition.stageCount(session.expedition.id),convoy,route:session.expedition.route,reward:expeditionMastery.summary(expeditionBooks.get(userIdOf(viewerId)),session.expedition.id),scene:mission.expeditionScene||null,report:expeditionSummary,
+      stage:session.expedition.stage,stageCount:expedition.stageCount(session.expedition.id),convoy,route:session.expedition.route,reward:expeditionMastery.summary(expeditionBooks.get(userIdOf(viewerId)),session.expedition.id),scene:mission.expeditionScene||null,report:expeditionSummary,cargo:session.expedition.cargo||[],safeWorkers:session.expedition.safeWorkers||[],release:session.expedition.id==='wildlife-corridor'&&session.expedition.stage===3?{startedAt:session.expeditionBoardingAt||0,duration:expedition.holdMs,complete:session.status==='complete'}:null,
       ferry:mission.ferry?{...mission.ferry,startedAt:transit?.at||players.find(p=>p.expeditionFerryAt)?.expeditionFerryAt||0,
         active:!!transit&&at-transit.at<mission.ferry.duration,
         completed:players.every(p=>p.expeditionFerryAt>0)}:null,
@@ -3873,7 +3873,8 @@ async function applyActionUnlocked(session, user, action, payload={}){
     if(session.expedition.stage===expected+1)return session;
     if(session.expedition.stage!==expected||session.status!=='complete')throw Error('Finish this stage before continuing.');
     await claimExpeditionStage(session);
-    await expeditionStore.advance(session);
+    const advanced=await expeditionStore.advance(session);
+    if(session.expedition.id==='wildlife-corridor')session.expedition={...session.expedition,safeWorkers:advanced.results.find(r=>r.stage===1)?.evacuees||[],cargo:advanced.cargo||session.expedition.cargo||[1,2].map(i=>({id:`${session.expedition.runId}:transport:${i}`,name:`Conservation transport tiger ${i}`,type:'Standard',origin:'Pre-existing conservation transport; not a player capture'}))};
     session.expedition={...session.expedition,stage:expected+1};
     session.status='waiting';session.startedAt=0;session.completedAt=0;session.readyVersion=1;session.readyRevision++;
     session.pausedBy={};session.pausedAt=0;session.failureReason='';session.pendingDeployment='';
@@ -3916,7 +3917,8 @@ async function applyActionUnlocked(session, user, action, payload={}){
     const site=remaining.find(point=>distance(player,point)<=point.r)||remaining[0];
     if(!site)return session;
     if(distance(player,site)>site.r)throw Error('Move into the marked objective circle first.');
-    if((site.requires||[]).some(id=>!completed.has(id)))throw Error('Trace the distress beacon before repairing the crossing.');
+    if((site.requires||[]).some(id=>!completed.has(id)))throw Error(session.expedition.id==='wildlife-corridor'?'Complete the marked prerequisite first.':'Trace the distress beacon before repairing the crossing.');
+    if(site.requiresClearThreats&&!sessionDerived(session,players,now).tigers.every(t=>t.defeated||t.hp<=0))throw Error('Clear the reserve threats before unlocking the transport cages.');
     if(site.requiresParty){
       const derived=sessionDerived(session,players,now);
       const party=civilianSnapshots(session,players,derived.rescuedIds,derived.securedCivilianIds);
@@ -4449,6 +4451,8 @@ async function claimExpeditionStage(session){
   const derived=sessionDerived(session,players);
   const mission=missionDefinition(session);
   const saved=await expeditionStore.save(session,{
+    corridorStages:session.expedition.id==='wildlife-corridor'?3:null,
+    cargoReleased:session.expedition.id==='wildlife-corridor'&&session.expedition.stage===3?(session.expedition.cargo||[]).map(t=>({...t,status:'released',habitat:'Wildlife Corridor protected reserve'})):[],
     recordVersion:session.expeditionMetricsVersion===1?1:0,rescueRequired:mission.rescueRequired,
     durationMs:session.debriefVersion&&session.completedAt>=session.startedAt?Number(session.missionElapsedMs||0)+session.completedAt-session.startedAt:null,
     wipes:session.debriefVersion?session.missionWipes:null,

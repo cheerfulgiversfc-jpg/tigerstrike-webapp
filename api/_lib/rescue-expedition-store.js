@@ -19,6 +19,7 @@ async function prepare(uid,{expeditionId='river-gate',expeditionRoute,expedition
     if(!Object.hasOwn(adventure.routes,expeditionRoute))throw Error('Choose a route for this expedition first.');
     run={id:randomUUID(),expeditionId:adventure.id,route:expeditionRoute,stage:1,results:[]};
   }
+  if(adventure.id==='wildlife-corridor'&&!run.cargo)run={...run,cargo:[1,2].map(i=>({id:`${run.id}:transport:${i}`,name:`Conservation transport tiger ${i}`,type:'Standard',origin:'Pre-existing conservation transport; not a player capture'}))};
   return {previous,run,expeditionId:adventure.id};
 }
 
@@ -98,6 +99,7 @@ function mission(base,session){
 }
 
 function corridorMission(base,session){
+  if(session.expedition.stage>1)return reserveMission(base,session);
   const solo=expedition.isSolo(session.launchType),bridge=session.expedition.route==='bridge';
   const world=maps.forMission(1).world,river={...maps.forMission(1).waterZones[0],y:1770,ry:92,bridges:[]};
   const crossing=bridge?2400:3850,bank=water.banks(river,crossing);
@@ -117,6 +119,30 @@ function corridorMission(base,session){
     extractionType:'ground',boat:null,ferry:null,helicopter:null,weatherFx:'clear',
     expeditionScene:{kind:'corridor',path,bridgeX:crossing,bridgeReady:!bridge||session.expeditionBridgeOpen,routeLabel:bridge?'DIRECT BRIDGE · EXTRA PATROL':'FOREST TRAIL · LONGER ESCORT',shelter:{x:shelter.x-85,y:shelter.y-165,w:170,h:95},homes:[]},
     mapTruthLandmarks:[],mapTruthRequiredActionIds:[],fireZones:[]};
+}
+
+function reserveMission(base,session){
+  const {stage,route}=session.expedition,solo=expedition.isSolo(session.launchType),bridge=route==='bridge';
+  // Keep the exact river, repaired crossing and arrival trail from the completed escort.
+  const first=corridorMission(base,{...session,expedition:{...session.expedition,stage:1},expeditionBridgeOpen:true});
+  const habitat={x:3670,y:2070,w:650,h:460},truck={x:3500,y:2350,angle:0};
+  const checkpoints=stage===2?[
+    {id:'wc_habitat_gate',x:3690,y:2320,r:105,manual:true,label:'Open and inspect the habitat gate'},
+    {id:'wc_water_station',x:4070,y:2390,r:105,manual:true,requires:['wc_habitat_gate'],label:'Restore the habitat water station'},
+    {id:'wc_perimeter',x:4070,y:2180,r:105,manual:true,requires:['wc_habitat_gate'],label:'Secure the habitat perimeter'},
+  ]:[
+    {id:'wc_unload_gate',x:3540,y:2230,r:105,manual:true,label:'Prepare the unloading ramp'},
+    {id:'wc_release_transport',x:3650,y:2350,r:105,manual:true,requires:['wc_unload_gate'],requiresClearThreats:true,label:'Unlock the recorded transport cages'},
+  ];
+  const tigers=Array.from({length:(solo?1:2)+(stage===3&&bridge?1:0)},(_,i)=>({...base.tigers[0],id:`wc_tiger_${i+1}`,name:stage===3?'Reserve perimeter prowler':'Reserve approach tiger',type:'Standard',boss:false,hpMax:solo?100:140,
+    baseX:(bridge?3740:4200)+i*120,baseY:stage===2?1950+i*85:1880+i*95}));
+  return {...first,title:`Stage ${stage} · ${expedition.definition('wildlife-corridor').stages[stage-1]}`,
+    spawns:[{x:3330,y:2380},{x:3370,y:2410}],convoy:null,civilians:[],rescueRequired:0,checkpoints,checkpointsBeforeRescue:false,tigers,
+    rescueHouse:{x:3120,y:2460,r:100,label:'Conservation worker shelter'},extraction:{x:3510,y:2430,r:120},
+    objective:stage===2?'Open the marked habitat gate, restore its water station and secure the perimeter. Clear the approach, then regroup by the truck. The workers rescued during the escort remain safe at the shelter.'
+      :'Prepare the unloading ramp and clear the reserve patrols. Unlock the recorded cargo cages, then defend the unloading circle together for 8 seconds. The transported animals are not new player captures.',
+    expeditionScene:{...first.expeditionScene,habitat,parkedTruck:truck,stage,bridgeReady:true,routeLabel:bridge?'BRIDGE ARRIVAL · EXTRA FINAL PATROL':'FOREST ARRIVAL · FEWER FINAL PATROLS'},
+  };
 }
 
 function floodedMission(base,session){
@@ -237,7 +263,7 @@ async function advance(session){
     const current=await read(ownerId,id);
     if(current?.id!==runId||current.roomCode!==session.code||current.stage!==stage+1)throw Error('This expedition checkpoint moved. Reopen Rescue Mode.');
     if(current.roomStage===stage+1)return current;
-    const next={...current,roomStage:stage+1};
+    const next={...current,roomStage:stage+1,...(id==='wildlife-corridor'&&!current.cargo?{cargo:[1,2].map(i=>({id:`${current.id}:transport:${i}`,name:`Conservation transport tiger ${i}`,type:'Standard',origin:'Pre-existing conservation transport; not a player capture'}))}:{})};
     if(await compareAndSetState(key(ownerId,id),current,next))return next;
   }
   throw Error('The checkpoint is busy. Try continuing again.');

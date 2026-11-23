@@ -7,7 +7,7 @@
   };
   const stages=['Restore the route','Bring everyone out','Get them home'];
   const adventures={
-    'wildlife-corridor':{id:'wildlife-corridor',title:'Wildlife Corridor',pilot:true,transport:'ground',description:'One complete convoy-escort stage. Open a faster bridge route with an extra patrol, or clear a longer forest trail with fewer threats. Rescue two conservation workers and escort the wildlife truck to the reserve. Later stages are not part of this release.',stages:['Open and protect the passage'],routes:{bridge:{name:'Faster bridge route',choice:'Repair the direct bridge. Shorter convoy journey, with an extra tiger patrol.',result:'The direct bridge carried the conservation convoy to the reserve. The workers reached the rescue shelter.'},forest:{name:'Safer forest trail',choice:'Clear the longer forest trail to an existing crossing. Fewer tiger patrols, with a longer escort.',result:'The longer forest trail carried the conservation convoy safely to the reserve. The workers reached the rescue shelter.'}}},
+    'wildlife-corridor':{id:'wildlife-corridor',title:'Wildlife Corridor',transport:'ground',description:'Open the bridge or forest trail, escort the conservation truck and rescue its stranded workers. Then prepare the protected habitat and defend unloading before releasing the recorded transport animals. Your route stays visible throughout all three stages.',stages:['Open and protect the passage','Prepare the protected habitat','Secure the reserve and release the cargo'],routes:{bridge:{name:'Faster bridge route',choice:'Repair the direct bridge. Shorter convoy journey, with an extra tiger patrol.',result:'The direct bridge carried the conservation convoy to the reserve. The workers reached the rescue shelter.'},forest:{name:'Safer forest trail',choice:'Clear the longer forest trail to an existing crossing. Fewer tiger patrols, with a longer escort.',result:'The longer forest trail carried the conservation convoy safely to the reserve. The workers reached the rescue shelter.'}}},
     'river-gate':{id:'river-gate',title,routes,stages,description:'A blackout has cut off River Gate. Choose which route to restore before bringing three survivors to the rescue boat.'},
     'flooded-village':{
       id:'flooded-village',title:'Flooded Village',
@@ -31,7 +31,7 @@
   function definition(id='river-gate'){return Object.hasOwn(adventures,id)?adventures[id]:null;}
   const stageCount=id=>definition(id)?.stages.length||3;
   const isFinal=(id,stage)=>stage===stageCount(id);
-  const checkpointIds=['wc_bridge_repair','wc_forest_clear','exp_clinic_power','exp_bridge_open','exp_triage','exp_crossing','fv_boat_repair','fv_shelter_power','fv_home_west','fv_home_east','fv_stabilize','ms_signal','ms_forest_bridge','ms_ridge_bridge','ms_crossing','ms_treatment'];
+  const checkpointIds=['wc_habitat_gate','wc_water_station','wc_perimeter','wc_unload_gate','wc_release_transport','wc_bridge_repair','wc_forest_clear','exp_clinic_power','exp_bridge_open','exp_triage','exp_crossing','fv_boat_repair','fv_shelter_power','fv_home_west','fv_home_east','fv_stabilize','ms_signal','ms_forest_bridge','ms_ridge_bridge','ms_crossing','ms_treatment'];
   const holdMs=8000;
   const isExpedition=type=>types.includes(type);
   const isSolo=type=>type===types[0];

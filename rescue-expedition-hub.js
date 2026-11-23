@@ -46,7 +46,7 @@
         ${run?.report?reportHtml(run.report,window.TigerExpeditionMastery?.summary(recordBook,selected.id)):''}
         ${summary&&!choosing?`<details ${completed?'open':''}><summary>${completed?'Expedition debrief':'Saved stage results'}</summary><ul>${summary}</ul>
           ${run.stage>=3?`<p>${escape(completed?route?.result:route?.checkpointResult||route?.result)}</p>`:''}
-          ${completed?`<p><b>${selected.transport==='ground'?'Delivered to the reserve':`Evacuated by ${selected.transport==='helicopter'?'helicopter':'boat'}`}:</b> ${escape(run.results.at(-1).survivors.join(', '))}.</p>`:''}</details>`:''}
+          ${completed?`<p><b>${selected.transport==='ground'?'Delivered to the reserve':`Evacuated by ${selected.transport==='helicopter'?'helicopter':'boat'}`}:</b> ${escape([...new Set(run.results.flatMap(r=>r.survivors||[]))].join(', '))}.</p>`:''}</details>`:''}
         ${choosing?`<fieldset><legend>Choose a route</legend>${Object.entries(selected.routes).map(([id,option])=>`<label class="expRoute"><input type="radio" name="expeditionRoute" value="${id}" ${replay&&run?.route!==id?'checked':''}><span><b>${escape(option.name)}</b><small>${escape(option.choice)}</small></span></label>`).join('')}</fieldset>`:''}
         <div class="expActions">
           ${run?.roomCode&&!replay?`<button class="primary" data-exp-play="resume">${run.roomStatus==='complete'?'Open stage results':'Return to your stage'}</button>`
@@ -114,7 +114,7 @@
   function rewardsHtml(book,id,open=false){
     const model=window.TigerExpeditionMastery;if(!model)return '';
     const reward=model.summary(book,id),item=reward.uniform,adventure=expedition.definition(id);
-    if(!item)return `<section class="expRewards"><h3>Wildlife Corridor stage records</h3><p>One fully playable convoy stage. Completing it saves each participating soldier’s stage credit and the actual rescued workers and live captures. No outfit or cash bonus is advertised for this first release.</p>${reward.modes.map(row=>`<p>${escape(row.mode)} · ${row.clears} completed escorts · Routes ${row.routes.length}/2</p>`).join('')}</section>`;
+    if(!item)return `<section class="expRewards"><h3>Wildlife Corridor stage records</h3><p>Complete the escort, prepare the habitat and defend the recorded cargo release. Each participant keeps their actual stage credits, rescued workers and captures. Transport cargo never counts as a personal capture. No outfit or cash bonus is included. Earlier one-stage escort completions remain credited as historical records.</p>${reward.modes.map(row=>`<p>${escape(row.mode)} · ${row.fullRuns} full expeditions · ${row.historicalEscorts} earlier escort records · Routes ${row.routes.length}/2</p>`).join('')}</section>`;
     const modes=reward.modes.map(row=>`<div class="expRecord"><b>${escape(row.mode)}</b> · ${row.clears} complete runs
       <small>Routes completed: ${row.routes.length}/2 · Fastest: ${row.bestMs===null?'Not recorded':`${Math.floor(row.bestMs/60000)}:${String(Math.floor(row.bestMs/1000)%60).padStart(2,'0')}`}</small>
       ${row.medals.length?`<small>🏅 ${escape(row.medals.join(' · '))}</small>`:''}</div>`).join('');
@@ -142,7 +142,7 @@
       <p><b>${escape(report.title)}</b> · ${escape(route?.name)}</p>
       <div class="expTeamPortraits">${report.team.map((actor,i)=>`<figure><canvas width="150" height="165" data-exp-portrait="${i}" aria-label="Recorded soldier for ${escape(actor.name)}"></canvas><figcaption>${escape(actor.name)}${actor.appearance===null?' · appearance unavailable':''}</figcaption></figure>`).join('')}</div>
       <p>${report.stages} stages completed · ${report.rescued.length} people evacuated · ${report.captures} live captures · ${report.kills} tiger kills</p>
-      <p>Rescued ${escape(report.rescued.join(', '))}.</p>${report.artworkComplete===false?'<small>Earlier stages have no recorded soldier appearances.</small>':''}</section>`;
+      <p>Rescued ${escape(report.rescued.join(', '))}.</p>${report.cargoReleased?.length?`<p>Released to the protected reserve: ${escape(report.cargoReleased.map(t=>t.name).join(', '))}. Transport animals are not new captures.</p>`:''}${report.artworkComplete===false?'<small>Earlier stages have no recorded soldier appearances.</small>':''}</section>`;
   }
 
   function mountReport(root,report){

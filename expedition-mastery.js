@@ -18,7 +18,7 @@
     const old=state.runs[run.id]||{expeditionId:run.expeditionId,route:run.route,stages:{}};
     if(old.expeditionId!==run.expeditionId||old.route!==run.route)throw Error('Expedition receipt does not match its recorded run.');
     const added=[];
-    for(const r of stages)if(!old.stages[r.stage]){added.push(r.stage);old.stages[r.stage]={mode:r.mode,roomCode:r.roomCode,
+    for(const r of stages)if(!old.stages[r.stage]){added.push(r.stage);old.stages[r.stage]={corridorStages:r.corridorStages===3?3:1,cargoReleased:Array.isArray(r.cargoReleased)?r.cargoReleased.map(t=>({id:String(t.id).slice(0,100),name:String(t.name).slice(0,100),status:'released'})):[],mode:r.mode,roomCode:r.roomCode,
       capturedTigers:Array.isArray(r.capturedTigers)?r.capturedTigers.slice(0,100).map(t=>({id:String(t.id).slice(0,100),name:String(t.name||t.type||'Rescued tiger').slice(0,100),type:String(t.type||'Standard').slice(0,80),boss:t.boss===true})):null,
       evacuees:Array.isArray(r.evacuees)?r.evacuees.slice(0,100).map(p=>({id:String(p.id).slice(0,100),name:String(p.name||'Rescued civilian').slice(0,100),look:String(p.look||'field').slice(0,40),child:p.child===true})):null,
       survivorNames:Array.isArray(r.survivors)?r.survivors.map(name=>String(name).slice(0,80)):null,
@@ -28,7 +28,7 @@
     state.runs[run.id]=old;
     return residents.advance(state,run.id,added);
   }
-  function complete(row){return (row.expeditionId==='wildlife-corridor'?[1]:[1,2,3]).every(s=>row.stages?.[s]);}
+  function complete(row){return (row.expeditionId==='wildlife-corridor'&&row.stages?.[1]?.corridorStages!==3?[1]:[1,2,3]).every(s=>row.stages?.[s]);}
   function mode(row){const values=new Set(Object.values(row.stages||{}).map(s=>s.mode));return values.size===1?[...values][0]:'Mixed';}
   function earned(state,id){return !!CATALOG[id]&&Object.values(state?.runs||{}).some(r=>r.expeditionId===id&&complete(r));}
   function mastered(state,id){return new Set(Object.values(state?.runs||{}).filter(r=>r.expeditionId===id&&complete(r)).map(r=>r.route)).size>=2;}
@@ -46,7 +46,7 @@
           if(known&&stages.every(s=>s.wipes===0))medals.add('No squad wipe');
           if(known&&stages.every(s=>s.durationMs!==null))times.push(stages.reduce((n,s)=>n+s.durationMs,0));
         }
-        return {mode:scope,clears:done.length,routes:[...new Set(done.map(r=>r.route))],medals:[...medals],bestMs:times.length?Math.min(...times):null};
+        return {mode:scope,clears:done.length,fullRuns:done.filter(r=>[1,2,3].every(s=>r.stages[s])).length,historicalEscorts:done.filter(r=>r.expeditionId==='wildlife-corridor'&&r.stages[1]?.corridorStages!==3).length,routes:[...new Set(done.map(r=>r.route))],medals:[...medals],bestMs:times.length?Math.min(...times):null};
       }),
       recent:rows.slice(-6).reverse().map(r=>({route:r.route,mode:mode(r),stages:Object.keys(r.stages).map(Number).sort(),complete:complete(r)})),
     };

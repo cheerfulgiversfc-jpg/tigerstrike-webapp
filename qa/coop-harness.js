@@ -17,7 +17,7 @@ function createHarness({userId=900101,snapshot=null,transport=null}={}){
   ctx.TigerStrikeBattlefieldRenderer={...renderer};
   for(const [name,list] of [['drawSoldier','soldiers'],['drawTiger','tigers'],['drawCivilian','civilians']])ctx.TigerStrikeBattlefieldRenderer[name]=(canvas,entity,opts)=>{drawn[list].push(String(entity.id??entity.userId));return renderer[name](canvas,entity,opts);};
   const source=fs.readFileSync(path.join(root,'squad-coop.js'),'utf8'),end=source.lastIndexOf('})();');
-  const expose='window.__qa={state,api,action,applySnapshot,drawArena,render,sync,openEquipment,returnFromEquipment,finishEquipmentResume,gearCommand,dispatchCommand,updateMovement,movementInput,startPolling,stopPolling,ensureFrame};\n';
+  const expose='window.__qa={state,api,action,applySnapshot,drawArena,drawExpeditionDeparture,render,sync,openEquipment,returnFromEquipment,finishEquipmentResume,gearCommand,dispatchCommand,updateMovement,movementInput,startPolling,stopPolling,ensureFrame};\n';
   vm.runInContext(source.slice(0,end)+expose+source.slice(end),ctx,{filename:'squad-coop.js'});
   const qa=ctx.__qa;ctx.__snapshot=snapshot;
   function seed(s){ctx.__snapshot=s;qa.state.open=true;qa.state.code=s.code;qa.state.launchType=s.launchType;qa.state.storyMissionLevel=s.storyMissionLevel;qa.state.snapshot=s;qa.state.local={...s.players.find(p=>p.userId===userId)};qa.state.snapshotReceivedAt=clock;qa.state.lastSnapshotWallAt=clock;qa.state.profile=s.viewerProfile;qa.state.gearCatalog=s.gearCatalog||[];element('squadBody').dataset.squadMode='active';qa.applySnapshot(s);}

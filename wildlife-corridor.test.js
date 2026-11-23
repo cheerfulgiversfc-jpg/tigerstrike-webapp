@@ -19,7 +19,7 @@ async function setPlayers(room,users,point,fields={}){for(const u of users){cons
 test('both authored routes have truthful bridges, real interactions, safer Solo pressure, and detailed shared rendering',async()=>scope.run('expedition-squad',async()=>{
  let forestLength=0;
  for(const [route,solo,id]of [['forest',true,988001],['bridge',false,988011]]){
-  const {host,room,users}=await party(route,solo,id);let snap=await S.buildSnapshot(room,host.id);assert.equal(snap.expedition.stageCount,1);assert.equal(snap.expedition.convoy.distance,0);assert.equal(snap.expedition.convoy.reason,'Open the chosen route');
+  const {host,room,users}=await party(route,solo,id);let snap=await S.buildSnapshot(room,host.id);assert.equal(snap.expedition.stageCount,3);assert.equal(snap.expedition.convoy.distance,0);assert.equal(snap.expedition.convoy.reason,'Open the chosen route');
   const site=snap.checkpoints[0];await setPlayers(room,users,site);await S.applyAction(await S.readSession(room.code),host,'expedition-interact');snap=await S.buildSnapshot(await S.readSession(room.code),host.id);
   assert(snap.checkpointCompletedIds.includes(site.id));if(route==='forest')forestLength=C.length(snap.expedition.scene.path);else assert(C.length(snap.expedition.scene.path)<forestLength);
   const path=snap.expedition.scene.path;for(let d=0;d<C.length(path);d+=20){const p=C.position(path,d);assert(!water.swimming(snap.waterZones,p.x,p.y),'convoy stays on land or its rendered bridge');}
@@ -41,11 +41,12 @@ test('the real Solo convoy cannot finish early; checkpoint, workers, reconnect, 
    tick+=700;await setPlayers(room,users,snap.expedition.convoy);snap=await S.buildSnapshot(await S.readSession(room.code),host.id);
   }
   assert(snap.expedition.convoy.arrived);await setPlayers(room,users,snap.extraction);snap=await S.buildSnapshot(await S.readSession(room.code),host.id);assert.equal(snap.status,'complete');
-  const book=await mastery.read(host.id);assert.equal(MM.summary(book,'wildlife-corridor').modes[0].clears,1);assert.equal(R.view(book).people.length,2);assert.equal(R.view(book).tigers.length,captured.length,'cargo animals are not credited as player captures');
-  await S.claimReward(await S.readSession(room.code),host);assert.equal(MM.summary(await mastery.read(host.id),'wildlife-corridor').modes[0].clears,1);
-  await assert.rejects(async()=>S.applyAction(await S.readSession(room.code),host,'expedition-continue',{stage:1}));
+  const book=await mastery.read(host.id);assert.equal(MM.summary(book,'wildlife-corridor').modes[0].clears,0);assert.equal(R.view(book).people.length,2);assert.equal(R.view(book).tigers.length,captured.length,'cargo animals are not credited as player captures');
+  await S.claimReward(await S.readSession(room.code),host);assert.equal(MM.summary(await mastery.read(host.id),'wildlife-corridor').modes[0].clears,0);
+  snap=await finishReserve(room,host,users,ms=>tick+=ms);
+  assert.equal(snap.expedition.report.cargoReleased.length,2);assert.equal(MM.summary(await mastery.read(host.id),'wildlife-corridor').modes[0].clears,1);
   assert.equal((await S.readCoopProfile(host)).funds,profile.funds);
-  assert.equal((await S.expeditionStatus(host,'wildlife-corridor')).report.stages,1);
+  assert.equal((await S.expeditionStatus(host,'wildlife-corridor')).report.stages,3);
  }finally{Date.now=original;}
 }));
 test('a real squad reconnects, restarts after a wipe, finishes together and credits both participants once',async()=>scope.run('expedition-squad',async()=>{
@@ -63,8 +64,63 @@ test('a real squad reconnects, restarts after a wipe, finishes together and cred
   await setPlayers(room,users,snap.checkpoints[0]);await S.applyAction(await S.readSession(room.code),host,'expedition-interact');
   for(let i=0;i<140&&!snap.expedition.convoy.arrived;i++){tick+=700;await setPlayers(room,users,snap.expedition.convoy,completeFields);snap=await S.buildSnapshot(await S.readSession(room.code),host.id);}
   assert(snap.expedition.convoy.arrived);await setPlayers(room,users,snap.extraction);snap=await S.buildSnapshot(await S.readSession(room.code),host.id);assert.equal(snap.status,'complete');
-  for(const u of users){await S.claimReward(await S.readSession(room.code),u);await S.claimReward(await S.readSession(room.code),u);const book=await mastery.read(u.id);assert.equal(MM.summary(book,'wildlife-corridor').modes[1].clears,1);assert.equal(R.view(book).people.length,2);}
-  const h=createHarness({userId:host.id,snapshot:snap});h.qa.render();h.qa.drawArena();assert(!h.element('squadBody').innerHTML.includes('data-squad-command="expedition-continue"'));
-  await S.closeSession(await S.readSession(room.code),host,{stage:1});const replay=await S.createSession(host,{launchType:'expedition-solo',expeditionId:'wildlife-corridor',expeditionRoute:'bridge',expeditionReplay:true});assert.equal(replay.expedition.stage,1);assert.notEqual(replay.expedition.runId,room.expedition.runId);
+  for(const u of users){await S.claimReward(await S.readSession(room.code),u);await S.claimReward(await S.readSession(room.code),u);const book=await mastery.read(u.id);assert.equal(MM.summary(book,'wildlife-corridor').modes[1].clears,0);assert.equal(R.view(book).people.length,2);}
+  const h=createHarness({userId:host.id,snapshot:snap});h.qa.render();h.qa.drawArena();assert(h.element('squadBody').innerHTML.includes('data-squad-command="expedition-continue"'));
+  snap=await finishReserve(room,host,users,ms=>tick+=ms);
+  for(const u of users){await S.claimReward(await S.readSession(room.code),u);await S.claimReward(await S.readSession(room.code),u);assert.equal(MM.summary(await mastery.read(u.id),'wildlife-corridor').modes[1].clears,1);}
+  const final=createHarness({userId:host.id,snapshot:snap});final.qa.render();final.qa.drawArena();assert(!final.element('squadBody').innerHTML.includes('data-squad-command="expedition-continue"'));assert(final.element('squadBody').innerHTML.includes('Skip scene'));
+  await S.closeSession(await S.readSession(room.code),host,{stage:3});const replay=await S.createSession(host,{launchType:'expedition-solo',expeditionId:'wildlife-corridor',expeditionRoute:'bridge',expeditionReplay:true});assert.equal(replay.expedition.stage,1);assert.notEqual(replay.expedition.runId,room.expedition.runId);
  }finally{Date.now=original;}
+}));
+
+async function finishReserve(room,host,users,advance){
+ let snap;const manifest=(await S.readSession(room.code)).expedition.cargo.map(t=>t.id);
+ for(const stage of [2,3]){
+  await S.applyAction(await S.readSession(room.code),host,'expedition-continue',{stage:stage-1});
+  const waiting=await S.readSession(room.code);assert.equal(waiting.status,'waiting');
+  if(users.length===2)for(const u of users)await S.applyAction(waiting,u,'ready',{ready:true,readyRevision:waiting.readyRevision});
+  await S.applyAction(await S.readSession(room.code),host,'start');snap=await S.buildSnapshot(await S.readSession(room.code),host.id);
+  assert.equal(snap.expedition.stage,stage);assert.equal(snap.expedition.convoy,null);assert.equal(snap.civilians.length,0,'rescued workers are not spawned for duplicate credit');
+  assert.deepEqual(snap.expedition.cargo.map(t=>t.id),manifest);
+  for(const p of [...snap.checkpoints,snap.extraction,snap.expedition.scene.parkedTruck])assert(!water.swimming(snap.waterZones,p.x,p.y),'reserve objectives and truck are on dry land');
+  const last=snap.checkpoints.at(-1);await setPlayers(room,users,last);
+  if(stage===2)await assert.rejects(async()=>S.applyAction(await S.readSession(room.code),host,'expedition-interact'),/prerequisite/);
+  for(const site of snap.checkpoints){
+   await setPlayers(room,users,site);
+   if(site.requiresClearThreats){
+    await assert.rejects(async()=>S.applyAction(await S.readSession(room.code),host,'expedition-interact'),/Clear the reserve/);
+    await setPlayers(room,users,site,{capturedIds:snap.tigers.map(t=>t.id)});
+   }
+   await S.applyAction(await S.readSession(room.code),host,'expedition-interact');
+  }
+  await setPlayers(room,users,snap.extraction,{capturedIds:snap.tigers.map(t=>t.id)});
+  snap=await S.buildSnapshot(await S.readSession(room.code),host.id);
+  if(stage===3){
+   assert.equal(snap.status,'active');assert(snap.expedition.release.startedAt>0);
+   // Reconnection is safe: an absent teammate resets unloading instead of completing offline.
+   advance(16000);snap=await S.buildSnapshot(await S.readSession(room.code),host.id);assert.equal(snap.status,'active');assert.equal(snap.expedition.release.startedAt,0);
+   await setPlayers(room,users,snap.extraction);snap=await S.buildSnapshot(await S.readSession(room.code),host.id);advance(8100);await setPlayers(room,users,snap.extraction);snap=await S.buildSnapshot(await S.readSession(room.code),host.id);
+  }
+  assert.equal(snap.status,'complete');
+  const harness=createHarness({userId:host.id,snapshot:snap});harness.qa.render();harness.qa.drawArena();if(stage===3){for(const progress of [0,.4,1])harness.qa.drawExpeditionDeparture(progress);for(const id of manifest)assert(harness.drawn.tigers.includes(id),'release movie uses the recorded cargo animal');}assert.equal(harness.stats().depth,0);
+ }
+ assert.deepEqual(snap.expedition.report.cargoReleased.map(t=>t.id),manifest);
+ assert.equal(snap.expedition.report.rescued.length,2,'workers remain credited from the escort');
+ await assert.rejects(async()=>S.applyAction(await S.readSession(room.code),host,'expedition-continue',{stage:3}));
+ return snap;
+}
+test('earlier one-stage escort receipts remain complete without fabricating the new habitat or release stages',()=>{
+ const book=MM.credit(null,{id:'legacy-corridor',expeditionId:'wildlife-corridor',route:'bridge',results:[{stage:1,mode:'Solo',team:[{userId:22}],survivors:['Ranger Amara','Driver Luis'],evacuees:[{id:'wc_worker_1',name:'Ranger Amara'},{id:'wc_worker_2',name:'Driver Luis'}],captures:0,kills:0}]},22);
+ assert.equal(MM.summary(book,'wildlife-corridor').modes[0].clears,1);assert.equal(R.view(book).people.length,2);assert.equal(R.view(book).tigers.length,0);assert(!book.runs['legacy-corridor'].stages[3]);
+});
+test('an already-completed pilot room can continue without losing its workers and receives one durable transport manifest',async()=>scope.run('expedition-solo',async()=>{
+ const {host,room,users}=await party('forest',true,988301);let snap=await S.buildSnapshot(room,host.id);
+ await setPlayers(room,users,snap.extraction,{checkpointIds:snap.checkpoints.map(p=>p.id),capturedIds:snap.tigers.map(t=>t.id),rescuedIds:snap.civilians.map(c=>c.id),securedCivilianIds:snap.civilians.map(c=>c.id)});
+ await DB.setState(`corridor_convoy_${room.code}_${room.corridorAttempt}`,{...snap.expedition.convoy,distance:snap.expedition.convoy.total,arrived:true});
+ snap=await S.buildSnapshot(await S.readSession(room.code),host.id);assert.equal(snap.status,'complete');
+ const savedKey=`rescue_expedition_wildlife-corridor_${host.id}`,saved=await DB.getState(savedKey),oldRoom=await S.readSession(room.code);
+ delete saved.cargo;delete saved.results[0].corridorStages;delete oldRoom.expedition.cargo;await DB.setState(savedKey,saved);await DB.setState(roomKey(room),oldRoom);
+ await S.applyAction(await S.readSession(room.code),host,'expedition-continue',{stage:1});
+ const next=await S.readSession(room.code);assert.equal(next.expedition.stage,2);assert.equal(next.expedition.safeWorkers.length,2);assert.equal(next.expedition.cargo.length,2);
+ assert.deepEqual(next.expedition.cargo,(await DB.getState(savedKey)).cargo);assert.equal((await S.expeditionStatus(host,'wildlife-corridor')).roomCode,room.code);
 }));
