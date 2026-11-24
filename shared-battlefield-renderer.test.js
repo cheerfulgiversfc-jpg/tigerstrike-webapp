@@ -9,9 +9,9 @@ const css=fs.readFileSync("squad-coop.css","utf8");
 const html=fs.readFileSync("index.html","utf8");
 
 test("V11.4 keeps one reusable premium battlefield renderer",()=>{
-  assert.equal(renderer.VERSION,"10.22");
+  assert.equal(renderer.VERSION,"17.5");
   for(const name of ["drawSoldier","drawCivilian","drawTiger","drawBattlefieldFinish"])assert.equal(typeof renderer[name],"function");
-  assert(html.includes('shared-battlefield-renderer.js?v=5298-wildlife-recovery'));
+  assert(html.includes('shared-battlefield-renderer.js?v=5302-field-detail'));
   assert(html.indexOf("shared-battlefield-renderer.js")<html.indexOf("squad-coop.js"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawSoldier"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawCivilian"));
@@ -36,7 +36,7 @@ test("premium units contain faces, equipment and articulated motion",()=>{
   assert(source.includes("Uniform, vest, belt, shoulder plates and backpack"));
   assert(source.includes("Face has features, hair/helmet, chin and headset"));
   assert(source.includes("Head, muzzle, ears, eyes and whiskers"));
-  assert(source.includes('const stride=moving?Math.sin(phase)*(running?10:5):0'));
+  assert(source.includes('const gaitSwing=moving?Math.sin(legPhase)*(running?10:5):0'));
   assert(!source.includes("rotate(face)"),"the soldier body must never rotate upside down");
 });
 
